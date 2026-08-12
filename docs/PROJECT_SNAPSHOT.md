@@ -2,7 +2,7 @@
 
 - Product: PickLogic / 拾理; contextual explanation: 知件 / Insight.
 - Motto: Small. Local. Useful.
-- Status: M1 vertical slices merged to `develop`; private alpha packaging is in progress; no public release.
+- Status: M1 vertical slices merged; checksummed private alpha candidates and a Draft/Prerelease exist; no public release.
 - Targets: Windows Standard, Windows Pro, Android Mobile.
 - Architecture: one Flutter/Dart workspace, shared pure-Dart core, narrow Windows/Android bridges.
 - Desktop: one implementation with `main_standard.dart` and `main_pro.dart`; no duplicate app.
@@ -24,6 +24,7 @@
 - Local build gates: Windows Developer Mode is off; Visual Studio C++ Build Tools is absent.
 - PDF engine: `pdfrx 2.4.7`/PDFium passed an initial license-capability screen but is not accepted until Standard/Pro size deltas are measured.
 - GitHub: Private repository, real milestones/issues, and merged PRs #9–#11; Public remains maintainer-gated.
+- Release evidence: final CI run `31618429285` is green; Standard/Pro ZIPs and arm64 release-size APK are within budget; installable Android artifact remains debug-signed.
 
 ## Ownership
 

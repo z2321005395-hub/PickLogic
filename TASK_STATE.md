@@ -30,6 +30,10 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Track C added bounded MediaStore thumbnails, screenshot timeline groups, a one-page-at-a-time metadata queue, and explicit scoped-storage limits.
 - Established six truthful GitHub milestones and eight roadmap/validation issues; M0 and the Track A issue are closed with evidence.
 - Baseline and track CI runs compiled Android, Windows Standard, and Windows Pro successfully on hosted runners.
+- Final release-candidate CI run `31618429285` passed all three jobs and produced checksummed packages.
+- Downloaded artifacts were independently hash-checked; both Windows ZIPs had required runtime entries and both executables completed a synthetic first-window smoke launch.
+- Verified the arm64 debug APK signature and ABI. The separate 18,906,037-byte arm64 release artifact is intentionally unsigned for size evidence only.
+- Created a Private Draft/Prerelease `v0.1.0-alpha` with four packages plus checksum, size, privacy, and verification reports; nothing was published.
 
 ## Files changed
 
@@ -47,10 +51,11 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - TTDT `java`, `javac`, `adb`, `emulator -list-avds`, `sdkmanager --list_installed`, and basic ADB `getprop` checks passed.
 - `flutter doctor -v`: Flutter, Windows OS, Android toolchain/licenses, network, and connected Android device passed; Visual Studio is the only toolchain failure.
 - `dart pub get` resolved the workspace and SQLite native asset without changing Windows policy.
-- Post-Track-A/B integration `tools\picklogic.cmd full`: 82 files formatted with zero changes; analysis reported no issues; 11 quick modules plus 6 remaining SQLite/Flutter modules passed.
+- Final merged `tools\picklogic.cmd full`: 85 files formatted with zero changes; analysis reported no issues; 11 quick modules plus 6 remaining SQLite/Flutter modules passed.
 - Dependency audit: 65 external packages and 4 Flutter SDK packages had recognized licenses; no missing/unknown/strong-copyleft package finding.
 - Committed-source privacy scan passed with zero findings.
 - Latest Track B and Track C GitHub Actions each passed quality, Android debug, and Windows Standard/Pro build jobs.
+- Final package sizes: Android arm64 release 18,906,037 bytes; Standard installed/ZIP 31,606,393/13,541,337 bytes; Pro installed/ZIP 31,835,769/13,628,931 bytes. All release-size targets pass.
 - ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
 - PDF engine dry-run audit: `pdfrx 2.4.7` is MIT over PDFium BSD-3 and would add 33 resolved dependencies plus native assets; it remains unaccepted pending measured size impact.
 
@@ -64,4 +69,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Finish integration packaging and size gates, rerun full local/remote verification, download the three private alpha candidates, and create a draft release. Then pause for maintainer-controlled Developer Mode/Visual Studio setup, device permissions, first trial, and license/copyright decisions.
+Pause for maintainer-controlled Developer Mode/Visual Studio setup, Android media permission, read-only reference-device validation, first trial, and final license/copyright decisions. After those gates, fix observed device issues, configure signing, and ask separately before Public conversion or release publication.

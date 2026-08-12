@@ -19,5 +19,6 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 - Android bounded thumbnails, screenshot timeline groups, review-only gestures, and a one-page-at-a-time metadata queue.
 - Private GitHub milestones/issues and reviewed Track A/B/C pull requests.
 - Alpha package naming, checksums, installation notes, and release-size gates in CI.
+- Private Draft/Prerelease artifacts with verified hashes, size/privacy reports, and Windows smoke-launch evidence.
 
 No release has been published.
