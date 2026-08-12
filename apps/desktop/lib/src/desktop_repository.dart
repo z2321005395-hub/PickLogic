@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:picklogic_classification_rules/picklogic_classification_rules.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_file_index/picklogic_file_index.dart';
+import 'package:picklogic_search_index/picklogic_search_index.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 import 'demo_records.dart';
@@ -13,12 +14,14 @@ final class DesktopScanProgress {
     required this.scannedCount,
     required this.complete,
     required this.rootLabel,
+    this.removedIds = const <String>[],
   });
 
   final List<FileRecord> records;
   final int scannedCount;
   final bool complete;
   final String rootLabel;
+  final List<String> removedIds;
 }
 
 abstract interface class DesktopRepository {
@@ -59,21 +62,26 @@ final class WindowsDesktopRepository implements DesktopRepository {
     );
     final index = await _openIndex();
     final rootLabel = _basename(rootPath);
+    final session = index.beginIncrementalScan(rootKey: _rootKey(rootPath));
     await for (final batch in _scanner.scan(ScanRequest(root: root))) {
       final records = batch.records
           .map(_classifier.classify)
           .toList(growable: false);
-      await index.upsertBatch(records);
-      await index.saveScanState(
-        rootKey: _rootKey(rootPath),
+      await index.upsertIncrementalBatch(
+        session: session,
+        records: records,
         cursor: batch.cursor,
         scannedCount: batch.scannedCount,
       );
+      final completion = batch.isComplete
+          ? index.completeIncrementalScan(session)
+          : null;
       yield DesktopScanProgress(
         records: records,
         scannedCount: batch.scannedCount,
         complete: batch.isComplete,
         rootLabel: rootLabel,
+        removedIds: completion?.removedIds ?? const <String>[],
       );
     }
   }
@@ -90,8 +98,8 @@ final class WindowsDesktopRepository implements DesktopRepository {
 
   @override
   Future<List<FileRecord>> search(String query) async {
-    final index = _index;
-    return index == null ? const <FileRecord>[] : index.search(query);
+    final index = await _openIndex();
+    return index.search(query);
   }
 
   @override
@@ -142,12 +150,9 @@ final class SyntheticDesktopRepository implements DesktopRepository {
 
   @override
   Future<List<FileRecord>> search(String query) async {
-    final normalized = query.trim().toLowerCase();
-    return syntheticDesktopRecords()
-        .where(
-          (record) => record.displayName.toLowerCase().contains(normalized),
-        )
-        .toList(growable: false);
+    final index = InMemorySearchIndex();
+    await index.upsertBatch(syntheticDesktopRecords());
+    return index.search(query);
   }
 
   @override
