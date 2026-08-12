@@ -88,6 +88,8 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
 - Current isolated full gate: 92 files formatted with zero changes; root analysis clean; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
 - Follow-up permission-error wording review passed 11 targeted Mobile tests, root analysis, `git diff --check`, and a zero-finding privacy scan; no dependency changed.
+- PR #19 CI `31632859044` passed quality, Android, and both Windows builds. Its Android artifacts matched the published checksums, were arm64-only, and independently showed a v2-signed Debug APK plus intentionally unsigned Release-size APK.
+- Static DEX review of the PR #19 Debug APK found both `PicklogicAndroidBridgePlugin` and the generated `registerWith` call, proving hosted plugin registration is present without reading device media.
 
 ## Blockers
 
@@ -99,4 +101,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Validate the Mobile bootstrap resilience fix in tests/CI and on the TTDT emulator error path. After the user enables Windows Developer Mode, rebuild the x86_64 Debug APK and rerun the real bridge path without requesting media access. Keep Visual Studio, real-data validation, Android permissions, license/copyright, signing, Public conversion, and publication as explicit gates.
+Integrate the Mobile bootstrap resilience fix. After the user enables Windows Developer Mode, rebuild the x86_64 Debug APK and rerun the real bridge path without requesting media access. Keep Visual Studio, real-data validation, Android permissions, license/copyright, signing, Public conversion, and publication as explicit gates.
