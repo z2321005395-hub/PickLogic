@@ -86,7 +86,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Dependency audit: 65 external packages and 4 Flutter SDK packages had recognized licenses; no missing/unknown/strong-copyleft package finding.
 - Committed-source privacy scan passed with zero findings.
 - Latest Track B and Track C GitHub Actions each passed quality, Android debug, and Windows Standard/Pro build jobs.
-- Current candidate package sizes: Android arm64 release 18,907,677 bytes; Standard distributable/ZIP 39,315,452/17,392,260 bytes; Pro 40,167,420/17,747,559 bytes. All release-size targets pass.
+- Current candidate package sizes: Android arm64 Debug/unsigned Release 79,119,128/18,973,293 bytes; Standard distributable/ZIP 39,315,452/17,392,257 bytes; Pro 40,167,420/17,747,556 bytes. All release-size targets pass.
 - ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
 - PDF engine audit: `pdfrx 2.4.7`/PDFium is accepted after native smoke, complete notices, size, privacy, and Mobile-regression gates.
 - Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
