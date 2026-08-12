@@ -66,6 +66,19 @@ class MethodChannelPicklogicAndroidBridge
   }
 
   @override
+  Future<String> getPrivateIndexDatabasePath() async {
+    final path = await methodChannel.invokeMethod<String>(
+      'getPrivateIndexDatabasePath',
+    );
+    if (path == null || path.trim().isEmpty) {
+      throw const FormatException(
+        'Android returned an invalid private index database path.',
+      );
+    }
+    return path;
+  }
+
+  @override
   Future<String?> pickDocumentTree() =>
       methodChannel.invokeMethod<String>('pickDocumentTree');
 

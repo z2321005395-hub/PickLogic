@@ -60,6 +60,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Issue #18 records the emulator finding and fix. The isolated full gate passed: 92 files formatted unchanged, root analysis clean, 11 quick + 6 remaining modules passed, 97 external + 5 Flutter SDK licenses clean, and privacy findings 0.
 - The updated emulator-only x86_64 APK cold-launched in 5.12 seconds, showed the safe bootstrap error instead of a spinner or false permission claim, stayed alive after retry, and had zero Flutter fatal-log matches.
 - Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
+- Issue #23 records the durable Mobile index gap. The isolated `codex/mobile-durable-index` worktree stores authorized MediaStore metadata and per-collection resume checkpoints through the existing shared SQLite index at one fixed app-private `noBackupFilesDir` path.
+- Mobile indexing continues one bounded page at a time with fair collection rotation, supports pause after the current page, resumes from validated checkpoints, and searches persisted records without delaying first paint. Malformed checkpoints restart safely; no WorkManager or other dependency was added.
+- Mobile deletion reconciliation and OS-scheduled wakeups remain explicit follow-ups. No real media, physical-device permission, file mutation, or system setting was used while implementing this slice.
 
 ## Files changed
 
@@ -70,6 +73,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Root `pubspec.yaml`; dependency resolution selected SQLite 3.5.1 and generated one workspace lockfile.
 - Native Android/Windows bridges, desktop/mobile repositories, and CI/tooling gates.
 - Pinned PDFium/SQLite native-asset preparation, shared verified-download tooling, and ADR 0004.
+- Mobile SQLite persistence adapter, bounded queue/repository/UI lifecycle changes, additive Android private-path bridge contract, tests, ADR 0005, and concise privacy/dependency/known-limit documentation.
 
 ## Commands and verification
 
@@ -98,6 +102,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - CI run `31639131268` built and uploaded the x86_64 APK; the original quality/Windows attempts recorded unrelated upstream connection closures, and rerunning only failed jobs completed all three checks successfully.
 - The 64,724,478-byte APK matched its manifest, was x86_64-only and v2-signed, and contained the bridge plus generated registration. On the TTDT API 36 emulator it cold-launched in 3.709 seconds, rendered Storage Insight through the real bridge, retained zero media grants, and produced zero fatal-log matches.
 - Repeated hosted HTTP 503 and premature-connection failures later succeeded with unchanged hashes. Native-asset prefetch now permits six bounded attempts with at most 150 seconds of backoff; hash mismatches still fail closed.
+- Current durable-index gate: 94 files formatted unchanged; root analysis clean; Mobile 19/19 and Android bridge 10/10 tests passed; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
 
 ## Blockers
 

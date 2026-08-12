@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_insight_engine/picklogic_insight_engine.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
+import 'src/incremental_index_queue.dart';
 import 'src/mobile_repository.dart';
 import 'src/screenshot_grouping.dart';
 
@@ -62,8 +64,15 @@ final class _MobileShellState extends State<MobileShell> {
   void didUpdateWidget(covariant MobileShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.repository != widget.repository) {
+      unawaited(oldWidget.repository.close());
       _bootstrap = widget.repository.loadBootstrap();
     }
+  }
+
+  @override
+  void dispose() {
+    unawaited(widget.repository.close());
+    super.dispose();
   }
 
   void _retryBootstrap() {
@@ -141,7 +150,11 @@ final class _MobileShellState extends State<MobileShell> {
             active: _index == 2,
             canReadMedia: canReadMedia,
           ),
-          _StoragePage(bootstrap: bootstrap),
+          _StoragePage(
+            bootstrap: bootstrap,
+            repository: widget.repository,
+            active: _index == 3,
+          ),
         ];
         return Scaffold(
           appBar: AppBar(
@@ -694,21 +707,73 @@ final class _OnDemandThumbnailState extends State<_OnDemandThumbnail> {
   );
 }
 
-final class _StoragePage extends StatelessWidget {
-  const _StoragePage({required this.bootstrap});
+final class _StoragePage extends StatefulWidget {
+  const _StoragePage({
+    required this.bootstrap,
+    required this.repository,
+    required this.active,
+  });
 
   final MobileBootstrapState? bootstrap;
+  final MobileRepository repository;
+  final bool active;
+
+  @override
+  State<_StoragePage> createState() => _StoragePageState();
+}
+
+final class _StoragePageState extends State<_StoragePage> {
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncRefreshTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StoragePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active ||
+        oldWidget.repository != widget.repository) {
+      _syncRefreshTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    if (!widget.active) return;
+    _refreshTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _toggleIndexing(MobileIndexQueueSnapshot queue) {
+    if (queue.isRunning || queue.pendingBatches > 0) {
+      widget.repository.cancelIncrementalIndexing();
+    } else {
+      widget.repository.scheduleIncrementalIndexing();
+    }
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    final storage = bootstrap?.storage;
+    final storage = widget.bootstrap?.storage;
     if (storage == null) {
       return const Center(child: Text('正在读取系统存储摘要…'));
     }
     final used = storage.totalBytes - storage.availableBytes;
     final fraction = storage.totalBytes == 0 ? 0.0 : used / storage.totalBytes;
-    final queue = bootstrap!.indexQueue;
-    final visualAccess = bootstrap!.permissions.partialVisualAccess
+    final queue = widget.repository.indexQueueSnapshot;
+    final visualAccess = widget.bootstrap!.permissions.partialVisualAccess
         ? '仅限用户选择的照片和视频'
         : storage.canInspectSharedMedia
         ? '仅限已授权的 MediaStore 集合'
@@ -741,11 +806,33 @@ final class _StoragePage extends StatelessWidget {
         ),
         _StorageTile(
           '后台增量元数据队列',
-          queue.maxPendingBatches == 0
-              ? 0
-              : queue.pendingBatches / queue.maxPendingBatches,
+          queue.isRunning ? null : 0,
           true,
-          '每批最多 ${queue.pageSize} 项；进程内 skeleton；不自动续页、不调度 OCR',
+          queue.persistsAcrossRestarts
+              ? '已索引 ${queue.indexedItems} 项；完成 ${queue.completedBatches} 批；'
+                    '失败 ${queue.failedBatches} 批；SQLite 检查点可恢复；不调度 OCR'
+              : '已索引 ${queue.indexedItems} 项；完成 ${queue.completedBatches} 批；'
+                    '当前会话状态；不调度 OCR',
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: storage.canInspectSharedMedia
+                ? () => _toggleIndexing(queue)
+                : null,
+            icon: Icon(
+              queue.isRunning || queue.pendingBatches > 0
+                  ? Icons.pause_outlined
+                  : Icons.play_arrow_outlined,
+            ),
+            label: Text(
+              queue.isRunning || queue.pendingBatches > 0
+                  ? '暂停索引'
+                  : queue.isPaused
+                  ? '继续索引'
+                  : '检查新增内容',
+            ),
+          ),
         ),
         const _StorageTile('其他应用私有数据', 0, false, '平台限制'),
         const SizedBox(height: 16),
@@ -766,7 +853,7 @@ final class _StorageTile extends StatelessWidget {
   const _StorageTile(this.label, this.value, this.inspectable, this.detail);
 
   final String label;
-  final double value;
+  final double? value;
   final bool inspectable;
   final String detail;
 

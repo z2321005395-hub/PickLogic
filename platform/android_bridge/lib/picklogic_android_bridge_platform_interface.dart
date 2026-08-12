@@ -53,6 +53,12 @@ abstract class PicklogicAndroidBridgePlatform extends PlatformInterface {
     throw UnimplementedError('getStorageSnapshot() has not been implemented.');
   }
 
+  Future<String> getPrivateIndexDatabasePath() {
+    throw UnimplementedError(
+      'getPrivateIndexDatabasePath() has not been implemented.',
+    );
+  }
+
   Future<String?> pickDocumentTree() {
     throw UnimplementedError('pickDocumentTree() has not been implemented.');
   }

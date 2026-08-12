@@ -4,6 +4,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ## Unreleased
 
+- Persist Android MediaStore metadata and bounded resume checkpoints through the shared SQLite index without adding a dependency.
+
 ### Added
 
 - PickLogic / 拾理 project identity and product principles.

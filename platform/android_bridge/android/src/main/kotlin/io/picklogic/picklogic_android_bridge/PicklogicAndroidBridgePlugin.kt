@@ -25,6 +25,7 @@ import io.flutter.plugin.common.PluginRegistry
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -61,6 +62,9 @@ class PicklogicAndroidBridgePlugin :
             "getMediaPermissionState" -> result.success(mediaPermissionState())
             "requestMediaPermissions" -> requestMediaPermissions(result)
             "getStorageSnapshot" -> result.success(storageSnapshot())
+            "getPrivateIndexDatabasePath" -> result.success(
+                File(applicationContext.noBackupFilesDir, PRIVATE_INDEX_FILENAME).absolutePath,
+            )
             "queryMediaPage" -> queryMediaPage(call, result)
             "loadThumbnail" -> loadBoundedThumbnail(call, result)
             "pickDocumentTree" -> pickDocumentTree(result)
@@ -653,6 +657,7 @@ class PicklogicAndroidBridgePlugin :
 
     private companion object {
         const val CHANNEL = "picklogic_android_bridge"
+        const val PRIVATE_INDEX_FILENAME = "picklogic-index.sqlite3"
         const val MEDIA_PERMISSION_REQUEST = 4701
         const val DOCUMENT_TREE_REQUEST = 4702
         const val MAX_THUMBNAIL_DIMENSION = 512

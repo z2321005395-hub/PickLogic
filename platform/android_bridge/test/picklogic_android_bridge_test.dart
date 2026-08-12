@@ -45,6 +45,10 @@ class MockPicklogicAndroidBridgePlatform
       );
 
   @override
+  Future<String> getPrivateIndexDatabasePath() async =>
+      'synthetic-private/picklogic-index.sqlite3';
+
+  @override
   Future<String?> pickDocumentTree() async => 'content://tree/test';
 
   @override
@@ -79,6 +83,7 @@ void main() {
       const AndroidMediaQuery(kind: AndroidMediaKind.screenshots),
     );
     final storage = await bridge.getStorageSnapshot();
+    final indexPath = await bridge.getPrivateIndexDatabasePath();
     final thumbnail = await bridge.loadThumbnail(
       const AndroidThumbnailRequest(
         contentUri: 'content://media/1',
@@ -92,6 +97,7 @@ void main() {
     expect(state.canReadVisualMedia, isFalse);
     expect(page.items, isEmpty);
     expect(storage.canInspectOtherAppPrivateData, isFalse);
+    expect(indexPath, endsWith('picklogic-index.sqlite3'));
     expect(thumbnail?.bytes, <int>[1, 2, 3]);
     expect(tree, 'content://tree/test');
     expect(opened, isTrue);

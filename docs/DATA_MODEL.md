@@ -60,3 +60,5 @@ Evidence entries distinguish `fact`, `ruleInference`, `lowConfidenceGuess`, and 
 ## Compatibility
 
 Additive optional fields are backward compatible. Renames, removals, required-field additions, enum semantic changes, or locator changes are breaking and require migration notes plus Lead approval.
+
+The Android bridge's additive private-index-path method is not a `FileLocator` and does not alter shared model serialization. It returns only a fixed app-private database location; the shared Dart SQLite implementation retains schema and search ownership.
