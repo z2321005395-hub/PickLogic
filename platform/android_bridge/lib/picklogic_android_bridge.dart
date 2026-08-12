@@ -18,6 +18,9 @@ final class PicklogicAndroidBridge {
   Future<AndroidMediaPage> queryMediaPage(AndroidMediaQuery query) =>
       PicklogicAndroidBridgePlatform.instance.queryMediaPage(query);
 
+  Future<AndroidThumbnail?> loadThumbnail(AndroidThumbnailRequest request) =>
+      PicklogicAndroidBridgePlatform.instance.loadThumbnail(request);
+
   Future<AndroidStorageSnapshot> getStorageSnapshot() =>
       PicklogicAndroidBridgePlatform.instance.getStorageSnapshot();
 

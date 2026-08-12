@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum AndroidMediaKind {
   images,
   videos,
@@ -45,6 +47,7 @@ final class AndroidMediaEntry {
     required this.createdAt,
     required this.modifiedAt,
     this.relativePath,
+    this.sourceHint,
   });
 
   factory AndroidMediaEntry.fromMap(Map<Object?, Object?> map) =>
@@ -63,6 +66,7 @@ final class AndroidMediaEntry {
           isUtc: true,
         ),
         relativePath: map['relativePath'] as String?,
+        sourceHint: map['sourceHint'] as String?,
       );
 
   final String id;
@@ -73,6 +77,65 @@ final class AndroidMediaEntry {
   final DateTime createdAt;
   final DateTime modifiedAt;
   final String? relativePath;
+  final String? sourceHint;
+}
+
+final class AndroidThumbnailRequest {
+  const AndroidThumbnailRequest({
+    required this.contentUri,
+    required this.maxWidth,
+    required this.maxHeight,
+    this.maxBytes = defaultMaxBytes,
+  });
+
+  static const int maxDimension = 512;
+  static const int defaultMaxBytes = 256 * 1024;
+  static const int absoluteMaxBytes = 512 * 1024;
+
+  final String contentUri;
+  final int maxWidth;
+  final int maxHeight;
+  final int maxBytes;
+
+  Map<String, Object> toMap() {
+    if (!contentUri.startsWith('content://')) {
+      throw ArgumentError.value(
+        contentUri,
+        'contentUri',
+        'Must be a content URI.',
+      );
+    }
+    if (maxWidth < 1 || maxWidth > maxDimension) {
+      throw RangeError.range(maxWidth, 1, maxDimension, 'maxWidth');
+    }
+    if (maxHeight < 1 || maxHeight > maxDimension) {
+      throw RangeError.range(maxHeight, 1, maxDimension, 'maxHeight');
+    }
+    if (maxBytes < 1024 || maxBytes > absoluteMaxBytes) {
+      throw RangeError.range(maxBytes, 1024, absoluteMaxBytes, 'maxBytes');
+    }
+    return <String, Object>{
+      'contentUri': contentUri,
+      'maxWidth': maxWidth,
+      'maxHeight': maxHeight,
+      'maxBytes': maxBytes,
+    };
+  }
+}
+
+final class AndroidThumbnail {
+  const AndroidThumbnail({required this.bytes});
+
+  factory AndroidThumbnail.fromBytes(Uint8List bytes, {required int maxBytes}) {
+    if (bytes.isEmpty || bytes.lengthInBytes > maxBytes) {
+      throw const FormatException(
+        'Android returned an invalid bounded thumbnail.',
+      );
+    }
+    return AndroidThumbnail(bytes: bytes);
+  }
+
+  final Uint8List bytes;
 }
 
 final class AndroidMediaPage {
@@ -120,7 +183,8 @@ final class AndroidMediaPermissionState {
   final bool audio;
   final bool partialVisualAccess;
 
-  bool get canReadVisualMedia => images || videos || partialVisualAccess;
+  bool get canReadImages => images || partialVisualAccess;
+  bool get canReadVisualMedia => canReadImages || videos;
 }
 
 final class AndroidStorageSnapshot {
@@ -130,6 +194,10 @@ final class AndroidStorageSnapshot {
     required this.canInspectSharedMedia,
     required this.canInspectOtherAppPrivateData,
     required this.systemRestriction,
+    this.canInspectDownloads = false,
+    this.isAggregateOnly = true,
+    this.canClean = false,
+    this.limitations = const <String>[],
   });
 
   factory AndroidStorageSnapshot.fromMap(Map<Object?, Object?> map) =>
@@ -140,6 +208,12 @@ final class AndroidStorageSnapshot {
         canInspectOtherAppPrivateData:
             map['canInspectOtherAppPrivateData']! as bool,
         systemRestriction: map['systemRestriction']! as String,
+        canInspectDownloads: map['canInspectDownloads'] as bool? ?? false,
+        isAggregateOnly: map['isAggregateOnly'] as bool? ?? true,
+        canClean: map['canClean'] as bool? ?? false,
+        limitations:
+            (map['limitations'] as List<Object?>?)?.cast<String>() ??
+            const <String>[],
       );
 
   final int totalBytes;
@@ -147,4 +221,8 @@ final class AndroidStorageSnapshot {
   final bool canInspectSharedMedia;
   final bool canInspectOtherAppPrivateData;
   final String systemRestriction;
+  final bool canInspectDownloads;
+  final bool isAggregateOnly;
+  final bool canClean;
+  final List<String> limitations;
 }

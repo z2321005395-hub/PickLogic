@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
@@ -6,6 +8,7 @@ import 'package:picklogic_insight_engine/picklogic_insight_engine.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'src/mobile_repository.dart';
+import 'src/screenshot_grouping.dart';
 
 void main() =>
     runApp(PickLogicMobileApp(repository: AndroidMobileRepository()));
@@ -109,7 +112,7 @@ final class _MobileShellState extends State<MobileShell> {
       future: _bootstrap,
       builder: (context, snapshot) {
         final bootstrap = snapshot.data;
-        final canReadMedia = bootstrap?.permissions.canReadVisualMedia ?? false;
+        final canReadMedia = bootstrap?.permissions.canReadImages ?? false;
         final pages = <Widget>[
           _FilesPage(
             repository: widget.repository,
@@ -296,7 +299,7 @@ final class _ScreenshotsPage extends StatefulWidget {
 final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
   final PageController _controller = PageController();
   final Map<String, ScreenshotReviewState> _review = {};
-  Future<List<FileRecord>>? _records;
+  Future<List<MobileScreenshotGroup>>? _groups;
 
   @override
   void initState() {
@@ -307,7 +310,7 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
   @override
   void didUpdateWidget(covariant _ScreenshotsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.canReadMedia && widget.canReadMedia) _records = null;
+    if (!oldWidget.canReadMedia && widget.canReadMedia) _groups = null;
     _ensureLoaded();
   }
 
@@ -318,8 +321,8 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
   }
 
   void _ensureLoaded() {
-    if (widget.active && widget.canReadMedia && _records == null) {
-      _records = widget.repository.loadMedia(AndroidMediaKind.screenshots);
+    if (widget.active && widget.canReadMedia && _groups == null) {
+      _groups = widget.repository.loadScreenshotGroups();
     }
   }
 
@@ -344,7 +347,7 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
     if (!widget.canReadMedia) {
       return const Center(child: Text('授予媒体只读权限后显示截图；不会自动 OCR。'));
     }
-    if (_records == null) {
+    if (_groups == null) {
       return const Center(child: Text('进入截图页后按需加载。'));
     }
     return Padding(
@@ -352,26 +355,33 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('连续截图组', style: Theme.of(context).textTheme.titleLarge),
-          const Text('建议检查 · 尚未判断 · 元数据按需加载'),
+          Text('截图时间线', style: Theme.of(context).textTheme.titleLarge),
+          const Text('按时间与来源线索连续分组；来源线索不是应用归属结论。'),
           const SizedBox(height: 16),
           Expanded(
-            child: FutureBuilder<List<FileRecord>>(
-              future: _records,
+            child: FutureBuilder<List<MobileScreenshotGroup>>(
+              future: _groups,
               builder: (context, snapshot) {
                 if (snapshot.hasError) return const Text('当前无法读取截图集合。');
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final records = snapshot.data!;
-                if (records.isEmpty) {
+                final groups = snapshot.data!;
+                if (groups.isEmpty) {
                   return const Center(child: Text('没有可访问截图。'));
                 }
+                final entries = <_ScreenshotPageEntry>[
+                  for (final group in groups)
+                    for (final record in group.records)
+                      _ScreenshotPageEntry(group: group, record: record),
+                ];
                 return PageView.builder(
                   controller: _controller,
-                  itemCount: records.length,
+                  itemCount: entries.length,
                   itemBuilder: (context, index) {
-                    final record = records[index];
+                    final entry = entries[index];
+                    final record = entry.record;
+                    final group = entry.group.summary;
                     final state =
                         _review[record.id] ?? ScreenshotReviewState.unreviewed;
                     return GestureDetector(
@@ -402,13 +412,18 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                             child: Padding(
                               padding: const EdgeInsets.all(24),
                               child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(
-                                    Icons.screenshot_monitor_outlined,
-                                    size: 96,
+                                  Expanded(
+                                    child: _OnDemandThumbnail(
+                                      repository: widget.repository,
+                                      record: record,
+                                      maxWidth: 320,
+                                      maxHeight: 240,
+                                      fallbackIcon:
+                                          Icons.screenshot_monitor_outlined,
+                                    ),
                                   ),
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 8),
                                   Text(
                                     record.displayName,
                                     maxLines: 2,
@@ -416,8 +431,17 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                                   ),
                                   const SizedBox(height: 12),
                                   Text(
+                                    '来源线索：${group.sourceHint}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
+                                    '${group.memberIds.length > 1 ? '连续 ${group.memberIds.length} 张' : '单张'}',
+                                  ),
+                                  Text(
                                     state == ScreenshotReviewState.unreviewed
-                                        ? '包含大量文字 · 连续截图组'
+                                        ? '尚未判断 · 未运行 OCR'
                                         : state.name,
                                   ),
                                   IconButton(
@@ -518,7 +542,13 @@ final class _PhotosPageState extends State<_PhotosPage> {
                 onTap: () => _showInsight(context, record, widget.repository),
                 child: Semantics(
                   label: record.displayName,
-                  child: const Icon(Icons.image_outlined),
+                  child: _OnDemandThumbnail(
+                    repository: widget.repository,
+                    record: record,
+                    maxWidth: 160,
+                    maxHeight: 160,
+                    fallbackIcon: Icons.image_outlined,
+                  ),
                 ),
               ),
             );
@@ -527,6 +557,84 @@ final class _PhotosPageState extends State<_PhotosPage> {
       },
     );
   }
+}
+
+final class _ScreenshotPageEntry {
+  const _ScreenshotPageEntry({required this.group, required this.record});
+
+  final MobileScreenshotGroup group;
+  final FileRecord record;
+}
+
+final class _OnDemandThumbnail extends StatefulWidget {
+  const _OnDemandThumbnail({
+    required this.repository,
+    required this.record,
+    required this.maxWidth,
+    required this.maxHeight,
+    required this.fallbackIcon,
+  });
+
+  final MobileRepository repository;
+  final FileRecord record;
+  final int maxWidth;
+  final int maxHeight;
+  final IconData fallbackIcon;
+
+  @override
+  State<_OnDemandThumbnail> createState() => _OnDemandThumbnailState();
+}
+
+final class _OnDemandThumbnailState extends State<_OnDemandThumbnail> {
+  late Future<Uint8List?> _thumbnail;
+
+  @override
+  void initState() {
+    super.initState();
+    _thumbnail = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _OnDemandThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository ||
+        oldWidget.record.id != widget.record.id ||
+        oldWidget.maxWidth != widget.maxWidth ||
+        oldWidget.maxHeight != widget.maxHeight) {
+      _thumbnail = _load();
+    }
+  }
+
+  Future<Uint8List?> _load() => widget.repository.loadThumbnail(
+    widget.record,
+    maxWidth: widget.maxWidth,
+    maxHeight: widget.maxHeight,
+  );
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Uint8List?>(
+    future: _thumbnail,
+    builder: (context, snapshot) {
+      final bytes = snapshot.data;
+      if (bytes == null) {
+        return Center(
+          child: snapshot.connectionState == ConnectionState.waiting
+              ? const CircularProgressIndicator(strokeWidth: 2)
+              : Icon(widget.fallbackIcon, size: 56),
+        );
+      }
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) =>
+              Center(child: Icon(widget.fallbackIcon, size: 56)),
+        ),
+      );
+    },
+  );
 }
 
 final class _StoragePage extends StatelessWidget {
@@ -542,28 +650,56 @@ final class _StoragePage extends StatelessWidget {
     }
     final used = storage.totalBytes - storage.availableBytes;
     final fraction = storage.totalBytes == 0 ? 0.0 : used / storage.totalBytes;
+    final queue = bootstrap!.indexQueue;
+    final visualAccess = bootstrap!.permissions.partialVisualAccess
+        ? '仅限用户选择的照片和视频'
+        : storage.canInspectSharedMedia
+        ? '仅限已授权的 MediaStore 集合'
+        : '尚未授权，无法检查';
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Text('Storage Insight', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         _StorageTile(
-          '设备已用空间（系统报告）',
+          '设备数据卷已用空间（系统聚合）',
           fraction.clamp(0, 1),
           true,
-          '${_formatBytes(used)} / ${_formatBytes(storage.totalBytes)}',
+          '${_formatBytes(used)} / ${_formatBytes(storage.totalBytes)}；'
+              '不可据此归因到文件或应用',
         ),
         _StorageTile(
-          '可以直接检查的数据',
+          '共享媒体可见范围',
           storage.canInspectSharedMedia ? 1 : 0,
           storage.canInspectSharedMedia,
-          storage.canInspectSharedMedia ? '共享媒体已授权' : '尚未授权',
+          visualAccess,
         ),
-        const _StorageTile('下载、安装包与压缩包', 0, true, '按需扫描'),
+        _StorageTile(
+          '下载、安装包与压缩包',
+          0,
+          storage.canInspectDownloads,
+          storage.canInspectDownloads
+              ? '仅统计 MediaStore/SAF 可见项'
+              : '需要用户通过 SAF 选择目录',
+        ),
+        _StorageTile(
+          '后台增量元数据队列',
+          queue.maxPendingBatches == 0
+              ? 0
+              : queue.pendingBatches / queue.maxPendingBatches,
+          true,
+          '每批最多 ${queue.pageSize} 项；进程内 skeleton；不自动续页、不调度 OCR',
+        ),
         const _StorageTile('其他应用私有数据', 0, false, '平台限制'),
         const SizedBox(height: 16),
-        Text(storage.systemRestriction),
-        const Text('可打开系统应用详情，或使用 SAF 查看可访问共享目录。'),
+        Text('明确限制', style: Theme.of(context).textTheme.titleMedium),
+        Text('• ${storage.systemRestriction}'),
+        const Text('• 系统聚合值包含 PickLogic 无法枚举或归因的数据。'),
+        const Text('• 不读取其他应用私有目录，不估算其内容，不提供清理按钮。'),
+        const Text('• 仅处理按页返回的元数据；缩略图在可见时按需读取。'),
+        for (final limitation in storage.limitations) Text('• $limitation'),
+        const SizedBox(height: 8),
+        const Text('可使用 SAF 查看用户明确选择的共享目录；任何媒体操作仍需另行预览与确认。'),
       ],
     );
   }
@@ -714,6 +850,13 @@ String _formatBytes(int bytes) {
   }
   if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
   return '$bytes B';
+}
+
+String _formatDateTime(DateTime value) {
+  final local = value.toLocal();
+  String twoDigits(int part) => part.toString().padLeft(2, '0');
+  return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+      '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
 }
 
 void _showInsight(

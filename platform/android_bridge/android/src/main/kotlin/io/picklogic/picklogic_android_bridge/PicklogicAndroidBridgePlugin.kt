@@ -7,6 +7,8 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,12 +17,14 @@ import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
 import android.provider.MediaStore
+import android.util.Size
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.PluginRegistry
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -58,6 +62,7 @@ class PicklogicAndroidBridgePlugin :
             "requestMediaPermissions" -> requestMediaPermissions(result)
             "getStorageSnapshot" -> result.success(storageSnapshot())
             "queryMediaPage" -> queryMediaPage(call, result)
+            "loadThumbnail" -> loadBoundedThumbnail(call, result)
             "pickDocumentTree" -> pickDocumentTree(result)
             "openContentUri" -> openContentUri(call, result)
             else -> result.notImplemented()
@@ -184,6 +189,152 @@ class PicklogicAndroidBridgePlugin :
         }
     }
 
+    private fun loadBoundedThumbnail(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        val arguments = call.arguments as? Map<*, *>
+        val rawUri = arguments?.get("contentUri") as? String
+        val uri = rawUri?.let(Uri::parse)
+        val maxWidth = (arguments?.get("maxWidth") as? Number)?.toInt() ?: 0
+        val maxHeight = (arguments?.get("maxHeight") as? Number)?.toInt() ?: 0
+        val maxBytes = (arguments?.get("maxBytes") as? Number)?.toInt() ?: 0
+        if (
+            uri?.scheme != ContentResolver.SCHEME_CONTENT ||
+            maxWidth !in 1..MAX_THUMBNAIL_DIMENSION ||
+            maxHeight !in 1..MAX_THUMBNAIL_DIMENSION ||
+            maxBytes !in MIN_THUMBNAIL_BYTES..MAX_THUMBNAIL_BYTES
+        ) {
+            result.error(
+                "invalid_thumbnail_request",
+                "A content URI and strict thumbnail bounds are required.",
+                null,
+            )
+            return
+        }
+        val worker = executor
+        if (worker == null || worker.isShutdown) {
+            result.error("bridge_unavailable", "The Android bridge is detached.", null)
+            return
+        }
+        worker.execute {
+            try {
+                val bytes = readBoundedThumbnail(uri, maxWidth, maxHeight, maxBytes)
+                mainHandler.post { result.success(bytes) }
+            } catch (_: SecurityException) {
+                mainHandler.post {
+                    result.error(
+                        "permission_denied",
+                        "Media permission is required before loading this thumbnail.",
+                        null,
+                    )
+                }
+            } catch (_: Exception) {
+                mainHandler.post {
+                    result.error(
+                        "thumbnail_failed",
+                        "Android could not load this bounded thumbnail.",
+                        null,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun readBoundedThumbnail(
+        uri: Uri,
+        maxWidth: Int,
+        maxHeight: Int,
+        maxBytes: Int,
+    ): ByteArray? {
+        val resolver = applicationContext.contentResolver
+        val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            resolver.loadThumbnail(uri, Size(maxWidth, maxHeight), null)
+        } else {
+            decodeSampledBitmap(resolver, uri, maxWidth, maxHeight)
+        }
+        val bounded = scaleToFit(decoded, maxWidth, maxHeight)
+        if (bounded !== decoded) decoded?.recycle()
+        return try {
+            encodeWithinBudget(bounded, maxBytes)
+        } finally {
+            bounded.recycle()
+        }
+    }
+
+    private fun decodeSampledBitmap(
+        resolver: ContentResolver,
+        uri: Uri,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, bounds)
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxWidth, maxHeight)
+        }
+        return resolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)
+        }
+    }
+
+    private fun sampleSize(
+        width: Int,
+        height: Int,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Int {
+        var sample = 1
+        while (width / (sample * 2) >= maxWidth || height / (sample * 2) >= maxHeight) {
+            sample *= 2
+        }
+        return sample
+    }
+
+    private fun scaleToFit(
+        bitmap: Bitmap?,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap {
+        requireNotNull(bitmap) { "Media item did not expose a thumbnail." }
+        if (bitmap.width <= maxWidth && bitmap.height <= maxHeight) return bitmap
+        val scale = minOf(maxWidth.toDouble() / bitmap.width, maxHeight.toDouble() / bitmap.height)
+        val width = (bitmap.width * scale).toInt().coerceAtLeast(1)
+        val height = (bitmap.height * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(bitmap, width, height, true)
+    }
+
+    private fun encodeWithinBudget(
+        bitmap: Bitmap,
+        maxBytes: Int,
+    ): ByteArray? {
+        var current = bitmap
+        var ownsCurrent = false
+        try {
+            repeat(5) { attempt ->
+                val output = ByteArrayOutputStream()
+                val quality = 86 - (attempt * 12)
+                if (current.compress(Bitmap.CompressFormat.JPEG, quality, output)) {
+                    val bytes = output.toByteArray()
+                    if (bytes.size <= maxBytes) return bytes
+                }
+                val nextWidth = (current.width * 0.75).toInt().coerceAtLeast(1)
+                val nextHeight = (current.height * 0.75).toInt().coerceAtLeast(1)
+                if (nextWidth == current.width && nextHeight == current.height) return null
+                val next = Bitmap.createScaledBitmap(current, nextWidth, nextHeight, true)
+                if (ownsCurrent) current.recycle()
+                current = next
+                ownsCurrent = true
+            }
+            return null
+        } finally {
+            if (ownsCurrent) current.recycle()
+        }
+    }
+
     private fun readMediaPage(
         kind: String,
         limit: Int,
@@ -201,6 +352,12 @@ class PicklogicAndroidBridgePlugin :
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             projection += MediaStore.MediaColumns.RELATIVE_PATH
+            projection += MediaStore.MediaColumns.OWNER_PACKAGE_NAME
+        }
+        val hasImageColumns = kind == "images" || kind == "photos" || kind == "screenshots"
+        if (hasImageColumns) {
+            projection += MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME
+            projection += MediaStore.Images.ImageColumns.DATE_TAKEN
         }
 
         val selections = target.selections.toMutableList()
@@ -255,6 +412,21 @@ class PicklogicAndroidBridgePlugin :
             } else {
                 -1
             }
+            val ownerPackageColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                it.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+            } else {
+                -1
+            }
+            val bucketColumn = if (hasImageColumns) {
+                it.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+            } else {
+                -1
+            }
+            val dateTakenColumn = if (hasImageColumns) {
+                it.getColumnIndex(MediaStore.Images.ImageColumns.DATE_TAKEN)
+            } else {
+                -1
+            }
             val items = mutableListOf<Map<String, Any?>>()
             var hasMore = false
             while (it.moveToNext()) {
@@ -263,15 +435,45 @@ class PicklogicAndroidBridgePlugin :
                     break
                 }
                 val id = it.getLong(idColumn)
+                val relativePath = if (relativePathColumn >= 0) {
+                    it.getString(relativePathColumn)
+                } else {
+                    null
+                }
+                val ownerPackage = if (ownerPackageColumn >= 0) {
+                    it.getString(ownerPackageColumn)?.takeIf(String::isNotBlank)
+                } else {
+                    null
+                }
+                val bucket = if (bucketColumn >= 0) {
+                    it.getString(bucketColumn)?.takeIf(String::isNotBlank)
+                } else {
+                    null
+                }
+                val pathHint = relativePath
+                    ?.trim('/')
+                    ?.substringAfterLast('/')
+                    ?.takeIf(String::isNotBlank)
+                val dateTakenMillis = if (dateTakenColumn >= 0) {
+                    it.getLong(dateTakenColumn).coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+                val createdAtEpochSeconds = if (dateTakenMillis > 0) {
+                    dateTakenMillis / 1000L
+                } else {
+                    it.getLong(addedColumn).coerceAtLeast(0L)
+                }
                 items += mapOf(
                     "id" to "$kind:$id",
                     "contentUri" to ContentUris.withAppendedId(target.uri, id).toString(),
                     "displayName" to (it.getString(nameColumn) ?: "Unnamed item"),
                     "mimeType" to it.getString(mimeColumn),
                     "sizeBytes" to it.getLong(sizeColumn).coerceAtLeast(0L),
-                    "createdAtEpochSeconds" to it.getLong(addedColumn).coerceAtLeast(0L),
+                    "createdAtEpochSeconds" to createdAtEpochSeconds,
                     "modifiedAtEpochSeconds" to it.getLong(modifiedColumn).coerceAtLeast(0L),
-                    "relativePath" to if (relativePathColumn >= 0) it.getString(relativePathColumn) else null,
+                    "relativePath" to relativePath,
+                    "sourceHint" to (ownerPackage ?: bucket ?: pathHint),
                 )
             }
             return mapOf("items" to items, "offset" to offset, "hasMore" to hasMore)
@@ -345,7 +547,15 @@ class PicklogicAndroidBridgePlugin :
             "availableBytes" to stats.availableBytes,
             "canInspectSharedMedia" to permissions.values.any { it },
             "canInspectOtherAppPrivateData" to false,
+            "canInspectDownloads" to false,
+            "isAggregateOnly" to true,
+            "canClean" to false,
             "systemRestriction" to "当前Android权限不允许第三方应用直接检查该部分。",
+            "limitations" to listOf(
+                "系统卷总量不能归因到单个文件、分类或应用。",
+                "下载和文档仅在 MediaStore 或用户选择的 SAF 范围内可见。",
+                "其他应用私有目录、缓存和受保护系统数据不可检查。",
+            ),
         )
     }
 
@@ -445,5 +655,8 @@ class PicklogicAndroidBridgePlugin :
         const val CHANNEL = "picklogic_android_bridge"
         const val MEDIA_PERMISSION_REQUEST = 4701
         const val DOCUMENT_TREE_REQUEST = 4702
+        const val MAX_THUMBNAIL_DIMENSION = 512
+        const val MIN_THUMBNAIL_BYTES = 1024
+        const val MAX_THUMBNAIL_BYTES = 512 * 1024
     }
 }

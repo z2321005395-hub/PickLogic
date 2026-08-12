@@ -45,6 +45,19 @@ class MethodChannelPicklogicAndroidBridge
   }
 
   @override
+  Future<AndroidThumbnail?> loadThumbnail(
+    AndroidThumbnailRequest request,
+  ) async {
+    final bytes = await methodChannel.invokeMethod<Uint8List>(
+      'loadThumbnail',
+      request.toMap(),
+    );
+    return bytes == null
+        ? null
+        : AndroidThumbnail.fromBytes(bytes, maxBytes: request.maxBytes);
+  }
+
+  @override
   Future<AndroidStorageSnapshot> getStorageSnapshot() async {
     final raw = await methodChannel.invokeMapMethod<Object?, Object?>(
       'getStorageSnapshot',
