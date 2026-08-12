@@ -32,6 +32,8 @@ Gate: no candidate becomes a dependency until its current upstream license, tran
 
 The SQLite 3.5.1 package publishes hashes for its release assets. CI pre-seeds the exact Windows x64 (`e6ebc264...c278a`) or Linux x64 (`b1772918...e0d2`) file under the package hook's hash-derived cache path after its own verification. This removes opportunistic downloads from tests/builds without changing packaged bytes.
 
+Opt-in emulator validation similarly pre-seeds the package's Android x64 file (`949965f0...8772`). It is not included in arm64 release artifacts and adds no production dependency or release bytes.
+
 Final hosted baseline before PDFium: Windows Standard 31,606,393 bytes runtime, Windows Pro 31,835,769 bytes runtime, and Android arm64 release 18,906,037 bytes. The Android release artifact is unsigned size evidence; the separately labeled debug APK is installable.
 
 Hosted accepted runtime: Standard 39,313,910 bytes; Pro 40,165,878 bytes. The distributable payload adds the 1,542-byte installation guide, yielding 39,315,452 and 40,167,420 bytes before compression; ZIPs are 17,392,256 and 17,747,557 bytes. These are 46.9% and 29.5% of the respective budgets. Android arm64 release is 18,907,513 bytes, only 1,476 bytes above baseline; PDFium is not packaged into Mobile. Packaged Pro parse/text/render smoke returned 0.
