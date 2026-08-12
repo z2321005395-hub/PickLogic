@@ -1,5 +1,13 @@
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
+import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_mobile/main.dart';
+import 'package:picklogic_mobile/src/incremental_index_queue.dart';
+import 'package:picklogic_mobile/src/mobile_repository.dart';
+import 'package:picklogic_mobile/src/screenshot_grouping.dart';
 
 void main() {
   testWidgets('mobile has four primary destinations and safe mode', (
@@ -36,4 +44,142 @@ void main() {
     expect(find.textContaining('不提供清理按钮'), findsOneWidget);
     expect(find.textContaining('不调度 OCR'), findsOneWidget);
   });
+
+  testWidgets('bootstrap failure is explicit, safe, and retryable', (
+    tester,
+  ) async {
+    final repository = _RetryMobileRepository();
+    await tester.pumpWidget(PickLogicMobileApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mobile-bootstrap-failure')), findsOneWidget);
+    expect(find.text('本地平台能力暂时不可用'), findsOneWidget);
+    expect(find.textContaining('未读取任何媒体或文件'), findsOneWidget);
+    expect(find.text('尚未获得媒体只读权限。'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('mobile-bootstrap-retry')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mobile-bootstrap-failure')), findsNothing);
+    expect(find.text('最近 · Recent'), findsOneWidget);
+    expect(repository.bootstrapCalls, 2);
+  });
+
+  testWidgets('permission platform failure is not reported as user denial', (
+    tester,
+  ) async {
+    final repository = _RetryMobileRepository(
+      failBootstrapOnce: false,
+      failPermissionRequest: true,
+      bootstrapState: _deniedBootstrap,
+    );
+    await tester.pumpWidget(PickLogicMobileApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('选择媒体权限'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('媒体权限检查未完成'), findsOneWidget);
+    expect(find.textContaining('未授予媒体权限'), findsNothing);
+    expect(find.text('尚未获得媒体只读权限。'), findsOneWidget);
+  });
 }
+
+final class _RetryMobileRepository implements MobileRepository {
+  _RetryMobileRepository({
+    this.failBootstrapOnce = true,
+    this.failPermissionRequest = false,
+    this.bootstrapState,
+  });
+
+  final MobileRepository _delegate = const SyntheticMobileRepository();
+  final bool failBootstrapOnce;
+  final bool failPermissionRequest;
+  final MobileBootstrapState? bootstrapState;
+  int bootstrapCalls = 0;
+
+  @override
+  Future<MobileBootstrapState> loadBootstrap() {
+    bootstrapCalls += 1;
+    if (failBootstrapOnce && bootstrapCalls == 1) {
+      return Future<MobileBootstrapState>.error(
+        StateError('synthetic bootstrap failure'),
+      );
+    }
+    if (bootstrapState case final state?) {
+      return Future<MobileBootstrapState>.value(state);
+    }
+    return _delegate.loadBootstrap();
+  }
+
+  @override
+  Future<MobileBootstrapState> requestMediaAccess() {
+    if (failPermissionRequest) {
+      return Future<MobileBootstrapState>.error(
+        StateError('synthetic permission platform failure'),
+      );
+    }
+    return _delegate.requestMediaAccess();
+  }
+
+  @override
+  Future<List<FileRecord>> loadMedia(
+    AndroidMediaKind kind, {
+    int limit = 60,
+    int offset = 0,
+  }) => _delegate.loadMedia(kind, limit: limit, offset: offset);
+
+  @override
+  Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
+    int limit = 60,
+    int offset = 0,
+  }) => _delegate.loadScreenshotGroups(limit: limit, offset: offset);
+
+  @override
+  Future<Uint8List?> loadThumbnail(
+    FileRecord record, {
+    required int maxWidth,
+    required int maxHeight,
+  }) =>
+      _delegate.loadThumbnail(record, maxWidth: maxWidth, maxHeight: maxHeight);
+
+  @override
+  MobileIndexQueueSnapshot get indexQueueSnapshot =>
+      _delegate.indexQueueSnapshot;
+
+  @override
+  void scheduleIncrementalIndexing() => _delegate.scheduleIncrementalIndexing();
+
+  @override
+  Future<String?> chooseDocumentTree() => _delegate.chooseDocumentTree();
+
+  @override
+  Future<bool> open(FileRecord record) => _delegate.open(record);
+
+  @override
+  Future<List<FileRecord>> search(String query) => _delegate.search(query);
+}
+
+const _deniedBootstrap = MobileBootstrapState(
+  permissions: AndroidMediaPermissionState(
+    images: false,
+    videos: false,
+    audio: false,
+    partialVisualAccess: false,
+  ),
+  storage: AndroidStorageSnapshot(
+    totalBytes: 1000,
+    availableBytes: 400,
+    canInspectSharedMedia: false,
+    canInspectOtherAppPrivateData: false,
+    systemRestriction: 'restricted',
+  ),
+  synthetic: true,
+  indexQueue: MobileIndexQueueSnapshot(
+    pendingBatches: 0,
+    isRunning: false,
+    completedBatches: 0,
+    failedBatches: 0,
+    pageSize: 40,
+    maxPendingBatches: 4,
+  ),
+);

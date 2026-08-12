@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
@@ -55,9 +56,13 @@ abstract interface class MobileRepository {
 }
 
 final class AndroidMobileRepository implements MobileRepository {
-  AndroidMobileRepository({this.bridge = const PicklogicAndroidBridge()});
+  AndroidMobileRepository({
+    this.bridge = const PicklogicAndroidBridge(),
+    this.bootstrapTimeout = const Duration(seconds: 8),
+  });
 
   final PicklogicAndroidBridge bridge;
+  final Duration bootstrapTimeout;
   final Map<String, FileRecord> _metadataCache = <String, FileRecord>{};
   final BoundedCache<String, Uint8List> _thumbnailCache =
       BoundedCache<String, Uint8List>(
@@ -74,8 +79,12 @@ final class AndroidMobileRepository implements MobileRepository {
 
   @override
   Future<MobileBootstrapState> loadBootstrap() async {
-    final permissions = await bridge.getMediaPermissionState();
-    final storage = await bridge.getStorageSnapshot();
+    final platformState = await Future.wait<Object>([
+      bridge.getMediaPermissionState(),
+      bridge.getStorageSnapshot(),
+    ]).timeout(bootstrapTimeout);
+    final permissions = platformState[0] as AndroidMediaPermissionState;
+    final storage = platformState[1] as AndroidStorageSnapshot;
     if (permissions.canReadImages) scheduleIncrementalIndexing();
     return MobileBootstrapState(
       permissions: permissions,
@@ -91,7 +100,7 @@ final class AndroidMobileRepository implements MobileRepository {
     if (permissions.canReadImages) scheduleIncrementalIndexing();
     return MobileBootstrapState(
       permissions: permissions,
-      storage: await bridge.getStorageSnapshot(),
+      storage: await bridge.getStorageSnapshot().timeout(bootstrapTimeout),
       synthetic: false,
       indexQueue: indexQueueSnapshot,
     );

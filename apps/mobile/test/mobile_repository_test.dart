@@ -149,6 +149,33 @@ void main() {
       expect(repository.indexQueueSnapshot.isRunning, isFalse);
     });
 
+    test('bootstrap platform reads have a bounded timeout', () async {
+      final blocked = Completer<Object?>();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            return switch (call.method) {
+              'getMediaPermissionState' => blocked.future,
+              'getStorageSnapshot' => <String, Object>{
+                'totalBytes': 1000,
+                'availableBytes': 400,
+                'canInspectSharedMedia': false,
+                'canInspectOtherAppPrivateData': false,
+                'systemRestriction': 'restricted',
+              },
+              _ => null,
+            };
+          });
+      final repository = AndroidMobileRepository(
+        bootstrapTimeout: const Duration(milliseconds: 20),
+      );
+
+      await expectLater(
+        repository.loadBootstrap(),
+        throwsA(isA<TimeoutException>()),
+      );
+      blocked.complete(null);
+    });
+
     test('serves repeated thumbnail requests from the bounded cache', () async {
       final repository = AndroidMobileRepository();
       final record = _androidRecord('thumbnail');

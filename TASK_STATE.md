@@ -52,6 +52,13 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Refreshed the Private Draft/Prerelease with four merge-build artifacts, combined checksums, corrected size report, privacy report, and verification summary; it remains unpublished.
 - Final package verification used the TTDT JDK/Android build tools: debug APK signature passed, release-size APK is unsigned by design, both are arm64-only, both Windows payloads contain pinned SQLite/PDFium plus 16 PDFium notices, Standard launched, and Pro native PDF smoke returned 0.
 - GitHub reported Node 20 deprecation annotations for checkout/setup-java, then the first migration run exposed the same warning for upload-artifact v4. Issue #16 records the real maintenance task; the isolated Integration branch now pins current official Node 24 releases for all three without adding application dependencies or artifact bytes.
+- PR #17 merged as `501aafb`; Issue #16 is closed. CI `31629867869` passed all jobs with zero deprecated-action annotations.
+- Booted the existing TTDT API 36 x86_64 emulator and installed a temporary emulator-only Debug APK. Safe Mode and the four primary destinations rendered; no media permission was requested.
+- VM heap inspection proved the local Storage spinner was a hidden `MissingPluginException`: Windows Developer Mode prevented Flutter from generating local plugin links. Static DEX inspection proved the hosted arm64 candidate includes both the Android bridge and generated registration call.
+- Added bounded bootstrap platform reads plus an explicit safe/retryable failure state. Mobile tests cover timeout, no false permission claim, retry, and the existing vertical slices.
+- The Android Gradle build automatically installed CMake 3.22.1 under the user-designated TTDT SDK (37.5 MiB measured); no system-wide location was changed and nothing was removed.
+- Issue #18 records the emulator finding and fix. The isolated full gate passed: 92 files formatted unchanged, root analysis clean, 11 quick + 6 remaining modules passed, 97 external + 5 Flutter SDK licenses clean, and privacy findings 0.
+- The updated emulator-only x86_64 APK cold-launched in 5.12 seconds, showed the safe bootstrap error instead of a spinner or false permission claim, stayed alive after retry, and had zero Flutter fatal-log matches.
 - Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
 
 ## Files changed
@@ -80,15 +87,18 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - PDF engine audit: `pdfrx 2.4.7`/PDFium is accepted after native smoke, complete notices, size, privacy, and Mobile-regression gates.
 - Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
 - Current isolated full gate: 92 files formatted with zero changes; root analysis clean; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
+- Follow-up permission-error wording review passed 11 targeted Mobile tests, root analysis, `git diff --check`, and a zero-finding privacy scan; no dependency changed.
+- PR #19 CI `31632859044` passed quality, Android, and both Windows builds. Its Android artifacts matched the published checksums, were arm64-only, and independently showed a v2-signed Debug APK plus intentionally unsigned Release-size APK.
+- Static DEX review of the PR #19 Debug APK found both `PicklogicAndroidBridgePlugin` and the generated `registerWith` call, proving hosted plugin registration is present without reading device media.
 
 ## Blockers
 
 - Windows Developer Mode must be enabled by the user in Settings; it is required for Flutter plugin symlinks and the evaluated PDF plugin.
 - Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
-- Native Android and Windows code cannot yet be compiled locally because Flutter plugin symlinks require Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation is green.
+- Local Android can compile an emulator APK, but first-party Flutter plugin registration remains blocked until the user enables Windows Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation and registration are green.
 - Windows Computer Use could capture the running Pro process/window but input activation was blocked twice by `GetCursorPos` access denial; automation stopped without elevation. The packaged engine self-check replaces UI automation for native parse/text/render evidence, while maintainer interaction remains part of first-use validation.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Validate and merge the Node 24 Action pin update for Issue #16. Then continue safe synthetic implementation while keeping maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
+Integrate the Mobile bootstrap resilience fix. After the user enables Windows Developer Mode, rebuild the x86_64 Debug APK and rerun the real bridge path without requesting media access. Keep Visual Studio, real-data validation, Android permissions, license/copyright, signing, Public conversion, and publication as explicit gates.

@@ -22,9 +22,10 @@
 - Reference phone verified by ADB: nubia NX736J, Android 15, API 35, arm64-only. Do not record its serial.
 - Verification: merged local suite and hosted Android/Windows builds pass; dependency-license and privacy scans report no findings.
 - Local build gates: Windows Developer Mode is off; Visual Studio C++ Build Tools is absent.
+- Mobile bootstrap failures are bounded, explicit, safe, and retryable; platform errors are not presented as permission denial.
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
 - Native build assets: PDFium and SQLite are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
-- GitHub: Private repository, real milestones/issues, and merged PRs #9–#11/#15; Public remains maintainer-gated.
+- GitHub: Private repository, real milestones/issues, and reviewed integration PRs; Public remains maintainer-gated.
 - Release evidence: merge `5b3c011` passed PR and post-merge CI; refreshed private Draft assets are checksummed and within budget; Android installable remains debug-signed.
 
 ## Ownership
