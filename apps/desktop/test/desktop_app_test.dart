@@ -35,10 +35,12 @@ void main() {
     expect(find.text('Literature Manager Lite'), findsOneWidget);
     expect(find.text('10.5555/picklogic.synthetic'), findsOneWidget);
     expect(find.text('PDF rendering: audit gated'), findsOneWidget);
-    final literatureScrollable = find.descendant(
-      of: find.byKey(const Key('literature-manager-lite-view')),
-      matching: find.byType(Scrollable),
-    ).first;
+    final literatureScrollable = find
+        .descendant(
+          of: find.byKey(const Key('literature-manager-lite-view')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
     await tester.scrollUntilVisible(
       find.byKey(const Key('literature-progress-value')),
       240,
