@@ -159,6 +159,8 @@ jobs:
         run: |
           set -euo pipefail
           dart run ../../tools/prepare_sqlite_native_asset.dart --target android-x64
+          rm -f build/app/outputs/flutter-apk/app-debug.apk \
+            build/app/outputs/apk/debug/app-debug.apk
           for attempt in 1 2 3; do
             if flutter build apk --debug --target-platform android-x64; then
               break
