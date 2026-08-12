@@ -38,17 +38,23 @@ void main() {
                   'createdAtEpochSeconds': 10,
                   'modifiedAtEpochSeconds': 12,
                   'relativePath': 'Pictures/Screenshots/',
+                  'sourceHint': 'com.example.synthetic',
                 },
               ],
               'offset': 0,
               'hasMore': true,
             },
+            'loadThumbnail' => Uint8List.fromList(<int>[1, 2, 3, 4]),
             'getStorageSnapshot' => <String, Object>{
               'totalBytes': 1000,
               'availableBytes': 400,
               'canInspectSharedMedia': true,
               'canInspectOtherAppPrivateData': false,
+              'canInspectDownloads': false,
+              'isAggregateOnly': true,
+              'canClean': false,
               'systemRestriction': 'restricted',
+              'limitations': <String>['aggregate only'],
             },
             'pickDocumentTree' => 'content://tree/test',
             'openContentUri' => true,
@@ -72,7 +78,20 @@ void main() {
     );
     expect(page.items.single.contentUri, 'content://media/1');
     expect(page.items.single.relativePath, 'Pictures/Screenshots/');
+    expect(page.items.single.sourceHint, 'com.example.synthetic');
     expect(page.hasMore, isTrue);
+  });
+
+  test('requests a strictly bounded thumbnail', () async {
+    final thumbnail = await platform.loadThumbnail(
+      const AndroidThumbnailRequest(
+        contentUri: 'content://media/1',
+        maxWidth: 160,
+        maxHeight: 120,
+        maxBytes: 4096,
+      ),
+    );
+    expect(thumbnail?.bytes, <int>[1, 2, 3, 4]);
   });
 
   test('parses permission and storage restrictions', () async {
@@ -82,6 +101,9 @@ void main() {
     expect(permission.images, isTrue);
     expect(requested.audio, isTrue);
     expect(storage.canInspectOtherAppPrivateData, isFalse);
+    expect(storage.isAggregateOnly, isTrue);
+    expect(storage.canClean, isFalse);
+    expect(storage.limitations, <String>['aggregate only']);
   });
 
   test('delegates user-triggered SAF and open actions', () async {

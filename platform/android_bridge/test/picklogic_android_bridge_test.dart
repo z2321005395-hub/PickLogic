@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge_platform_interface.dart';
@@ -26,6 +28,11 @@ class MockPicklogicAndroidBridgePlatform
   @override
   Future<AndroidMediaPage> queryMediaPage(AndroidMediaQuery query) async =>
       const AndroidMediaPage(items: [], offset: 0, hasMore: false);
+
+  @override
+  Future<AndroidThumbnail?> loadThumbnail(
+    AndroidThumbnailRequest request,
+  ) async => AndroidThumbnail(bytes: Uint8List.fromList(<int>[1, 2, 3]));
 
   @override
   Future<AndroidStorageSnapshot> getStorageSnapshot() async =>
@@ -72,13 +79,40 @@ void main() {
       const AndroidMediaQuery(kind: AndroidMediaKind.screenshots),
     );
     final storage = await bridge.getStorageSnapshot();
+    final thumbnail = await bridge.loadThumbnail(
+      const AndroidThumbnailRequest(
+        contentUri: 'content://media/1',
+        maxWidth: 128,
+        maxHeight: 96,
+      ),
+    );
     final tree = await bridge.pickDocumentTree();
     final opened = await bridge.openContentUri('content://media/1');
 
     expect(state.canReadVisualMedia, isFalse);
     expect(page.items, isEmpty);
     expect(storage.canInspectOtherAppPrivateData, isFalse);
+    expect(thumbnail?.bytes, <int>[1, 2, 3]);
     expect(tree, 'content://tree/test');
     expect(opened, isTrue);
+  });
+
+  test('thumbnail requests enforce URI, dimension, and byte bounds', () {
+    expect(
+      () => const AndroidThumbnailRequest(
+        contentUri: 'file:///private/image.png',
+        maxWidth: 128,
+        maxHeight: 128,
+      ).toMap(),
+      throwsArgumentError,
+    );
+    expect(
+      () => const AndroidThumbnailRequest(
+        contentUri: 'content://media/1',
+        maxWidth: 513,
+        maxHeight: 128,
+      ).toMap(),
+      throwsRangeError,
+    );
   });
 }

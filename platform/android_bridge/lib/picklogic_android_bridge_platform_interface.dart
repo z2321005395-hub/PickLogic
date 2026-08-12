@@ -45,6 +45,10 @@ abstract class PicklogicAndroidBridgePlatform extends PlatformInterface {
     throw UnimplementedError('queryMediaPage() has not been implemented.');
   }
 
+  Future<AndroidThumbnail?> loadThumbnail(AndroidThumbnailRequest request) {
+    throw UnimplementedError('loadThumbnail() has not been implemented.');
+  }
+
   Future<AndroidStorageSnapshot> getStorageSnapshot() {
     throw UnimplementedError('getStorageSnapshot() has not been implemented.');
   }

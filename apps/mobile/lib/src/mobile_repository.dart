@@ -1,16 +1,24 @@
+import 'dart:typed_data';
+
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_preview_core/picklogic_preview_core.dart';
+
+import 'incremental_index_queue.dart';
+import 'screenshot_grouping.dart';
 
 final class MobileBootstrapState {
   const MobileBootstrapState({
     required this.permissions,
     required this.storage,
     required this.synthetic,
+    required this.indexQueue,
   });
 
   final AndroidMediaPermissionState permissions;
   final AndroidStorageSnapshot storage;
   final bool synthetic;
+  final MobileIndexQueueSnapshot indexQueue;
 }
 
 abstract interface class MobileRepository {
@@ -24,6 +32,21 @@ abstract interface class MobileRepository {
     int offset = 0,
   });
 
+  Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
+    int limit = 60,
+    int offset = 0,
+  });
+
+  Future<Uint8List?> loadThumbnail(
+    FileRecord record, {
+    required int maxWidth,
+    required int maxHeight,
+  });
+
+  MobileIndexQueueSnapshot get indexQueueSnapshot;
+
+  void scheduleIncrementalIndexing();
+
   Future<String?> chooseDocumentTree();
 
   Future<bool> open(FileRecord record);
@@ -36,21 +59,41 @@ final class AndroidMobileRepository implements MobileRepository {
 
   final PicklogicAndroidBridge bridge;
   final Map<String, FileRecord> _metadataCache = <String, FileRecord>{};
+  final BoundedCache<String, Uint8List> _thumbnailCache =
+      BoundedCache<String, Uint8List>(
+        maxEntries: 48,
+        maxWeight: 8 * 1024 * 1024,
+      );
+  final Map<String, Future<Uint8List?>> _thumbnailLoads =
+      <String, Future<Uint8List?>>{};
+  late final MobileIncrementalIndexQueue _indexQueue =
+      MobileIncrementalIndexQueue(loader: _loadIndexPage);
 
   @override
-  Future<MobileBootstrapState> loadBootstrap() async => MobileBootstrapState(
-    permissions: await bridge.getMediaPermissionState(),
-    storage: await bridge.getStorageSnapshot(),
-    synthetic: false,
-  );
+  MobileIndexQueueSnapshot get indexQueueSnapshot => _indexQueue.snapshot;
+
+  @override
+  Future<MobileBootstrapState> loadBootstrap() async {
+    final permissions = await bridge.getMediaPermissionState();
+    final storage = await bridge.getStorageSnapshot();
+    if (permissions.canReadImages) scheduleIncrementalIndexing();
+    return MobileBootstrapState(
+      permissions: permissions,
+      storage: storage,
+      synthetic: false,
+      indexQueue: indexQueueSnapshot,
+    );
+  }
 
   @override
   Future<MobileBootstrapState> requestMediaAccess() async {
     final permissions = await bridge.requestMediaPermissions();
+    if (permissions.canReadImages) scheduleIncrementalIndexing();
     return MobileBootstrapState(
       permissions: permissions,
       storage: await bridge.getStorageSnapshot(),
       synthetic: false,
+      indexQueue: indexQueueSnapshot,
     );
   }
 
@@ -60,16 +103,80 @@ final class AndroidMobileRepository implements MobileRepository {
     int limit = 60,
     int offset = 0,
   }) async {
-    final page = await bridge.queryMediaPage(
+    final page = await _loadAndCachePage(
       AndroidMediaQuery(kind: kind, limit: limit, offset: offset),
     );
-    final records = page.items
+    return page.items
         .map((entry) => _recordFromAndroid(entry, kind))
         .toList(growable: false);
-    for (final record in records) {
+  }
+
+  @override
+  Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
+    int limit = 60,
+    int offset = 0,
+  }) async {
+    final page = await _loadAndCachePage(
+      AndroidMediaQuery(
+        kind: AndroidMediaKind.screenshots,
+        limit: limit,
+        offset: offset,
+      ),
+    );
+    return buildScreenshotGroups(
+      page.items.map(
+        (entry) => MobileScreenshotCandidate(
+          record: _recordFromAndroid(entry, AndroidMediaKind.screenshots),
+          metadata: entry,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<Uint8List?> loadThumbnail(
+    FileRecord record, {
+    required int maxWidth,
+    required int maxHeight,
+  }) {
+    final request = AndroidThumbnailRequest(
+      contentUri: record.locator.value,
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+    );
+    final key = '${request.contentUri}|$maxWidth|$maxHeight';
+    final cached = _thumbnailCache.get(key);
+    if (cached != null) return Future<Uint8List?>.value(cached);
+    return _thumbnailLoads.putIfAbsent(key, () async {
+      try {
+        final thumbnail = await bridge.loadThumbnail(request);
+        final bytes = thumbnail?.bytes;
+        if (bytes != null) {
+          _thumbnailCache.put(key, bytes, weight: bytes.lengthInBytes);
+        }
+        return bytes;
+      } finally {
+        _thumbnailLoads.remove(key);
+      }
+    });
+  }
+
+  @override
+  void scheduleIncrementalIndexing() {
+    _indexQueue.enqueue(AndroidMediaKind.screenshots);
+    _indexQueue.enqueue(AndroidMediaKind.photos);
+  }
+
+  Future<AndroidMediaPage> _loadIndexPage(AndroidMediaQuery query) =>
+      _loadAndCachePage(query);
+
+  Future<AndroidMediaPage> _loadAndCachePage(AndroidMediaQuery query) async {
+    final page = await bridge.queryMediaPage(query);
+    for (final entry in page.items) {
+      final record = _recordFromAndroid(entry, query.kind);
       _metadataCache[record.id] = record;
     }
-    return records;
+    return page;
   }
 
   @override
@@ -83,19 +190,7 @@ final class AndroidMobileRepository implements MobileRepository {
   Future<List<FileRecord>> search(String query) async {
     final normalized = query.trim().toLowerCase();
     if (normalized.isEmpty) return const <FileRecord>[];
-    if (_metadataCache.isEmpty) {
-      for (final kind in const [
-        AndroidMediaKind.screenshots,
-        AndroidMediaKind.photos,
-        AndroidMediaKind.documents,
-      ]) {
-        try {
-          await loadMedia(kind, limit: 60);
-        } catch (_) {
-          // A denied collection remains absent and visible as a permission gate.
-        }
-      }
-    }
+    if (_metadataCache.isEmpty) scheduleIncrementalIndexing();
     return _metadataCache.values
         .where(
           (record) =>
@@ -110,6 +205,17 @@ final class AndroidMobileRepository implements MobileRepository {
 
 final class SyntheticMobileRepository implements MobileRepository {
   const SyntheticMobileRepository();
+
+  @override
+  MobileIndexQueueSnapshot get indexQueueSnapshot =>
+      const MobileIndexQueueSnapshot(
+        pendingBatches: 0,
+        isRunning: false,
+        completedBatches: 0,
+        failedBatches: 0,
+        pageSize: 40,
+        maxPendingBatches: 4,
+      );
 
   @override
   Future<MobileBootstrapState> loadBootstrap() async =>
@@ -128,6 +234,14 @@ final class SyntheticMobileRepository implements MobileRepository {
           systemRestriction: '当前Android权限不允许第三方应用直接检查该部分。',
         ),
         synthetic: true,
+        indexQueue: MobileIndexQueueSnapshot(
+          pendingBatches: 0,
+          isRunning: false,
+          completedBatches: 0,
+          failedBatches: 0,
+          pageSize: 40,
+          maxPendingBatches: 4,
+        ),
       );
 
   @override
@@ -138,23 +252,74 @@ final class SyntheticMobileRepository implements MobileRepository {
     AndroidMediaKind kind, {
     int limit = 60,
     int offset = 0,
-  }) async => List<FileRecord>.generate(
-    switch (kind) {
+  }) async {
+    final count = switch (kind) {
       AndroidMediaKind.screenshots => 3,
       AndroidMediaKind.photos || AndroidMediaKind.images => 12,
       _ => 3,
-    },
-    (index) => syntheticMobileRecord(switch (kind) {
-      AndroidMediaKind.screenshots => 'Screenshot_${index + 1}.png',
-      AndroidMediaKind.photos ||
-      AndroidMediaKind.images => 'Photo_${index + 1}.jpg',
-      AndroidMediaKind.downloads => 'Download_${index + 1}.pdf',
-      AndroidMediaKind.documents => 'Document_${index + 1}.txt',
-      AndroidMediaKind.videos => 'Video_${index + 1}.mp4',
-      AndroidMediaKind.audio => 'Audio_${index + 1}.mp3',
-    }),
-    growable: false,
-  );
+    };
+    return Iterable<FileRecord>.generate(
+      count,
+      (index) => syntheticMobileRecord(switch (kind) {
+        AndroidMediaKind.screenshots => 'Screenshot_${index + 1}.png',
+        AndroidMediaKind.photos ||
+        AndroidMediaKind.images => 'Photo_${index + 1}.jpg',
+        AndroidMediaKind.downloads => 'Download_${index + 1}.pdf',
+        AndroidMediaKind.documents => 'Document_${index + 1}.txt',
+        AndroidMediaKind.videos => 'Video_${index + 1}.mp4',
+        AndroidMediaKind.audio => 'Audio_${index + 1}.mp3',
+      }),
+    ).skip(offset).take(limit).toList(growable: false);
+  }
+
+  @override
+  Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
+    int limit = 60,
+    int offset = 0,
+  }) async {
+    final times = <DateTime>[
+      DateTime.utc(2026, 8, 12, 10, 2),
+      DateTime.utc(2026, 8, 12, 10),
+      DateTime.utc(2026, 8, 12, 8),
+    ];
+    final sources = <String>[
+      'synthetic.notes',
+      'synthetic.notes',
+      'synthetic.browser',
+    ];
+    final candidates = <MobileScreenshotCandidate>[
+      for (var index = 0; index < times.length; index++)
+        MobileScreenshotCandidate(
+          record: syntheticMobileRecord(
+            'Screenshot_${index + 1}.png',
+            createdAt: times[index],
+            modifiedAt: times[index],
+          ),
+          metadata: AndroidMediaEntry(
+            id: 'synthetic:${index + 1}',
+            contentUri: 'content://synthetic/screenshots/${index + 1}',
+            displayName: 'Screenshot_${index + 1}.png',
+            mimeType: 'image/png',
+            sizeBytes: 1024,
+            createdAt: times[index],
+            modifiedAt: times[index],
+            relativePath: 'Pictures/Screenshots/',
+            sourceHint: sources[index],
+          ),
+        ),
+    ];
+    return buildScreenshotGroups(candidates.skip(offset).take(limit));
+  }
+
+  @override
+  Future<Uint8List?> loadThumbnail(
+    FileRecord record, {
+    required int maxWidth,
+    required int maxHeight,
+  }) async => null;
+
+  @override
+  void scheduleIncrementalIndexing() {}
 
   @override
   Future<String?> chooseDocumentTree() async => 'synthetic://document-tree';
@@ -181,7 +346,11 @@ final class SyntheticMobileRepository implements MobileRepository {
   }
 }
 
-FileRecord syntheticMobileRecord(String name) => FileRecord(
+FileRecord syntheticMobileRecord(
+  String name, {
+  DateTime? createdAt,
+  DateTime? modifiedAt,
+}) => FileRecord(
   id: name,
   locator: FileLocator(
     value: 'synthetic://mobile/$name',
@@ -192,8 +361,8 @@ FileRecord syntheticMobileRecord(String name) => FileRecord(
   extension: _extensionOf(name),
   mimeType: _mimeForExtension(_extensionOf(name)),
   sizeBytes: 1024,
-  createdAt: DateTime.utc(2026, 8, 12),
-  modifiedAt: DateTime.utc(2026, 8, 12),
+  createdAt: createdAt ?? DateTime.utc(2026, 8, 12),
+  modifiedAt: modifiedAt ?? createdAt ?? DateTime.utc(2026, 8, 12),
   parentLocator: null,
   sourceKind: SourceKind.synthetic,
   platform: PickLogicPlatform.synthetic,
