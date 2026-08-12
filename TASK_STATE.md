@@ -46,6 +46,8 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - A subsequent Windows attempt verified PDFium prefetch but failed inside a silent native-assets stage after two prior successful hosted builds.
 - Added deterministic SQLite 3.5.1 native-asset preparation using the package's official Windows/Linux x64 filenames, hash-derived cache paths, and SHA-256 values. CI now verifies and pre-seeds SQLite before affected tests/builds; no dependency or runtime payload was added.
 - Shared native-asset download handling now has three bounded attempts and fails closed on any hash mismatch. Windows release builds retain one outer retry for unrelated transient tool failures.
+- Final hosted run `31625641505` passed quality, Android, and Windows. It verified both host SQLite hashes, both PDFium hashes, all 16 PDFium notices, Pro native PDF smoke exit 0, Android release 18,907,513 B, Standard/Pro runtime 39,313,910/40,165,878 B, and ZIPs 17,392,256/17,747,557 B.
+- Independent download verification matched all four artifact checksums and reran the packaged Pro self-check successfully. The ZIP payloads are 1,542 B above the runtime measurements because they include `INSTALLATION.md`; CI now labels and gates runtime versus final distributable bytes separately.
 - Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
 
 ## Files changed
@@ -85,4 +87,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Run final hosted CI from PR #15 with pinned SQLite/PDFium caches, then review and merge into `develop` only if all jobs and artifact gates are green. Keep maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
+Run the corrected distributable-size gate, then review and merge PR #15 into `develop` only if all jobs remain green. Keep maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.

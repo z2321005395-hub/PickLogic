@@ -44,8 +44,8 @@ No PDF engine is approved until CI records Standard and Pro size deltas, confirm
 
 Run `31622068263` produced:
 
-- Standard: 39,313,910 bytes installed, 17,392,256-byte ZIP; +7,707,517 installed bytes from baseline.
-- Pro: 40,165,878 bytes installed, 17,747,557-byte ZIP; +8,330,109 installed bytes from baseline.
+- Standard: 39,313,910 runtime bytes, 39,315,452 distributable bytes including the installation guide, and a 17,392,256-byte ZIP; +7,707,517 runtime bytes from baseline.
+- Pro: 40,165,878 runtime bytes, 40,167,420 distributable bytes including the installation guide, and a 17,747,557-byte ZIP; +8,330,109 runtime bytes from baseline.
 - Both packages contain one hash-matched 7,176,704-byte DLL, the root license, all 15 third-party notices, VERSION, and PickLogic provenance.
 - The packaged Pro process parsed both generated pages, extracted expected text, rendered a bounded 306×396 image, and returned exit code 0.
 - Android arm64 release measured 18,907,513 bytes, only +1,476 bytes from baseline, confirming no material Mobile payload regression.

@@ -16,6 +16,10 @@ $target = if ($Edition -eq 'Pro') { 'lib/main_pro.dart' } else { 'lib/main_stand
 
 Push-Location $repoRoot
 try {
+    & $dart run tools\prepare_sqlite_native_asset.dart
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Pinned SQLite native-asset preparation failed.'
+    }
     & $dart run tools\prepare_pdfium_native_asset.dart
     if ($LASTEXITCODE -ne 0) {
         throw 'Pinned PDFium native-asset preparation failed.'
@@ -52,6 +56,8 @@ finally {
     Pop-Location
 }
 
+$installationGuide = Join-Path $repoRoot 'docs\INSTALLATION.md'
+Copy-Item -LiteralPath $installationGuide -Destination (Join-Path $releaseDirectory 'INSTALLATION.md')
 $totalBytes = (Get-ChildItem -LiteralPath $releaseDirectory -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $summary = "WINDOWS_BUILD_OK edition=$Edition installed_bytes=$totalBytes"
 

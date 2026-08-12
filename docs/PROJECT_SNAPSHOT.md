@@ -25,7 +25,7 @@
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
 - Native build assets: PDFium and SQLite are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: Private repository, real milestones/issues, and merged PRs #9–#11; Public remains maintainer-gated.
-- Release evidence: final CI run `31618429285` is green; Standard/Pro ZIPs and arm64 release-size APK are within budget; installable Android artifact remains debug-signed.
+- Release evidence: PDF integration CI run `31625641505` is green; Standard/Pro ZIPs and arm64 release-size APK are within budget; the installable Android artifact remains debug-signed.
 
 ## Ownership
 
