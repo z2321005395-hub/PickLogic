@@ -23,6 +23,8 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Added Android MediaStore paging, permission-state, user-triggered permission/SAF, storage restrictions, search/open adapters, and a four-page mobile vertical slice without scanning real media.
 - Added Windows system folder picker/open/reveal/attributes/storage bridge code and wired the Desktop shell to bounded scan batches, classification, SQLite upserts, search, preview, and Insight.
 - Added pinned CI jobs, TTDT-first local tooling, dependency-license checks, privacy/secret checks, artifact build scripts, and size reporting.
+- Created truthful Bootstrap commit `3303b03`, switched Lead to `develop`, and established the requested three feature branches plus clean sibling worktrees.
+- Started three active isolated Codex worktree tasks for Track A, Track B, and Track C; Lead remains integration-only.
 
 ## Files changed
 
@@ -53,4 +55,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Complete the staged diff/privacy review and Bootstrap commit, create `develop` plus three feature worktrees, then continue independent vertical slices. After the user enables Developer Mode, compile the Android bridge/APK; Visual Studio Build Tools remains a later explicit UAC handoff for Windows builds.
+Review and integrate the three active track commits into their predefined feature branches and then `develop`. After the user enables Developer Mode, compile the Android bridge/APK; Visual Studio Build Tools remains a later explicit UAC handoff for Windows builds.
