@@ -23,29 +23,48 @@ final class InMemorySearchIndex implements SearchIndexer {
     final terms = _terms(query);
     final scored = <({FileRecord record, int score})>[];
     for (final record in _records.values) {
-      final haystack = _terms(
-        '${record.displayName} ${record.extension} ${record.mimeType} '
-        '${record.category.name} ${record.tags.join(' ')}',
-      );
-      final score = terms.isEmpty
-          ? 1
-          : terms.fold<int>(0, (sum, term) {
-              if (record.displayName.toLowerCase() == term) {
-                return sum + 10;
-              }
-              if (record.displayName.toLowerCase().contains(term)) {
-                return sum + 5;
-              }
-              return haystack.contains(term) ? sum + 1 : -1000;
-            });
-      if (score >= 0) scored.add((record: record, score: score));
+      final score = terms.isEmpty ? 1 : _score(record, terms);
+      if (score != null) scored.add((record: record, score: score));
     }
     scored.sort((a, b) {
       final byScore = b.score.compareTo(a.score);
       if (byScore != 0) return byScore;
-      return b.record.modifiedAt.compareTo(a.record.modifiedAt);
+      final byModified = b.record.modifiedAt.compareTo(a.record.modifiedAt);
+      if (byModified != 0) return byModified;
+      return a.record.id.compareTo(b.record.id);
     });
     return scored.take(limit).map((entry) => entry.record).toList();
+  }
+
+  int? _score(FileRecord record, Set<String> terms) {
+    final name = record.displayName.toLowerCase();
+    final nameTerms = _terms(name);
+    final extension = record.extension.toLowerCase();
+    final mimeType = record.mimeType.toLowerCase();
+    final category = record.category.name.toLowerCase();
+    final tags = record.tags.map((tag) => tag.toLowerCase()).toSet();
+    var score = 0;
+    for (final term in terms) {
+      if (name == term) {
+        score += 100;
+      } else if (nameTerms.contains(term)) {
+        score += 60;
+      } else if (name.startsWith(term)) {
+        score += 50;
+      } else if (name.contains(term)) {
+        score += 40;
+      } else if (extension == term || category == term || tags.contains(term)) {
+        score += 25;
+      } else if (extension.contains(term) ||
+          mimeType.contains(term) ||
+          category.contains(term) ||
+          tags.any((tag) => tag.contains(term))) {
+        score += 10;
+      } else {
+        return null;
+      }
+    }
+    return score;
   }
 
   Set<String> _terms(String text) => text

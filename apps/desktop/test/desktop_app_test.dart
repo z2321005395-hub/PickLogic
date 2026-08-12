@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_desktop/src/app.dart';
+import 'package:picklogic_desktop/src/desktop_repository.dart';
 
 void main() {
   testWidgets('Standard shows safe mode and omits Pro navigation', (
@@ -95,5 +96,11 @@ void main() {
     expect(find.text('NO SYSTEM CHANGES'), findsOneWidget);
     expect(find.textContaining('未读取真实系统目录'), findsOneWidget);
     expect(find.textContaining('platformRestriction'), findsWidgets);
+  });
+
+  test('Standard synthetic search requires and ranks every term', () async {
+    const repository = SyntheticDesktopRepository();
+    final results = await repository.search('paper pdf');
+    expect(results.map((record) => record.id), ['paper']);
   });
 }

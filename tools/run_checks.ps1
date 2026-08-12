@@ -30,47 +30,10 @@ try {
     Invoke-Checked -Label 'Dart format check' -Action { & $dart format --output=none --set-exit-if-changed . }
     Invoke-Checked -Label 'Dart analysis' -Action { & $dart analyze }
 
-    $quickPackages = @(
-        'packages/core_models',
-        'packages/classification_rules',
-        'packages/search_index',
-        'packages/duplicate_engine',
-        'packages/insight_engine',
-        'packages/operation_planner',
-        'packages/preview_core',
-        'packages/literature_core',
-        'packages/research_core',
-        'packages/system_insight_core',
-        'test_fixtures'
-    )
-    foreach ($package in $quickPackages) {
-        Push-Location (Join-Path $repoRoot $package)
-        try {
-            Invoke-Checked -Label "$package tests" -Action { & $dart test --reporter compact }
-        }
-        finally {
-            Pop-Location
-        }
-    }
+    Invoke-Checked -Label 'Quick module tests' -Action { & $dart run tools/run_module_tests.dart quick }
 
     if ($Scope -eq 'Full') {
-        Push-Location (Join-Path $repoRoot 'packages/file_index')
-        try {
-            Invoke-Checked -Label 'file_index tests' -Action { & $dart test --reporter compact }
-        }
-        finally {
-            Pop-Location
-        }
-
-        foreach ($flutterPackage in @('packages/shared_ui', 'platform/windows_bridge', 'platform/android_bridge', 'apps/desktop', 'apps/mobile')) {
-            Push-Location (Join-Path $repoRoot $flutterPackage)
-            try {
-                Invoke-Checked -Label "$flutterPackage tests" -Action { & $flutter test --no-pub --reporter compact }
-            }
-            finally {
-                Pop-Location
-            }
-        }
+        Invoke-Checked -Label 'Remaining module tests' -Action { & $dart run tools/run_module_tests.dart remaining }
     }
 
     Invoke-Checked -Label 'Dependency license check' -Action { & $dart run tools/dependency_license_check.dart }

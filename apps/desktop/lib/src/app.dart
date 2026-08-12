@@ -73,11 +73,13 @@ final class DesktopShell extends StatefulWidget {
 final class _DesktopShellState extends State<DesktopShell> {
   final List<FileRecord> _records = syntheticDesktopRecords();
   final TextEditingController _searchController = TextEditingController();
+  List<FileRecord>? _searchResults;
   FileRecord? _selected;
   String _section = 'home';
   bool _scanning = false;
   int _scannedCount = 0;
   String _rootLabel = 'Synthetic fixtures';
+  int _searchGeneration = 0;
 
   @override
   void initState() {
@@ -94,7 +96,12 @@ final class _DesktopShellState extends State<DesktopShell> {
   Future<void> _scanSelectedDirectory() async {
     if (_scanning) return;
     var firstBatch = true;
-    setState(() => _scanning = true);
+    _searchController.clear();
+    _searchGeneration += 1;
+    setState(() {
+      _searchResults = null;
+      _scanning = true;
+    });
     try {
       await for (final progress in widget.repository.chooseAndScan()) {
         if (!mounted) return;
@@ -104,8 +111,10 @@ final class _DesktopShellState extends State<DesktopShell> {
             _selected = null;
             firstBatch = false;
           }
+          final removedIds = progress.removedIds.toSet();
           final recordsById = <String, FileRecord>{
-            for (final record in _records) record.id: record,
+            for (final record in _records)
+              if (!removedIds.contains(record.id)) record.id: record,
             for (final record in progress.records) record.id: record,
           };
           _records
@@ -130,6 +139,23 @@ final class _DesktopShellState extends State<DesktopShell> {
   Future<void> _cancelScan() async {
     await widget.repository.cancelScan();
     if (mounted) setState(() => _scanning = false);
+  }
+
+  Future<void> _search(String query) async {
+    final generation = ++_searchGeneration;
+    if (query.trim().isEmpty) {
+      setState(() => _searchResults = null);
+      return;
+    }
+    setState(() => _searchResults = null);
+    List<FileRecord> results;
+    try {
+      results = await widget.repository.search(query);
+    } catch (_) {
+      results = const <FileRecord>[];
+    }
+    if (!mounted || generation != _searchGeneration) return;
+    setState(() => _searchResults = results);
   }
 
   Future<void> _openSelected() async {
@@ -170,9 +196,15 @@ final class _DesktopShellState extends State<DesktopShell> {
   Widget build(BuildContext context) {
     final strings = PickLogicLocalizations.of(context);
     final query = _searchController.text.toLowerCase();
-    final visible = _records
-        .where((record) => record.displayName.toLowerCase().contains(query))
-        .toList();
+    final visible = query.isEmpty
+        ? _records
+        : _searchResults ??
+              _records
+                  .where(
+                    (record) =>
+                        record.displayName.toLowerCase().contains(query),
+                  )
+                  .toList();
     final selected = _selected;
     final insight = selected == null
         ? const InsightRecord(
@@ -239,7 +271,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                                 const SizedBox(height: 12),
                                 TextField(
                                   controller: _searchController,
-                                  onChanged: (_) => setState(() {}),
+                                  onChanged: _search,
                                   decoration: InputDecoration(
                                     prefixIcon: const Icon(Icons.search),
                                     hintText: strings.text('search'),

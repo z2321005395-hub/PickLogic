@@ -23,6 +23,7 @@
 - `tools/picklogic.cmd` — local policy-safe launcher that prefers the TTDT toolchain.
 - `tools/privacy_check.dart` — committed-source privacy and secret pattern gate.
 - `tools/dependency_license_check.dart` — resolved external-package license gate.
+- `tools/run_module_tests.dart` — concise success / detailed failure module-test orchestrator.
 - `docs/DATA_MODEL.md` — canonical cross-target data/interface contract.
 - `docs/decisions/` — concise architecture decision records.
 - `.github/workflows/` — format, analysis, tests, builds, license, and secret checks.
