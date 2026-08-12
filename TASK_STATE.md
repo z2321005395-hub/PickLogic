@@ -42,7 +42,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - TTDT `java`, `javac`, `adb`, `emulator -list-avds`, `sdkmanager --list_installed`, and basic ADB `getprop` checks passed.
 - `flutter doctor -v`: Flutter, Windows OS, Android toolchain/licenses, network, and connected Android device passed; Visual Studio is the only toolchain failure.
 - `dart pub get` resolved the workspace and SQLite native asset without changing Windows policy.
-- `tools\picklogic.cmd full`: 77 files formatted with zero changes; Dart analysis reported no issues; all package, SQLite, bridge, Desktop, and Mobile tests passed.
+- `tools\picklogic.cmd full`: 78 files formatted with zero changes; Dart analysis reported no issues; 11 quick modules plus 6 remaining SQLite/Flutter modules passed with concise summaries.
 - Dependency audit: 65 external packages and 4 Flutter SDK packages had recognized licenses; no missing/unknown/strong-copyleft package finding.
 - Committed-source privacy scan passed with zero findings.
 
