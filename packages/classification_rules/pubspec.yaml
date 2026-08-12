@@ -1,0 +1,17 @@
+name: picklogic_classification_rules
+description: Deterministic virtual classification rules for PickLogic.
+version: 0.1.0-alpha
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+resolution: workspace
+
+dependencies:
+  picklogic_core_models:
+    path: ../core_models
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

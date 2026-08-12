@@ -1,0 +1,43 @@
+name: picklogic_mobile
+description: PickLogic Mobile.
+version: 0.1.0-alpha+1
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  picklogic_android_bridge:
+    path: ../../platform/android_bridge
+  picklogic_classification_rules:
+    path: ../../packages/classification_rules
+  picklogic_core_models:
+    path: ../../packages/core_models
+  picklogic_duplicate_engine:
+    path: ../../packages/duplicate_engine
+  picklogic_file_index:
+    path: ../../packages/file_index
+  picklogic_insight_engine:
+    path: ../../packages/insight_engine
+  picklogic_operation_planner:
+    path: ../../packages/operation_planner
+  picklogic_preview_core:
+    path: ../../packages/preview_core
+  picklogic_search_index:
+    path: ../../packages/search_index
+  picklogic_shared_ui:
+    path: ../../packages/shared_ui
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

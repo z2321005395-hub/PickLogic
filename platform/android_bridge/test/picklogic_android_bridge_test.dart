@@ -1,0 +1,84 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
+import 'package:picklogic_android_bridge/picklogic_android_bridge_platform_interface.dart';
+import 'package:picklogic_android_bridge/picklogic_android_bridge_method_channel.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+
+class MockPicklogicAndroidBridgePlatform
+    with MockPlatformInterfaceMixin
+    implements PicklogicAndroidBridgePlatform {
+  @override
+  Future<String?> getPlatformVersion() => Future.value('42');
+
+  @override
+  Future<AndroidMediaPermissionState> getMediaPermissionState() async =>
+      const AndroidMediaPermissionState(
+        images: false,
+        videos: false,
+        audio: false,
+        partialVisualAccess: false,
+      );
+
+  @override
+  Future<AndroidMediaPermissionState> requestMediaPermissions() =>
+      getMediaPermissionState();
+
+  @override
+  Future<AndroidMediaPage> queryMediaPage(AndroidMediaQuery query) async =>
+      const AndroidMediaPage(items: [], offset: 0, hasMore: false);
+
+  @override
+  Future<AndroidStorageSnapshot> getStorageSnapshot() async =>
+      const AndroidStorageSnapshot(
+        totalBytes: 100,
+        availableBytes: 40,
+        canInspectSharedMedia: false,
+        canInspectOtherAppPrivateData: false,
+        systemRestriction: 'restricted',
+      );
+
+  @override
+  Future<String?> pickDocumentTree() async => 'content://tree/test';
+
+  @override
+  Future<bool> openContentUri(String contentUri) async =>
+      contentUri.startsWith('content://');
+}
+
+void main() {
+  final PicklogicAndroidBridgePlatform initialPlatform =
+      PicklogicAndroidBridgePlatform.instance;
+
+  test('$MethodChannelPicklogicAndroidBridge is the default instance', () {
+    expect(
+      initialPlatform,
+      isInstanceOf<MethodChannelPicklogicAndroidBridge>(),
+    );
+  });
+
+  test('getPlatformVersion', () async {
+    const picklogicAndroidBridgePlugin = PicklogicAndroidBridge();
+    MockPicklogicAndroidBridgePlatform fakePlatform =
+        MockPicklogicAndroidBridgePlatform();
+    PicklogicAndroidBridgePlatform.instance = fakePlatform;
+
+    expect(await picklogicAndroidBridgePlugin.getPlatformVersion(), '42');
+  });
+
+  test('delegates bounded media and storage calls', () async {
+    const bridge = PicklogicAndroidBridge();
+    final state = await bridge.getMediaPermissionState();
+    final page = await bridge.queryMediaPage(
+      const AndroidMediaQuery(kind: AndroidMediaKind.screenshots),
+    );
+    final storage = await bridge.getStorageSnapshot();
+    final tree = await bridge.pickDocumentTree();
+    final opened = await bridge.openContentUri('content://media/1');
+
+    expect(state.canReadVisualMedia, isFalse);
+    expect(page.items, isEmpty);
+    expect(storage.canInspectOtherAppPrivateData, isFalse);
+    expect(tree, 'content://tree/test');
+    expect(opened, isTrue);
+  });
+}

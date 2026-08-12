@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "privacy": "synthetic-only",
+  "expected": {
+    "documents": 4,
+    "exactDuplicateGroups": 1,
+    "screenshots": 3,
+    "archives": 1,
+    "hiddenDirectories": 1,
+    "simulatedAppResiduals": 1,
+    "simulatedProtectedItems": 1
+  },
+  "rules": [
+    "No fixture is copied from a user device or directory.",
+    "Protected and unknown fixtures never receive a direct-delete action.",
+    "Large performance fixtures are generated locally and not committed."
+  ]
+}

@@ -1,0 +1,18 @@
+name: picklogic_file_index
+description: SQLite-backed incremental local file index for PickLogic.
+version: 0.1.0-alpha
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+resolution: workspace
+
+dependencies:
+  picklogic_core_models:
+    path: ../core_models
+  sqlite3: ^3.5.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

@@ -1,0 +1,29 @@
+name: picklogic_workspace
+description: PickLogic / 拾理 monorepo workspace.
+version: 0.1.0-alpha+1
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+workspace:
+  - apps/desktop
+  - apps/mobile
+  - packages/core_models
+  - packages/file_index
+  - packages/search_index
+  - packages/duplicate_engine
+  - packages/classification_rules
+  - packages/insight_engine
+  - packages/operation_planner
+  - packages/preview_core
+  - packages/literature_core
+  - packages/research_core
+  - packages/system_insight_core
+  - packages/shared_ui
+  - platform/windows_bridge
+  - platform/android_bridge
+  - test_fixtures
+
+dev_dependencies:
+  lints: ^6.0.0

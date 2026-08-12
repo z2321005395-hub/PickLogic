@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "feature/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.44.9
+
+jobs:
+  quality:
+    name: Format, analyze, tests, audits
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Java 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve workspace
+        run: |
+          flutter config --no-analytics
+          flutter pub get
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        run: dart analyze
+      - name: Test pure Dart and synthetic modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in \
+            core_models classification_rules search_index duplicate_engine \
+            insight_engine operation_planner preview_core literature_core \
+            research_core system_insight_core file_index; do
+            (cd "packages/$package" && dart test --reporter compact)
+          done
+          (cd test_fixtures && dart test --reporter compact)
+      - name: Test Flutter shells and bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in \
+            packages/shared_ui platform/windows_bridge platform/android_bridge \
+            apps/desktop apps/mobile; do
+            (cd "$package" && flutter test --reporter compact)
+          done
+      - name: Audit dependency licenses
+        run: dart run tools/dependency_license_check.dart
+      - name: Scan committed source for private data and secrets
+        run: dart run tools/privacy_check.dart
+
+  android:
+    name: Android debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Java 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve workspace
+        run: |
+          flutter config --no-analytics
+          flutter pub get
+      - name: Build debug APK
+        working-directory: apps/mobile
+        run: flutter build apk --debug
+      - name: Report APK size
+        shell: bash
+        run: stat --printf='ANDROID_DEBUG_APK_BYTES=%s\n' apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
+      - name: Upload debug APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: picklogic-android-debug
+          path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows Standard and Pro builds
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve workspace
+        shell: pwsh
+        run: |
+          flutter config --no-analytics
+          flutter pub get
+      - name: Build Standard
+        working-directory: apps/desktop
+        run: flutter build windows --release --target lib/main_standard.dart
+      - name: Preserve and measure Standard
+        shell: pwsh
+        run: |
+          $source = 'apps/desktop/build/windows/x64/runner/Release'
+          $target = 'ci_artifacts/windows-standard'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path "$source/*" -Destination $target -Recurse
+          $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Output "WINDOWS_STANDARD_INSTALLED_BYTES=$bytes"
+          if ($bytes -gt 80MB) { throw 'Windows Standard exceeds the 80 MB base budget.' }
+      - name: Clean shared desktop output
+        working-directory: apps/desktop
+        run: flutter clean
+      - name: Resolve workspace for Pro
+        run: flutter pub get
+      - name: Build Pro
+        working-directory: apps/desktop
+        run: flutter build windows --release --target lib/main_pro.dart
+      - name: Preserve and measure Pro
+        shell: pwsh
+        run: |
+          $source = 'apps/desktop/build/windows/x64/runner/Release'
+          $target = 'ci_artifacts/windows-pro'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path "$source/*" -Destination $target -Recurse
+          $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Output "WINDOWS_PRO_INSTALLED_BYTES=$bytes"
+          if ($bytes -gt 130MB) { throw 'Windows Pro exceeds the 130 MB base budget.' }
+      - name: Upload Windows builds
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: picklogic-windows-builds
+          path: ci_artifacts
+          if-no-files-found: error
+          retention-days: 7
