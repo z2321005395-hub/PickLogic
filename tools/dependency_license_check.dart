@@ -121,11 +121,17 @@ File? _findLicense(Directory root) {
 File? _findFlutterSdkLicense(Directory packageRoot) {
   var current = packageRoot.absolute;
   for (var depth = 0; depth < 7; depth++) {
-    final flutterLauncher = File(
+    final windowsLauncher = File(
       '${current.path}${Platform.pathSeparator}bin${Platform.pathSeparator}flutter.bat',
     );
+    final posixLauncher = File(
+      '${current.path}${Platform.pathSeparator}bin${Platform.pathSeparator}flutter',
+    );
     final license = File('${current.path}${Platform.pathSeparator}LICENSE');
-    if (flutterLauncher.existsSync() && license.existsSync()) return license;
+    if ((windowsLauncher.existsSync() || posixLauncher.existsSync()) &&
+        license.existsSync()) {
+      return license;
+    }
     final parent = current.parent;
     if (parent.path == current.path) return null;
     current = parent;
