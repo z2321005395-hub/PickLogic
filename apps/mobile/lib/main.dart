@@ -66,17 +66,27 @@ final class _MobileShellState extends State<MobileShell> {
     }
   }
 
+  void _retryBootstrap() {
+    setState(() {
+      _bootstrap = widget.repository.loadBootstrap();
+    });
+  }
+
   Future<void> _requestMediaAccess() async {
     final next = widget.repository.requestMediaAccess();
-    setState(() => _bootstrap = next);
+    setState(() {
+      _bootstrap = next;
+    });
     try {
       await next;
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('未授予媒体权限；PickLogic 保持只读等待。')),
+        const SnackBar(content: Text('媒体权限检查未完成；PickLogic 未读取任何媒体或文件。')),
       );
-      setState(() => _bootstrap = widget.repository.loadBootstrap());
+      setState(() {
+        _bootstrap = widget.repository.loadBootstrap();
+      });
     }
   }
 
@@ -151,7 +161,9 @@ final class _MobileShellState extends State<MobileShell> {
               ),
             ),
           ),
-          body: IndexedStack(index: _index, children: pages),
+          body: snapshot.hasError
+              ? _BootstrapFailure(onRetry: _retryBootstrap)
+              : IndexedStack(index: _index, children: pages),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _index,
             onDestinationSelected: (value) => setState(() => _index = value),
@@ -178,6 +190,51 @@ final class _MobileShellState extends State<MobileShell> {
       },
     );
   }
+}
+
+final class _BootstrapFailure extends StatelessWidget {
+  const _BootstrapFailure({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          key: const Key('mobile-bootstrap-failure'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.phonelink_erase_outlined,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '本地平台能力暂时不可用',
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'PickLogic 未读取任何媒体或文件。请重试；若仍失败，请重新启动应用。',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const Key('mobile-bootstrap-retry'),
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试本地初始化'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 final class _FilesPage extends StatefulWidget {
