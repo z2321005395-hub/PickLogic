@@ -48,6 +48,10 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Shared native-asset download handling now has three bounded attempts and fails closed on any hash mismatch. Windows release builds retain one outer retry for unrelated transient tool failures.
 - Final hosted run `31625641505` passed quality, Android, and Windows. It verified both host SQLite hashes, both PDFium hashes, all 16 PDFium notices, Pro native PDF smoke exit 0, Android release 18,907,513 B, Standard/Pro runtime 39,313,910/40,165,878 B, and ZIPs 17,392,256/17,747,557 B.
 - Independent download verification matched all four artifact checksums and reran the packaged Pro self-check successfully. The ZIP payloads are 1,542 B above the runtime measurements because they include `INSTALLATION.md`; CI now labels and gates runtime versus final distributable bytes separately.
+- PR #15 merged as `5b3c011`; Issue #12 is closed. PR CI `31626689047` and post-merge push/PR runs `31627436020` / `31627440015` all passed.
+- Refreshed the Private Draft/Prerelease with four merge-build artifacts, combined checksums, corrected size report, privacy report, and verification summary; it remains unpublished.
+- Final package verification used the TTDT JDK/Android build tools: debug APK signature passed, release-size APK is unsigned by design, both are arm64-only, both Windows payloads contain pinned SQLite/PDFium plus 16 PDFium notices, Standard launched, and Pro native PDF smoke returned 0.
+- GitHub reported Node 20 deprecation annotations for checkout/setup-java, then the first migration run exposed the same warning for upload-artifact v4. Issue #16 records the real maintenance task; the isolated Integration branch now pins current official Node 24 releases for all three without adding application dependencies or artifact bytes.
 - Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
 
 ## Files changed
@@ -71,9 +75,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Dependency audit: 65 external packages and 4 Flutter SDK packages had recognized licenses; no missing/unknown/strong-copyleft package finding.
 - Committed-source privacy scan passed with zero findings.
 - Latest Track B and Track C GitHub Actions each passed quality, Android debug, and Windows Standard/Pro build jobs.
-- Final package sizes: Android arm64 release 18,906,037 bytes; Standard installed/ZIP 31,606,393/13,541,337 bytes; Pro installed/ZIP 31,835,769/13,628,931 bytes. All release-size targets pass.
+- Final merge package sizes: Android arm64 release 18,907,513 bytes; Standard distributable/ZIP 39,315,452/17,392,256 bytes; Pro 40,167,420/17,747,556 bytes. All release-size targets pass.
 - ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
-- PDF engine dry-run audit: `pdfrx 2.4.7` is MIT over PDFium BSD-3 and would add 33 resolved dependencies plus native assets; it remains unaccepted pending measured size impact.
+- PDF engine audit: `pdfrx 2.4.7`/PDFium is accepted after native smoke, complete notices, size, privacy, and Mobile-regression gates.
 - Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
 - Current isolated full gate: 92 files formatted with zero changes; root analysis clean; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
 
@@ -87,4 +91,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Run the corrected distributable-size gate, then review and merge PR #15 into `develop` only if all jobs remain green. Keep maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
+Validate and merge the Node 24 Action pin update for Issue #16. Then continue safe synthetic implementation while keeping maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
