@@ -49,8 +49,17 @@ jobs:
           for package in \
             core_models classification_rules search_index duplicate_engine \
             insight_engine operation_planner preview_core literature_core \
-            research_core system_insight_core file_index; do
+            research_core system_insight_core; do
             (cd "packages/$package" && dart test --reporter compact)
+          done
+          for attempt in 1 2 3; do
+            if (cd packages/file_index && dart test --reporter compact); then
+              break
+            fi
+            if (( attempt == 3 )); then exit 1; fi
+            delay=$((attempt * 15))
+            echo "Retrying file_index native dependency in ${delay}s after a transient download failure."
+            sleep "$delay"
           done
           (cd test_fixtures && dart test --reporter compact)
       - name: Test Flutter shells and bridges

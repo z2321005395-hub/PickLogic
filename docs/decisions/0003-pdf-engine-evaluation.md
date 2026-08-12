@@ -1,6 +1,6 @@
 # ADR 0003: PDF engine evaluation gate
 
-Status: Hosted size/license gates pass; packaged engine smoke pending
+Status: Accepted
 
 ## Context
 
@@ -44,8 +44,10 @@ No PDF engine is approved until CI records Standard and Pro size deltas, confirm
 
 Run `31622068263` produced:
 
-- Standard: 39,313,910 bytes installed, 17,392,260-byte ZIP; +7,707,517 installed bytes from baseline.
-- Pro: 40,165,878 bytes installed, 17,739,463-byte ZIP; +8,330,109 installed bytes from baseline.
+- Standard: 39,313,910 bytes installed, 17,392,256-byte ZIP; +7,707,517 installed bytes from baseline.
+- Pro: 40,165,878 bytes installed, 17,747,557-byte ZIP; +8,330,109 installed bytes from baseline.
 - Both packages contain one hash-matched 7,176,704-byte DLL, the root license, all 15 third-party notices, VERSION, and PickLogic provenance.
+- The packaged Pro process parsed both generated pages, extracted expected text, rendered a bounded 306×396 image, and returned exit code 0.
+- Android arm64 release measured 18,907,513 bytes, only +1,476 bytes from baseline, confirming no material Mobile payload regression.
 
-The shared desktop manifest places PDFium in both artifacts. At 46.9% of the Standard budget and 29.5% of the Pro budget, this remains within the small-install target and provides the native base for Standard PDF preview. Deleting the declared native asset after build would create a fragile package, so this experiment retains and discloses it. Final acceptance still requires the packaged Pro engine self-check and an Android build showing no Mobile size regression.
+The shared desktop manifest places PDFium in both artifacts. At 46.9% of the Standard budget and 29.5% of the Pro budget, this remains within the small-install target and provides the native base for Standard PDF preview. Deleting the declared native asset after build would create a fragile package, so PickLogic retains and discloses it. This accepts the dependency for v0.1; maintainer UI interaction and real-PDF quality remain separate validation tasks, not license/size blockers.

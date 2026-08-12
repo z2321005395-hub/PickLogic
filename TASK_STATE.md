@@ -41,6 +41,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Added a packaged Pro engine self-check that only parses generated PDF bytes, extracts both pages' text, renders one bounded image, and returns a process exit code; no locator or real file can enter this path.
 - Hosted experiment run `31622068263`: quality and Windows jobs passed; Standard measured 39,313,910 bytes installed / 17,392,260-byte ZIP and Pro 40,165,878 / 17,739,463. Both packages independently matched their manifests and carried the expected DLL plus all 16 license files.
 - The same run's Android job failed only because GitHub returned HTTP 503 for the Gradle 9.1.0 distribution twice in immediate succession; CI now uses three attempts with 15/30-second bounded backoff.
+- A later quality attempt reached `file_index` after all preceding pure-Dart tests passed, then the fixed SQLite 3.5.1 Linux asset connection closed before headers; only this native-download test now has the same bounded retry.
+- Hosted run `31623567329` passed Windows and Android: packaged Pro PDF engine exit 0; Standard 39,313,910 B, Pro 40,165,878 B; Android debug/release 78,753,268 / 18,907,513 B. The Android release delta from baseline is only 1,476 B.
+- Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
 
 ## Files changed
 
@@ -78,4 +81,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Run the revised hosted CI, require packaged Pro PDF engine exit 0 and a passing Android size build, then review/merge Draft PR #15 into `develop` if all evidence remains green. Keep maintainer-controlled Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
+Run the final hosted CI with bounded SQLite retry, then review/merge Draft PR #15 into `develop` if all jobs are green. Keep maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
