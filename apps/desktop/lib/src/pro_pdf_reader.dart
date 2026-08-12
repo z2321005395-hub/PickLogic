@@ -314,3 +314,42 @@ Uint8List buildSyntheticLiteraturePdf() {
     ..write('startxref\n$xrefOffset\n%%EOF\n');
   return Uint8List.fromList(ascii.encode(output.toString()));
 }
+
+/// Runs against the packaged native engine and returns a process exit code.
+///
+/// This path never accepts a locator: it parses the generated fixture, extracts
+/// text, and renders one small page image entirely in memory.
+Future<int> runSyntheticPdfEngineSmoke() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  PdfDocument? document;
+  PdfImage? image;
+  try {
+    await pdfrxFlutterInitialize();
+    document = await PdfDocument.openData(
+      buildSyntheticLiteraturePdf(),
+      sourceName: 'picklogic-packaged-engine-smoke-v1.pdf',
+    );
+    if (document.pages.length != 2) return 2;
+
+    final firstText = await document.pages[0].loadStructuredText();
+    final secondText = await document.pages[1].loadStructuredText();
+    if (!firstText.fullText.contains('PickLogic') ||
+        !secondText.fullText.contains('No real file was read.')) {
+      return 3;
+    }
+
+    image = await document.pages[0].render(fullWidth: 306, fullHeight: 396);
+    if (image == null ||
+        image.width != 306 ||
+        image.height != 396 ||
+        image.pixels.length != 306 * 396 * 4) {
+      return 4;
+    }
+    return 0;
+  } on Object {
+    return 1;
+  } finally {
+    image?.dispose();
+    await document?.dispose();
+  }
+}

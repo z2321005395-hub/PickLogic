@@ -1,6 +1,6 @@
 # ADR 0003: PDF engine evaluation gate
 
-Status: Isolated implementation complete; hosted size/runtime experiment pending
+Status: Hosted size/license gates pass; packaged engine smoke pending
 
 ## Context
 
@@ -39,3 +39,13 @@ Official sources:
 The experiment implements a two-page generated PDF reader with bounded image cache, page thumbnails, text selection/copy, search, highlighting, and page navigation. Unit/widget tests use an injected reader boundary because `flutter test` does not package the Windows native asset; actual PDFium behavior must be checked from the packaged executable.
 
 No PDF engine is approved until CI records Standard and Pro size deltas, confirms bundled notices, and the packaged Pro executable passes a synthetic PDF interaction smoke test. If Standard exceeds 80 MB or includes disproportionate unused assets, withdraw the dependency and evaluate a Pro-only component boundary.
+
+## Hosted measurement
+
+Run `31622068263` produced:
+
+- Standard: 39,313,910 bytes installed, 17,392,260-byte ZIP; +7,707,517 installed bytes from baseline.
+- Pro: 40,165,878 bytes installed, 17,739,463-byte ZIP; +8,330,109 installed bytes from baseline.
+- Both packages contain one hash-matched 7,176,704-byte DLL, the root license, all 15 third-party notices, VERSION, and PickLogic provenance.
+
+The shared desktop manifest places PDFium in both artifacts. At 46.9% of the Standard budget and 29.5% of the Pro budget, this remains within the small-install target and provides the native base for Standard PDF preview. Deleting the declared native asset after build would create a fragile package, so this experiment retains and discloses it. Final acceptance still requires the packaged Pro engine self-check and an Android build showing no Mobile size regression.

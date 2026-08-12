@@ -38,6 +38,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Started isolated branch `codex/pdfium-size-audit`; added a generated two-page Pro PDF reader with search, selection/copy, thumbnails, bounded cache, and injectable tests without reading real PDFs.
 - Verified `pdfrx` 2.4.7's 33 added packages: 97 external and 5 Flutter SDK packages now pass the license gate with zero missing/restricted/unknown findings.
 - Verified the fixed PDFium Windows archive through GitHub attestation, pinned archive/DLL hashes, and added a packaging gate for all 16 upstream notice files.
+- Added a packaged Pro engine self-check that only parses generated PDF bytes, extracts both pages' text, renders one bounded image, and returns a process exit code; no locator or real file can enter this path.
+- Hosted experiment run `31622068263`: quality and Windows jobs passed; Standard measured 39,313,910 bytes installed / 17,392,260-byte ZIP and Pro 40,165,878 / 17,739,463. Both packages independently matched their manifests and carried the expected DLL plus all 16 license files.
+- The same run's Android job failed only because GitHub returned HTTP 503 for the Gradle 9.1.0 distribution twice in immediate succession; CI now uses three attempts with 15/30-second bounded backoff.
 
 ## Files changed
 
@@ -70,8 +73,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
 - Native Android and Windows code cannot yet be compiled locally because Flutter plugin symlinks require Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation is green.
 - Embedded PDF page rendering/search/selection remains isolated from `develop` until hosted size results and packaged-executable interaction pass.
+- Windows Computer Use could capture the running Pro process/window but input activation was blocked twice by `GetCursorPos` access denial; automation stopped without elevation. The packaged engine self-check replaces UI automation for native parse/text/render evidence, while maintainer interaction remains part of first-use validation.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Push the isolated PDF branch, run hosted Standard/Pro size builds, inspect packaged notices and PDFium contents, then smoke-test the Pro synthetic reader. Keep maintainer-controlled Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
+Run the revised hosted CI, require packaged Pro PDF engine exit 0 and a passing Android size build, then review/merge Draft PR #15 into `develop` if all evidence remains green. Keep maintainer-controlled Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.

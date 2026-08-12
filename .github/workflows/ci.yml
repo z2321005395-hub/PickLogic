@@ -95,12 +95,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             if flutter build apk --debug --target-platform android-arm64; then
               break
             fi
-            if (( attempt == 2 )); then exit 1; fi
-            echo 'Retrying Android debug build after a transient tool download failure.'
+            if (( attempt == 3 )); then exit 1; fi
+            delay=$((attempt * 15))
+            echo "Retrying Android debug build in ${delay}s after a transient tool download failure."
+            sleep "$delay"
           done
       - name: Preserve debug APK
         shell: bash
@@ -116,12 +118,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             if flutter build apk --release --target-platform android-arm64; then
               break
             fi
-            if (( attempt == 2 )); then exit 1; fi
-            echo 'Retrying Android release build after a transient tool download failure.'
+            if (( attempt == 3 )); then exit 1; fi
+            delay=$((attempt * 15))
+            echo "Retrying Android release build in ${delay}s after a transient tool download failure."
+            sleep "$delay"
           done
       - name: Preserve and measure unsigned release APK
         shell: bash
@@ -190,6 +194,14 @@ jobs:
       - name: Build Pro
         working-directory: apps/desktop
         run: flutter build windows --release --target lib/main_pro.dart
+      - name: Smoke packaged Pro PDF engine
+        shell: pwsh
+        run: |
+          $release = (Resolve-Path -LiteralPath 'apps/desktop/build/windows/x64/runner/Release').Path
+          $exe = Join-Path $release 'picklogic_desktop.exe'
+          $process = Start-Process -FilePath $exe -ArgumentList '--synthetic-pdf-smoke' -WorkingDirectory $release -Wait -PassThru
+          Write-Output "PRO_PDF_ENGINE_SMOKE_EXIT=$($process.ExitCode)"
+          if ($process.ExitCode -ne 0) { throw 'Packaged Pro PDF engine smoke failed.' }
       - name: Preserve and measure Pro
         shell: pwsh
         run: |

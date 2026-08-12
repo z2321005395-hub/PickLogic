@@ -10,7 +10,7 @@ Every runtime dependency requires a measured release-size delta before v0.1. Unv
 | `crypto` | Streaming SHA-256 | BSD-3-Clause | Accepted; pure Dart and small | `dart:convert` lacks SHA-256 |
 | `path_provider` (candidate) | App database/cache paths | BSD-3-Clause | Small platform plugin | Custom bridge duplicates platform code |
 | `plugin_platform_interface` 2.1.8 | Testable Android/Windows plugin dispatch | BSD-3-Clause | Pure Dart; negligible | Static method channels are smaller in structure but harder to substitute safely in tests |
-| `pdfrx` 2.4.7 / PDFium (isolated experiment) | Pro local PDF render, thumbnails, search, and text selection | `pdfrx`/bindings MIT; PDFium and bundled components require 16 notice files | Adds 33 resolved dependencies. Pinned Windows archive is 3,718,879 B; DLL is 7,176,704 B; exact Standard/Pro artifact delta pending CI | System open is lighter but cannot satisfy embedded reader requirements |
+| `pdfrx` 2.4.7 / PDFium (acceptance pending packaged smoke) | Pro local PDF render, thumbnails, search, and text selection; reusable Standard PDF preview base | `pdfrx`/bindings MIT; PDFium and bundled components require 16 notice files | Adds 33 packages. Standard +7,707,517 B installed / +3,850,923 B ZIP; Pro +8,330,109 B / +4,110,532 B | System open cannot satisfy embedded behavior; post-build DLL removal is brittle |
 | AndroidX WorkManager (candidate) | Resumable mobile indexing | Apache-2.0 | Expected low MB | Foreground-only work misses background requirement |
 | TTDT Android toolchain | Local build/ADB/emulator | Mixed official SDK/JDK terms; Temurin GPL-2.0+CPE | Development-only, not packaged | Reused; no duplicate Android Studio install |
 | Visual Studio Build Tools | Windows native compilation | Microsoft proprietary tool license | Development-only | Standalone Build Tools is smaller than full IDE |
@@ -31,3 +31,5 @@ Budgets:
 Gate: no candidate becomes a dependency until its current upstream license, transitive runtime contents, and release-size delta are recorded. PDFium packaging verifies the pinned archive and DLL SHA-256 values and copies the archive's full license directory next to the executable.
 
 Final hosted baseline before PDFium: Windows Standard 31,606,393 bytes installed, Windows Pro 31,835,769 bytes installed, and Android arm64 release 18,906,037 bytes. The Android release artifact is unsigned size evidence; the separately labeled debug APK is installable.
+
+Hosted PDFium experiment: Standard 39,313,910 bytes installed and 17,392,260-byte ZIP (46.9% of its 80 MiB budget); Pro 40,165,878 bytes and 17,739,463-byte ZIP (29.5% of 130 MiB). Both packages intentionally report the shared engine rather than hiding it. Android size must be rechecked after a transient Gradle-distribution 503 prevented the first experiment run.
