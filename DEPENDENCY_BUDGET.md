@@ -2,6 +2,8 @@
 
 Every runtime dependency requires a measured release-size delta before v0.1. Unverified estimates are labeled as such.
 
+Governance is split intentionally: `DEPENDENCIES.md` is the reviewed dependency/provenance ledger, `THIRD_PARTY_NOTICES.md` is the redistribution notice index, and this file owns artifact-size decisions. All three must change together when a material dependency changes.
+
 | Dependency / tool | Purpose | License | Base artifact impact | Lighter alternative / decision |
 |---|---|---|---|---|
 | Flutter 3.44.9 / Dart 3.12.2 | Shared native UI and runtime | BSD-3-Clause | Runtime engine included; measure per target | Mandated stack; no Electron/WebView fallback |

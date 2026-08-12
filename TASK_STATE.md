@@ -63,6 +63,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - PR #24 resolved Issue #23 and merged the durable Mobile index into `develop` as `f7474c4`. Authorized MediaStore metadata and per-collection resume checkpoints use the existing shared SQLite index at one fixed app-private `noBackupFilesDir` path.
 - Mobile indexing continues one bounded page at a time with fair collection rotation, supports pause after the current page, resumes from validated checkpoints, and searches persisted records without delaying first paint. Malformed checkpoints restart safely; no WorkManager or other dependency was added.
 - Mobile deletion reconciliation and OS-scheduled wakeups remain explicit follow-ups. No real media, physical-device permission, file mutation, or system setting was used while implementing this slice.
+- Added a permanent repository-wide open-source reuse policy plus canonical dependency and third-party notice ledgers; infrastructure reuse is preferred while PickLogic retains its product logic.
 
 ## Files changed
 

@@ -33,6 +33,19 @@ Scope: the whole repository. A nearer `AGENTS.md` may add narrower rules but can
 - Prefer SDK libraries and small audited packages. Optional OCR, translation, PDF extras, or AI engines must remain replaceable and disabled by default.
 - Base targets: Android <= 40 MB, Windows Standard <= 80 MB, Windows Pro <= 130 MB. Report real artifact sizes.
 
+## Open-source reuse policy
+
+- Principle: **Reuse infrastructure; own the product logic.** Do not rebuild a non-product-specific subsystem before checking for a mature, actively maintained, license-compatible, size-appropriate implementation.
+- Fixed priority: (1) Windows / Android / Dart / Flutter platform APIs, (2) mature package dependency, (3) permissively licensed reusable component, (4) a small independent implementation.
+- Prefer MIT, BSD-2-Clause, BSD-3-Clause, and Apache-2.0 when practical.
+- Pause for a compatibility and redistribution audit before introducing GPL, AGPL, LGPL, MPL, another copyleft license, or any dependency with special redistribution obligations. Agents may not approve these unilaterally.
+- Never import or copy code without an explicit license, unknown-provenance snippets, unverified Stack Overflow or blog code, binary blobs without provenance, or a clearly oversized dependency for a simple feature.
+- Every proposed third-party dependency must be recorded in `DEPENDENCIES.md` with its name, upstream URL, exact version or commit, license and copyright notice, dependency versus copied-source status, purpose, supported platforms, approximate binary-size impact, reason not to implement locally, and any lighter alternative.
+- Keep `THIRD_PARTY_NOTICES.md`, `DEPENDENCIES.md`, `DEPENDENCY_BUDGET.md`, and the dependency/license CI audit aligned. Release bundles must carry all required notices.
+- Reuse is normally preferred for PDF rendering, archives, SQLite, cryptographic hashing, EXIF/image metadata, perceptual hashing, file pickers and platform filesystem bridges, MediaStore/SAF, Windows shell integration, DOI clients, BibTeX/RIS parsing, OCR provider boundaries, Markdown/code preview, and Trash/Recycle Bin integration.
+- PickLogic owns its virtual classification and organization workflow, Insight, Screenshot Manager, Storage Insight, Research Workspace, OperationPlan/Preview/Undo safety model, Data Lineage, and other product-level behavior.
+- Development speed alone never justifies a dependency; license, provenance, maintenance, necessity, and measured size must all be reasonable.
+
 ## Quality and delivery
 
 - Format and inspect the diff after changes. Run the smallest relevant tests first; run all tests only for integration/release gates.

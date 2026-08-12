@@ -1,5 +1,9 @@
 # Repository Map
 
+- `DEPENDENCIES.md` — reviewed dependency, provenance, version, platform, and reuse-decision ledger.
+- `THIRD_PARTY_NOTICES.md` — redistribution notice index and pinned-binary provenance summary.
+- `DEPENDENCY_BUDGET.md` — measured runtime/package size decisions and lighter alternatives.
+
 - `AGENTS.md` — global operating, safety, dependency, and verification rules.
 - `TASK_STATE.md` — interruption-safe current state, evidence, blockers, and next action.
 - `apps/desktop/` — shared Windows app with Standard and Pro entrypoints.
