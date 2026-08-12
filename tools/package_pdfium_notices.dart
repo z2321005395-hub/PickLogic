@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'native_asset_io.dart';
 import 'pdfium_artifact.dart';
 
 Future<void> main(List<String> arguments) async {

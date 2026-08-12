@@ -6,7 +6,7 @@ Every runtime dependency requires a measured release-size delta before v0.1. Unv
 |---|---|---|---|---|
 | Flutter 3.44.9 / Dart 3.12.2 | Shared native UI and runtime | BSD-3-Clause | Runtime engine included; measure per target | Mandated stack; no Electron/WebView fallback |
 | SQLite | Local index | Public domain | Small native library; measure | Platform SQLite varies; one consistent audited binding preferred |
-| `sqlite3` 3.5.1 | Direct Dart SQLite access | MIT; SQLite public domain | Accepted; current Windows bundle is about 31.5 MB total before optional PDFium | Manual platform databases increase duplicate code |
+| `sqlite3` 3.5.1 | Direct Dart SQLite access | MIT; SQLite public domain | Accepted; Windows/Linux x64 libraries are 1,710,592/1,801,592 B; deterministic prefetch adds no runtime payload | Manual platform databases increase duplicate code |
 | `crypto` | Streaming SHA-256 | BSD-3-Clause | Accepted; pure Dart and small | `dart:convert` lacks SHA-256 |
 | `path_provider` (candidate) | App database/cache paths | BSD-3-Clause | Small platform plugin | Custom bridge duplicates platform code |
 | `plugin_platform_interface` 2.1.8 | Testable Android/Windows plugin dispatch | BSD-3-Clause | Pure Dart; negligible | Static method channels are smaller in structure but harder to substitute safely in tests |
@@ -29,6 +29,8 @@ Budgets:
 - Optional OCR languages, models, and advanced PDF extras are disclosed separately.
 
 Gate: no candidate becomes a dependency until its current upstream license, transitive runtime contents, and release-size delta are recorded. PDFium packaging verifies the pinned archive and DLL SHA-256 values and copies the archive's full license directory next to the executable.
+
+The SQLite 3.5.1 package publishes hashes for its release assets. CI pre-seeds the exact Windows x64 (`e6ebc264...c278a`) or Linux x64 (`b1772918...e0d2`) file under the package hook's hash-derived cache path after its own verification. This removes opportunistic downloads from tests/builds without changing packaged bytes.
 
 Final hosted baseline before PDFium: Windows Standard 31,606,393 bytes installed, Windows Pro 31,835,769 bytes installed, and Android arm64 release 18,906,037 bytes. The Android release artifact is unsigned size evidence; the separately labeled debug APK is installable.
 

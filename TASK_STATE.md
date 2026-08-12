@@ -41,8 +41,11 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Added a packaged Pro engine self-check that only parses generated PDF bytes, extracts both pages' text, renders one bounded image, and returns a process exit code; no locator or real file can enter this path.
 - Hosted experiment run `31622068263`: quality and Windows jobs passed; Standard measured 39,313,910 bytes installed / 17,392,260-byte ZIP and Pro 40,165,878 / 17,739,463. Both packages independently matched their manifests and carried the expected DLL plus all 16 license files.
 - The same run's Android job failed only because GitHub returned HTTP 503 for the Gradle 9.1.0 distribution twice in immediate succession; CI now uses three attempts with 15/30-second bounded backoff.
-- A later quality attempt reached `file_index` after all preceding pure-Dart tests passed, then the fixed SQLite 3.5.1 Linux asset connection closed before headers; only this native-download test now has the same bounded retry.
+- A later quality attempt reached `file_index` after all preceding pure-Dart tests passed, then the fixed SQLite 3.5.1 Linux asset connection closed before headers.
 - Hosted run `31623567329` passed Windows and Android: packaged Pro PDF engine exit 0; Standard 39,313,910 B, Pro 40,165,878 B; Android debug/release 78,753,268 / 18,907,513 B. The Android release delta from baseline is only 1,476 B.
+- A subsequent Windows attempt verified PDFium prefetch but failed inside a silent native-assets stage after two prior successful hosted builds.
+- Added deterministic SQLite 3.5.1 native-asset preparation using the package's official Windows/Linux x64 filenames, hash-derived cache paths, and SHA-256 values. CI now verifies and pre-seeds SQLite before affected tests/builds; no dependency or runtime payload was added.
+- Shared native-asset download handling now has three bounded attempts and fails closed on any hash mismatch. Windows release builds retain one outer retry for unrelated transient tool failures.
 - Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
 
 ## Files changed
@@ -53,6 +56,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Flutter apps, shared packages, platform plugin scaffolds, synthetic fixtures, tools, and ignored output.
 - Root `pubspec.yaml`; dependency resolution selected SQLite 3.5.1 and generated one workspace lockfile.
 - Native Android/Windows bridges, desktop/mobile repositories, and CI/tooling gates.
+- Pinned PDFium/SQLite native-asset preparation, shared verified-download tooling, and ADR 0004.
 
 ## Commands and verification
 
@@ -69,16 +73,16 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
 - PDF engine dry-run audit: `pdfrx 2.4.7` is MIT over PDFium BSD-3 and would add 33 resolved dependencies plus native assets; it remains unaccepted pending measured size impact.
 - Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
+- Current isolated full gate: 92 files formatted with zero changes; root analysis clean; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
 
 ## Blockers
 
 - Windows Developer Mode must be enabled by the user in Settings; it is required for Flutter plugin symlinks and the evaluated PDF plugin.
 - Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
 - Native Android and Windows code cannot yet be compiled locally because Flutter plugin symlinks require Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation is green.
-- Embedded PDF page rendering/search/selection remains isolated from `develop` until hosted size results and packaged-executable interaction pass.
 - Windows Computer Use could capture the running Pro process/window but input activation was blocked twice by `GetCursorPos` access denial; automation stopped without elevation. The packaged engine self-check replaces UI automation for native parse/text/render evidence, while maintainer interaction remains part of first-use validation.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Run the final hosted CI with bounded SQLite retry, then review/merge Draft PR #15 into `develop` if all jobs are green. Keep maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
+Run final hosted CI from PR #15 with pinned SQLite/PDFium caches, then review and merge into `develop` only if all jobs and artifact gates are green. Keep maintainer-controlled PDF UI trial, Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.

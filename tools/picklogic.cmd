@@ -77,6 +77,8 @@ exit /b 0
 :full
 call "%~f0" quick
 if errorlevel 1 exit /b 1
+call "%DART%" run tools\prepare_sqlite_native_asset.dart
+if errorlevel 1 exit /b 1
 call "%DART%" run tools\prepare_pdfium_native_asset.dart
 if errorlevel 1 exit /b 1
 call "%DART%" run tools\run_module_tests.dart remaining
@@ -99,6 +101,8 @@ popd
 exit /b %RESULT%
 
 :windows_standard
+call "%DART%" run tools\prepare_sqlite_native_asset.dart
+if errorlevel 1 exit /b 1
 call "%DART%" run tools\prepare_pdfium_native_asset.dart
 if errorlevel 1 exit /b 1
 pushd apps\desktop
@@ -110,6 +114,8 @@ if errorlevel 1 set "RESULT=%ERRORLEVEL%"
 exit /b %RESULT%
 
 :windows_pro
+call "%DART%" run tools\prepare_sqlite_native_asset.dart
+if errorlevel 1 exit /b 1
 call "%DART%" run tools\prepare_pdfium_native_asset.dart
 if errorlevel 1 exit /b 1
 pushd apps\desktop

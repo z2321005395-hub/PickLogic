@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 
+import 'native_asset_io.dart';
+
 final class PdfiumArtifactSpec {
   const PdfiumArtifactSpec({
     required this.platform,
@@ -64,57 +66,14 @@ PdfiumArtifactSpec get hostPdfium =>
 Future<File> resolvePdfiumArchive(
   PdfiumArtifactSpec spec, {
   String? archivePath,
-}) async {
-  if (archivePath != null) {
-    final archive = File(archivePath).absolute;
-    await verifyFileSha256(
-      archive,
-      spec.archiveSha256,
-      label: spec.archiveName,
-    );
-    return archive;
-  }
-
-  final cacheRoot =
-      Platform.environment['RUNNER_TEMP'] ?? Directory.systemTemp.path;
-  final archive = File(joinPath(cacheRoot, 'picklogic-${spec.archiveName}'));
-  if (archive.existsSync()) {
-    await verifyFileSha256(
-      archive,
-      spec.archiveSha256,
-      label: spec.archiveName,
-    );
-    return archive;
-  }
-
-  Object? lastError;
-  for (var attempt = 1; attempt <= 3; attempt++) {
-    final partial = File('${archive.path}.partial');
-    if (partial.existsSync()) partial.deleteSync();
-    try {
-      await _download(spec.downloadUri, partial);
-      await verifyFileSha256(
-        partial,
-        spec.archiveSha256,
-        label: spec.archiveName,
-      );
-      partial.renameSync(archive.path);
-      return archive;
-    } on Object catch (error) {
-      lastError = error;
-      if (partial.existsSync()) partial.deleteSync();
-      if (attempt < 3) {
-        stderr.writeln(
-          'PDFIUM_DOWNLOAD_RETRY platform=${spec.platform} attempt=$attempt',
-        );
-        await Future<void>.delayed(Duration(seconds: attempt));
-      }
-    }
-  }
-  throw StateError(
-    'Pinned PDFium download failed after 3 attempts: $lastError',
-  );
-}
+}) => resolvePinnedDownload(
+  uri: spec.downloadUri,
+  cacheFileName: 'picklogic-${spec.archiveName}',
+  expectedSha256: spec.archiveSha256,
+  label: spec.archiveName,
+  retryEvent: 'PDFIUM_DOWNLOAD_RETRY platform=${spec.platform}',
+  sourcePath: archivePath,
+);
 
 Future<List<int>> extractPdfiumLibrary(
   File archive,
@@ -142,44 +101,3 @@ Future<List<int>> extractPdfiumLibrary(
   }
   return bytes;
 }
-
-Future<void> verifyFileSha256(
-  File file,
-  String expected, {
-  required String label,
-}) async {
-  if (!file.existsSync()) {
-    throw FileSystemException('$label does not exist.', file.path);
-  }
-  final actual = await sha256File(file);
-  if (actual != expected) {
-    throw StateError('Unexpected $label SHA-256: $actual');
-  }
-}
-
-Future<String> sha256File(File file) async =>
-    (await sha256.bind(file.openRead()).first).toString();
-
-Future<void> _download(Uri uri, File destination) async {
-  final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
-  try {
-    final request = await client.getUrl(uri);
-    final response = await request.close();
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException(
-        'PDFium download returned HTTP ${response.statusCode}.',
-        uri: uri,
-      );
-    }
-    destination.parent.createSync(recursive: true);
-    await response.pipe(destination.openWrite());
-  } finally {
-    client.close(force: true);
-  }
-}
-
-String joinPath(String first, String second, [String? third]) =>
-    [first, second, ?third].join(Platform.pathSeparator);
-
-String fileBaseName(String path) =>
-    path.split(RegExp(r'[/\\]')).where((part) => part.isNotEmpty).last;

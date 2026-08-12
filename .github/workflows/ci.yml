@@ -42,6 +42,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - name: Analyze
         run: dart analyze
+      - name: Prepare pinned SQLite native asset
+        run: dart run tools/prepare_sqlite_native_asset.dart
       - name: Test pure Dart and synthetic modules
         shell: bash
         run: |
@@ -49,17 +51,8 @@ jobs:
           for package in \
             core_models classification_rules search_index duplicate_engine \
             insight_engine operation_planner preview_core literature_core \
-            research_core system_insight_core; do
+            research_core system_insight_core file_index; do
             (cd "packages/$package" && dart test --reporter compact)
-          done
-          for attempt in 1 2 3; do
-            if (cd packages/file_index && dart test --reporter compact); then
-              break
-            fi
-            if (( attempt == 3 )); then exit 1; fi
-            delay=$((attempt * 15))
-            echo "Retrying file_index native dependency in ${delay}s after a transient download failure."
-            sleep "$delay"
           done
           (cd test_fixtures && dart test --reporter compact)
       - name: Test Flutter shells and bridges
@@ -176,12 +169,23 @@ jobs:
         run: |
           flutter config --no-analytics
           flutter pub get
-      - name: Prepare pinned PDFium for Standard
+      - name: Prepare pinned native assets for Standard
         shell: pwsh
-        run: dart run tools/prepare_pdfium_native_asset.dart
+        run: |
+          dart run tools/prepare_sqlite_native_asset.dart
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dart run tools/prepare_pdfium_native_asset.dart
       - name: Compile Standard
         working-directory: apps/desktop
-        run: flutter build windows --release --target lib/main_standard.dart
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            flutter build windows --release --target lib/main_standard.dart
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 2) { exit 1 }
+            Write-Output 'Retrying Standard build in 15s after a transient native-asset failure.'
+            Start-Sleep -Seconds 15
+          }
       - name: Preserve and measure Standard
         shell: pwsh
         run: |
@@ -198,11 +202,23 @@ jobs:
         run: flutter clean
       - name: Resolve workspace for Pro
         run: flutter pub get
-      - name: Prepare pinned PDFium for Pro
-        run: dart run tools/prepare_pdfium_native_asset.dart
+      - name: Prepare pinned native assets for Pro
+        shell: pwsh
+        run: |
+          dart run tools/prepare_sqlite_native_asset.dart
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dart run tools/prepare_pdfium_native_asset.dart
       - name: Build Pro
         working-directory: apps/desktop
-        run: flutter build windows --release --target lib/main_pro.dart
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            flutter build windows --release --target lib/main_pro.dart
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 2) { exit 1 }
+            Write-Output 'Retrying Pro build in 15s after a transient native-asset failure.'
+            Start-Sleep -Seconds 15
+          }
       - name: Smoke packaged Pro PDF engine
         shell: pwsh
         run: |
