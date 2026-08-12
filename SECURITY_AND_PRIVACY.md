@@ -17,6 +17,7 @@ Mutation tests operate only on an application-created synthetic root after expli
 
 - Windows: real directories are read-only during development. Registry, services, startup entries, tasks, uninstallers, and protected paths are inspection-only.
 - Android: obey scoped storage, MediaStore, and SAF. Never root, inspect another app's private data, or claim visibility into inaccessible storage.
+- Android MediaStore metadata and resume checkpoints use a fixed SQLite file under the application's `noBackupFilesDir`; neither file contents nor the database are cloud-backed by PickLogic.
 - For inaccessible Android data show: `当前Android权限不允许第三方应用直接检查该部分。`
 
 ## Data minimization

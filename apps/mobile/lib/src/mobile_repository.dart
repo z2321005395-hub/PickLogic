@@ -6,6 +6,7 @@ import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_preview_core/picklogic_preview_core.dart';
 
 import 'incremental_index_queue.dart';
+import 'mobile_index_persistence.dart';
 import 'screenshot_grouping.dart';
 
 final class MobileBootstrapState {
@@ -48,21 +49,35 @@ abstract interface class MobileRepository {
 
   void scheduleIncrementalIndexing();
 
+  void cancelIncrementalIndexing();
+
   Future<String?> chooseDocumentTree();
 
   Future<bool> open(FileRecord record);
 
   Future<List<FileRecord>> search(String query);
+
+  Future<void> close();
 }
 
 final class AndroidMobileRepository implements MobileRepository {
   AndroidMobileRepository({
-    this.bridge = const PicklogicAndroidBridge(),
+    PicklogicAndroidBridge bridge = const PicklogicAndroidBridge(),
     this.bootstrapTimeout = const Duration(seconds: 8),
-  });
+    MobileIndexPersistence? indexPersistence,
+  }) : bridge = bridge,
+       _indexPersistence =
+           indexPersistence ??
+           LazyMobileIndexPersistence(
+             () async => SqliteMobileIndexPersistence.open(
+               await bridge.getPrivateIndexDatabasePath(),
+             ),
+             persistsAcrossRestarts: true,
+           );
 
   final PicklogicAndroidBridge bridge;
   final Duration bootstrapTimeout;
+  final MobileIndexPersistence _indexPersistence;
   final Map<String, FileRecord> _metadataCache = <String, FileRecord>{};
   final BoundedCache<String, Uint8List> _thumbnailCache =
       BoundedCache<String, Uint8List>(
@@ -71,8 +86,12 @@ final class AndroidMobileRepository implements MobileRepository {
       );
   final Map<String, Future<Uint8List?>> _thumbnailLoads =
       <String, Future<Uint8List?>>{};
+  AndroidMediaPermissionState? _lastPermissions;
   late final MobileIncrementalIndexQueue _indexQueue =
-      MobileIncrementalIndexQueue(loader: _loadIndexPage);
+      MobileIncrementalIndexQueue(
+        loader: _loadIndexPage,
+        checkpointStore: _indexPersistence,
+      );
 
   @override
   MobileIndexQueueSnapshot get indexQueueSnapshot => _indexQueue.snapshot;
@@ -85,7 +104,10 @@ final class AndroidMobileRepository implements MobileRepository {
     ]).timeout(bootstrapTimeout);
     final permissions = platformState[0] as AndroidMediaPermissionState;
     final storage = platformState[1] as AndroidStorageSnapshot;
-    if (permissions.canReadImages) scheduleIncrementalIndexing();
+    _lastPermissions = permissions;
+    if (permissions.canReadVisualMedia || permissions.audio) {
+      scheduleIncrementalIndexing();
+    }
     return MobileBootstrapState(
       permissions: permissions,
       storage: storage,
@@ -97,7 +119,10 @@ final class AndroidMobileRepository implements MobileRepository {
   @override
   Future<MobileBootstrapState> requestMediaAccess() async {
     final permissions = await bridge.requestMediaPermissions();
-    if (permissions.canReadImages) scheduleIncrementalIndexing();
+    _lastPermissions = permissions;
+    if (permissions.canReadVisualMedia || permissions.audio) {
+      scheduleIncrementalIndexing();
+    }
     return MobileBootstrapState(
       permissions: permissions,
       storage: await bridge.getStorageSnapshot().timeout(bootstrapTimeout),
@@ -172,18 +197,37 @@ final class AndroidMobileRepository implements MobileRepository {
 
   @override
   void scheduleIncrementalIndexing() {
-    _indexQueue.enqueue(AndroidMediaKind.screenshots);
-    _indexQueue.enqueue(AndroidMediaKind.photos);
+    final permissions = _lastPermissions;
+    if (permissions == null) return;
+    if (permissions.canReadImages) {
+      _indexQueue.enqueue(AndroidMediaKind.screenshots);
+      _indexQueue.enqueue(AndroidMediaKind.photos);
+    }
+    if (permissions.videos) _indexQueue.enqueue(AndroidMediaKind.videos);
+    if (permissions.audio) _indexQueue.enqueue(AndroidMediaKind.audio);
   }
 
-  Future<AndroidMediaPage> _loadIndexPage(AndroidMediaQuery query) =>
-      _loadAndCachePage(query);
+  @override
+  void cancelIncrementalIndexing() => _indexQueue.cancel();
 
-  Future<AndroidMediaPage> _loadAndCachePage(AndroidMediaQuery query) async {
+  Future<AndroidMediaPage> _loadIndexPage(AndroidMediaQuery query) =>
+      _loadAndCachePage(query, requirePersistence: true);
+
+  Future<AndroidMediaPage> _loadAndCachePage(
+    AndroidMediaQuery query, {
+    bool requirePersistence = false,
+  }) async {
     final page = await bridge.queryMediaPage(query);
+    final records = <FileRecord>[];
     for (final entry in page.items) {
       final record = _recordFromAndroid(entry, query.kind);
       _metadataCache[record.id] = record;
+      records.add(record);
+    }
+    try {
+      await _indexPersistence.upsertRecords(records);
+    } catch (_) {
+      if (requirePersistence) rethrow;
     }
     return page;
   }
@@ -200,15 +244,31 @@ final class AndroidMobileRepository implements MobileRepository {
     final normalized = query.trim().toLowerCase();
     if (normalized.isEmpty) return const <FileRecord>[];
     if (_metadataCache.isEmpty) scheduleIncrementalIndexing();
-    return _metadataCache.values
+    final cached = _metadataCache.values
         .where(
           (record) =>
               record.displayName.toLowerCase().contains(normalized) ||
               record.mimeType.toLowerCase().contains(normalized) ||
               record.category.name.toLowerCase().contains(normalized),
         )
-        .take(100)
         .toList(growable: false);
+    try {
+      final persisted = await _indexPersistence.search(normalized, limit: 100);
+      final merged = <String, FileRecord>{
+        for (final record in persisted) record.id: record,
+        for (final record in cached) record.id: record,
+      };
+      return merged.values.take(100).toList(growable: false);
+    } catch (_) {
+      return cached.take(100).toList(growable: false);
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    _indexQueue.cancel();
+    await _indexQueue.idle;
+    await _indexPersistence.close();
   }
 }
 
@@ -331,6 +391,9 @@ final class SyntheticMobileRepository implements MobileRepository {
   void scheduleIncrementalIndexing() {}
 
   @override
+  void cancelIncrementalIndexing() {}
+
+  @override
   Future<String?> chooseDocumentTree() async => 'synthetic://document-tree';
 
   @override
@@ -353,6 +416,9 @@ final class SyntheticMobileRepository implements MobileRepository {
         )
         .toList(growable: false);
   }
+
+  @override
+  Future<void> close() async {}
 }
 
 FileRecord syntheticMobileRecord(

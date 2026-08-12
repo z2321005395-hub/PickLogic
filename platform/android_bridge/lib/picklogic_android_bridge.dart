@@ -24,6 +24,9 @@ final class PicklogicAndroidBridge {
   Future<AndroidStorageSnapshot> getStorageSnapshot() =>
       PicklogicAndroidBridgePlatform.instance.getStorageSnapshot();
 
+  Future<String> getPrivateIndexDatabasePath() =>
+      PicklogicAndroidBridgePlatform.instance.getPrivateIndexDatabasePath();
+
   Future<String?> pickDocumentTree() =>
       PicklogicAndroidBridgePlatform.instance.pickDocumentTree();
 

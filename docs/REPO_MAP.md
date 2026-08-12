@@ -4,6 +4,7 @@
 - `TASK_STATE.md` — interruption-safe current state, evidence, blockers, and next action.
 - `apps/desktop/` — shared Windows app with Standard and Pro entrypoints.
 - `apps/mobile/` — Android mobile UI and target composition.
+- `apps/mobile/lib/src/mobile_index_persistence.dart` — shared-SQLite Mobile metadata, checkpoint, and persistent-search adapter.
 - `packages/core_models/` — stable locators, records, enums, provider interfaces, and safe-mode policy.
 - `packages/file_index/` — SQLite index, incremental scan state, and batch persistence.
 - `packages/search_index/` — local query parsing and ranked metadata search.

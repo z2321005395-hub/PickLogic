@@ -11,6 +11,7 @@
 
 - Windows development uses synthetic roots for Move/Rename/Undo; no real path has been mutated.
 - Android uses MediaStore and SAF and does not request root or other applications' private directories.
+- Mobile persists only the metadata returned by authorized MediaStore queries plus bounded resume checkpoints in the app-private, no-backup SQLite index.
 - Storage totals that Android cannot attribute are labeled as system aggregates, not explained as inspectable files.
 
 ## Public-data gate

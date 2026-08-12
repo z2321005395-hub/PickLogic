@@ -150,6 +150,9 @@ final class _RetryMobileRepository implements MobileRepository {
   void scheduleIncrementalIndexing() => _delegate.scheduleIncrementalIndexing();
 
   @override
+  void cancelIncrementalIndexing() => _delegate.cancelIncrementalIndexing();
+
+  @override
   Future<String?> chooseDocumentTree() => _delegate.chooseDocumentTree();
 
   @override
@@ -157,6 +160,9 @@ final class _RetryMobileRepository implements MobileRepository {
 
   @override
   Future<List<FileRecord>> search(String query) => _delegate.search(query);
+
+  @override
+  Future<void> close() async {}
 }
 
 const _deniedBootstrap = MobileBootstrapState(

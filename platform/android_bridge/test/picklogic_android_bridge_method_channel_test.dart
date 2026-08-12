@@ -56,6 +56,8 @@ void main() {
               'systemRestriction': 'restricted',
               'limitations': <String>['aggregate only'],
             },
+            'getPrivateIndexDatabasePath' =>
+              'synthetic-private/picklogic-index.sqlite3',
             'pickDocumentTree' => 'content://tree/test',
             'openContentUri' => true,
             _ => null,
@@ -109,5 +111,12 @@ void main() {
   test('delegates user-triggered SAF and open actions', () async {
     expect(await platform.pickDocumentTree(), 'content://tree/test');
     expect(await platform.openContentUri('content://media/1'), isTrue);
+  });
+
+  test('returns a fixed app-private index path', () async {
+    expect(
+      await platform.getPrivateIndexDatabasePath(),
+      endsWith('picklogic-index.sqlite3'),
+    );
   });
 }

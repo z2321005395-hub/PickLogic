@@ -11,7 +11,7 @@ Every runtime dependency requires a measured release-size delta before v0.1. Unv
 | `path_provider` (candidate) | App database/cache paths | BSD-3-Clause | Small platform plugin | Custom bridge duplicates platform code |
 | `plugin_platform_interface` 2.1.8 | Testable Android/Windows plugin dispatch | BSD-3-Clause | Pure Dart; negligible | Static method channels are smaller in structure but harder to substitute safely in tests |
 | `pdfrx` 2.4.7 / PDFium (accepted) | Pro local PDF render, thumbnails, search, and text selection; reusable Standard PDF preview base | `pdfrx`/bindings MIT; PDFium and bundled components require 16 notice files | Adds 33 packages. Standard +7,707,517 B runtime / +3,850,919 B ZIP; Pro +8,330,109 B / +4,118,626 B | System open cannot satisfy embedded behavior; post-build DLL removal is brittle |
-| AndroidX WorkManager (candidate) | Resumable mobile indexing | Apache-2.0 | Expected low MB | Foreground-only work misses background requirement |
+| AndroidX WorkManager 2.11.2 (evaluated, not added) | OS-scheduled persistent mobile work | Apache-2.0 | Unmeasured runtime/transitive increase | Existing SQLite checkpoints resume on next launch without a new dependency; schedule only if device testing proves OS wakeups are required |
 | TTDT Android toolchain | Local build/ADB/emulator | Mixed official SDK/JDK terms; Temurin GPL-2.0+CPE | Development-only, not packaged | Reused; no duplicate Android Studio install |
 | Visual Studio Build Tools | Windows native compilation | Microsoft proprietary tool license | Development-only | Standalone Build Tools is smaller than full IDE |
 | `actions/checkout` 7.0.1 | CI source checkout on Node 24 | MIT | CI-only; none in artifacts | Git CLI scripting is less maintainable in Actions |
