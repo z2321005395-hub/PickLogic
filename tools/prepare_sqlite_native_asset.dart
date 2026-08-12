@@ -5,7 +5,7 @@ import 'sqlite_native_asset.dart';
 
 Future<void> main(List<String> arguments) async {
   try {
-    final spec = hostSqlite;
+    final spec = sqliteForTarget(_argumentValue(arguments, '--target'));
     final repoRoot = File.fromUri(Platform.script).absolute.parent.parent.path;
     final target = File(
       joinPath(

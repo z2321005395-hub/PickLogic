@@ -21,7 +21,7 @@ The package build hook downloads `pdfium-win-x64.tgz` from the fixed `chromium/7
 
 The 3,718,879-byte archive passed `gh attestation verify` against `bblanchon/pdfium-binaries`. The extracted DLL is 7,176,704 bytes. This is supply-chain evidence, not a legal conclusion.
 
-Linux x64 CI tests use the matching attested archive: SHA-256 `e76e0a37aefb843d56f04657475ce612157021b1ebc53d801f2fbfcc537ccf64`; its `libpdfium.so` SHA-256 is `d106072a29b3689a5d6739948f98a97fe3ec82f5a1c309dc44e86f6c549fb44e`. PickLogic prefetches with three bounded retries, verifies these hashes, and writes the verified library to the Dart native-assets shared cache before Flutter invokes the upstream hook.
+Linux x64 CI tests use the matching attested archive: SHA-256 `e76e0a37aefb843d56f04657475ce612157021b1ebc53d801f2fbfcc537ccf64`; its `libpdfium.so` SHA-256 is `d106072a29b3689a5d6739948f98a97fe3ec82f5a1c309dc44e86f6c549fb44e`. PickLogic prefetches with six bounded attempts, verifies these hashes, and writes the verified library to the Dart native-assets shared cache before Flutter invokes the upstream hook.
 
 Official sources:
 

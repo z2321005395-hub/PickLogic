@@ -35,6 +35,13 @@ const linuxSqlite = SqliteNativeAssetSpec(
   sha256: 'b17729184e5a2818055ecbddd5ed6642521bfe6e56aafa472330e483c0e2e0d2',
 );
 
+const androidX64Sqlite = SqliteNativeAssetSpec(
+  platform: 'android-x64',
+  sourceName: 'libsqlite3.x64.android.so',
+  bundledName: 'libsqlite3.so',
+  sha256: '949965f0eba976f707ae364cdcb42c342b5f0626081f8d7f0378fb7b52848772',
+);
+
 SqliteNativeAssetSpec get hostSqlite =>
     switch ((Platform.isWindows, Platform.isLinux)) {
       (true, false) => windowsSqlite,
@@ -43,3 +50,12 @@ SqliteNativeAssetSpec get hostSqlite =>
         'The pinned SQLite prefetch supports Windows x64 and Linux x64.',
       ),
     };
+
+SqliteNativeAssetSpec sqliteForTarget(String? target) => switch (target) {
+  null || 'host' => hostSqlite,
+  'android-x64' => androidX64Sqlite,
+  _ => throw UnsupportedError(
+    'Unsupported SQLite prefetch target: $target. '
+    'Expected host or android-x64.',
+  ),
+};

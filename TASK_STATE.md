@@ -93,15 +93,20 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - PR #19 merged into `develop` as `696cf19`; Issue #18 is closed. Final PR CI `31633685745` and post-merge push/PR runs `31634310839` / `31634314228` passed every job.
 - The `696cf19` release candidate independently passed four manifest hashes, Android signature/ABI/registration checks, both pinned Windows DLL hashes, complete PDFium notices, Standard launch smoke, and Pro PDF smoke exit 0.
 - Refreshed all eight assets and notes in the Private Draft/Prerelease; every GitHub asset digest matches locally. Draft PR #14 remains open and unmerged into `main`.
+- Issue #21 and Draft PR #22 add an opt-in `device-validation` path for a CI-built x86_64 emulator APK. The path reuses pinned actions and dependencies and adds no arm64 release bytes.
+- SQLite 3.5.1 Android x64 is now pre-seeded from its official fixed asset with SHA-256 `949965f0...8772`, preventing opportunistic hook downloads during validation builds.
+- CI run `31639131268` built and uploaded the x86_64 APK; the original quality/Windows attempts recorded unrelated upstream connection closures, and rerunning only failed jobs completed all three checks successfully.
+- The 64,724,478-byte APK matched its manifest, was x86_64-only and v2-signed, and contained the bridge plus generated registration. On the TTDT API 36 emulator it cold-launched in 3.709 seconds, rendered Storage Insight through the real bridge, retained zero media grants, and produced zero fatal-log matches.
+- Repeated hosted HTTP 503 and premature-connection failures later succeeded with unchanged hashes. Native-asset prefetch now permits six bounded attempts with at most 150 seconds of backoff; hash mismatches still fail closed.
 
 ## Blockers
 
 - Windows Developer Mode must be enabled by the user in Settings; it is required for Flutter plugin symlinks and the evaluated PDF plugin.
 - Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
-- Local Android can compile an emulator APK, but first-party Flutter plugin registration remains blocked until the user enables Windows Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation and registration are green.
+- Local iterative Flutter plugin generation remains blocked until the user enables Windows Developer Mode. A hosted x86_64 APK has independently passed the real TTDT emulator bridge path; Windows compilation still needs Visual Studio Build Tools C++.
 - Windows Computer Use could capture the running Pro process/window but input activation was blocked twice by `GetCursorPos` access denial; automation stopped without elevation. The packaged engine self-check replaces UI automation for native parse/text/render evidence, while maintainer interaction remains part of first-use validation.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Pause at maintainer-controlled gates. After the user enables Windows Developer Mode, rebuild the emulator Debug APK and validate the real bridge without requesting media access. Then obtain explicit approval for the large Visual Studio C++ installation, Windows reference-directory scan, nubia Debug APK/media permission, license/copyright, first trial, signing, Public conversion, and publication.
+Pause at maintainer-controlled gates. Ask the user to enable Windows Developer Mode and explicitly approve the large Visual Studio C++ installation before local native builds. Separately obtain explicit approval for a Windows reference-directory scan, nubia Debug APK/media permission, license/copyright, first trial, signing, Public conversion, and publication.

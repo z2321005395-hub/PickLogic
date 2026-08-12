@@ -37,5 +37,8 @@ No image metadata index or performance benchmark has been run yet; the ABI query
 - TTDT `TTDT_Modern_64`: Android 16 / API 36 / x86_64; launched headlessly on an emulator-only ADB serial.
 - A temporary x86_64 Debug APK (not a release asset) installed and cold-launched; Developer Safe Mode and all four primary destinations were visible.
 - Files, Screenshots, and Photos displayed their no-permission states without requesting access or reading media.
-- Local Flutter plugin generation was blocked because Windows Developer Mode is off. VM heap evidence identified `MissingPluginException`; the candidate arm64 CI APK was separately checked and does contain both the bridge classes and generated registration call.
+- Local Flutter plugin generation was blocked because Windows Developer Mode is off. VM heap evidence identified `MissingPluginException`; this remains a local development-tooling limit.
 - The app now bounds bootstrap platform reads and shows a safe retryable error instead of an infinite Storage spinner when platform initialization fails.
+- Opt-in CI run `31639131268` built a 64,724,478-byte, v2-signed, x86_64-only Debug APK. Its SHA-256 was `49f93853...ffc7`, and static DEX inspection found the bridge class plus generated registration call.
+- The CI APK cold-launched in 3.709 seconds on the TTDT API 36 emulator. Safe Mode, all four destinations, the no-permission state, and Storage Insight rendered through the real bridge; media grants and fatal-log matches were both zero.
+- The old PickLogic emulator test package was replaced because the AVD data volume was 94% full. No other package or AVD content was removed, and no physical-device command or media access was used.

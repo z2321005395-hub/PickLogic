@@ -23,8 +23,9 @@
 - Verification: merged local suite and hosted Android/Windows builds pass; dependency-license and privacy scans report no findings.
 - Local build gates: Windows Developer Mode is off; Visual Studio C++ Build Tools is absent.
 - Mobile bootstrap failures are bounded, explicit, safe, and retryable; platform errors are not presented as permission denial.
+- A CI-built x86_64 APK passed the TTDT API 36 emulator bridge success path with zero media grants and zero fatal-log matches.
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
-- Native build assets: PDFium and SQLite are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
+- Native build assets: PDFium and SQLite, including opt-in Android x64 validation, are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: Private repository, real milestones/issues, and reviewed integration PRs; Public remains maintainer-gated.
 - Release evidence: code merge `696cf19` passed PR and both post-merge CI runs; eight private Draft assets match remote digests and budgets; Android installable remains debug-signed.
 

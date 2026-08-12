@@ -8,7 +8,7 @@ Flutter native-asset hooks for `pdfrx_engine` and `sqlite3` download fixed relea
 
 ## Decision
 
-Before affected tasks, PickLogic resolves the host asset with three bounded attempts, verifies a fixed SHA-256, and writes it to the exact shared cache path expected by the upstream hook. The hook re-verifies SQLite's content hash before reuse.
+Before affected tasks, PickLogic resolves the host asset with six bounded attempts (at most 150 seconds of backoff), verifies a fixed SHA-256, and writes it to the exact shared cache path expected by the upstream hook. The hook re-verifies SQLite's content hash before reuse. The limit was raised from three after repeated hosted HTTP 503 and premature-connection failures later succeeded unchanged.
 
 - PDFium remains pinned to `chromium/7811`; archive and library hashes are in ADR 0003.
 - SQLite remains pinned through `sqlite3 3.5.1`.

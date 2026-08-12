@@ -25,7 +25,8 @@ Future<File> resolvePinnedDownload({
   }
 
   Object? lastError;
-  for (var attempt = 1; attempt <= 3; attempt++) {
+  const maxAttempts = 6;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
     final partial = File('${cached.path}.partial');
     if (partial.existsSync()) partial.deleteSync();
     try {
@@ -36,13 +37,15 @@ Future<File> resolvePinnedDownload({
     } on Object catch (error) {
       lastError = error;
       if (partial.existsSync()) partial.deleteSync();
-      if (attempt < 3) {
+      if (attempt < maxAttempts) {
         stderr.writeln('$retryEvent attempt=$attempt');
         await Future<void>.delayed(Duration(seconds: attempt * 10));
       }
     }
   }
-  throw StateError('$label download failed after 3 attempts: $lastError');
+  throw StateError(
+    '$label download failed after $maxAttempts attempts: $lastError',
+  );
 }
 
 Future<void> verifyFileSha256(
