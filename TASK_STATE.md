@@ -82,7 +82,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Dependency audit: 65 external packages and 4 Flutter SDK packages had recognized licenses; no missing/unknown/strong-copyleft package finding.
 - Committed-source privacy scan passed with zero findings.
 - Latest Track B and Track C GitHub Actions each passed quality, Android debug, and Windows Standard/Pro build jobs.
-- Final merge package sizes: Android arm64 release 18,907,513 bytes; Standard distributable/ZIP 39,315,452/17,392,256 bytes; Pro 40,167,420/17,747,556 bytes. All release-size targets pass.
+- Current candidate package sizes: Android arm64 release 18,907,677 bytes; Standard distributable/ZIP 39,315,452/17,392,260 bytes; Pro 40,167,420/17,747,559 bytes. All release-size targets pass.
 - ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
 - PDF engine audit: `pdfrx 2.4.7`/PDFium is accepted after native smoke, complete notices, size, privacy, and Mobile-regression gates.
 - Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
@@ -90,6 +90,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Follow-up permission-error wording review passed 11 targeted Mobile tests, root analysis, `git diff --check`, and a zero-finding privacy scan; no dependency changed.
 - PR #19 CI `31632859044` passed quality, Android, and both Windows builds. Its Android artifacts matched the published checksums, were arm64-only, and independently showed a v2-signed Debug APK plus intentionally unsigned Release-size APK.
 - Static DEX review of the PR #19 Debug APK found both `PicklogicAndroidBridgePlugin` and the generated `registerWith` call, proving hosted plugin registration is present without reading device media.
+- PR #19 merged into `develop` as `696cf19`; Issue #18 is closed. Final PR CI `31633685745` and post-merge push/PR runs `31634310839` / `31634314228` passed every job.
+- The `696cf19` release candidate independently passed four manifest hashes, Android signature/ABI/registration checks, both pinned Windows DLL hashes, complete PDFium notices, Standard launch smoke, and Pro PDF smoke exit 0.
+- Refreshed all eight assets and notes in the Private Draft/Prerelease; every GitHub asset digest matches locally. Draft PR #14 remains open and unmerged into `main`.
 
 ## Blockers
 
@@ -101,4 +104,4 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 
 ## Next action
 
-Integrate the Mobile bootstrap resilience fix. After the user enables Windows Developer Mode, rebuild the x86_64 Debug APK and rerun the real bridge path without requesting media access. Keep Visual Studio, real-data validation, Android permissions, license/copyright, signing, Public conversion, and publication as explicit gates.
+Pause at maintainer-controlled gates. After the user enables Windows Developer Mode, rebuild the emulator Debug APK and validate the real bridge without requesting media access. Then obtain explicit approval for the large Visual Studio C++ installation, Windows reference-directory scan, nubia Debug APK/media permission, license/copyright, first trial, signing, Public conversion, and publication.

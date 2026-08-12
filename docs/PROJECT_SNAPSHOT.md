@@ -2,7 +2,7 @@
 
 - Product: PickLogic / 拾理; contextual explanation: 知件 / Insight.
 - Motto: Small. Local. Useful.
-- Status: M1 vertical slices merged; checksummed private alpha candidates and a Draft/Prerelease exist; no public release.
+- Status: M1 merged and an M2 installable synthetic candidate is verified; reference-data validation remains gated; no public release.
 - Targets: Windows Standard, Windows Pro, Android Mobile.
 - Architecture: one Flutter/Dart workspace, shared pure-Dart core, narrow Windows/Android bridges.
 - Desktop: one implementation with `main_standard.dart` and `main_pro.dart`; no duplicate app.
@@ -26,7 +26,7 @@
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
 - Native build assets: PDFium and SQLite are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: Private repository, real milestones/issues, and reviewed integration PRs; Public remains maintainer-gated.
-- Release evidence: merge `5b3c011` passed PR and post-merge CI; refreshed private Draft assets are checksummed and within budget; Android installable remains debug-signed.
+- Release evidence: code merge `696cf19` passed PR and both post-merge CI runs; eight private Draft assets match remote digests and budgets; Android installable remains debug-signed.
 
 ## Ownership
 
