@@ -91,7 +91,16 @@ jobs:
           flutter pub get
       - name: Build installable arm64 debug APK
         working-directory: apps/mobile
-        run: flutter build apk --debug --target-platform android-arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2; do
+            if flutter build apk --debug --target-platform android-arm64; then
+              break
+            fi
+            if (( attempt == 2 )); then exit 1; fi
+            echo 'Retrying Android debug build after a transient tool download failure.'
+          done
       - name: Preserve debug APK
         shell: bash
         run: |
@@ -103,7 +112,16 @@ jobs:
             ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-debug-arm64.apk
       - name: Build unsigned arm64 release APK for size gate
         working-directory: apps/mobile
-        run: flutter build apk --release --target-platform android-arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2; do
+            if flutter build apk --release --target-platform android-arm64; then
+              break
+            fi
+            if (( attempt == 2 )); then exit 1; fi
+            echo 'Retrying Android release build after a transient tool download failure.'
+          done
       - name: Preserve and measure unsigned release APK
         shell: bash
         run: |
