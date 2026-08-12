@@ -23,11 +23,21 @@ final class StreamingDirectoryScanner implements FileScanner {
 
     _cancelled = false;
     var scannedCount = 0;
-    var resumeReached = request.resumeCursor == null;
+    final normalizedResumeCursor = request.resumeCursor == null
+        ? null
+        : _normalizedPath(request.resumeCursor!);
+    if (normalizedResumeCursor != null &&
+        !_isWithinPath(root.path, normalizedResumeCursor)) {
+      throw ArgumentError.value(
+        request.resumeCursor,
+        'request.resumeCursor',
+        'The scan cursor must stay inside the selected root.',
+      );
+    }
     String? cursor = request.resumeCursor;
     final batch = <FileRecord>[];
 
-    await for (final entity in root.list(recursive: true, followLinks: false)) {
+    await for (final entity in _filesUnder(root)) {
       if (_cancelled) {
         if (batch.isNotEmpty) {
           yield ScanBatch(
@@ -39,9 +49,11 @@ final class StreamingDirectoryScanner implements FileScanner {
         }
         return;
       }
-      if (entity is! File) continue;
-      if (!resumeReached) {
-        if (_samePath(entity.path, request.resumeCursor!)) resumeReached = true;
+      if (normalizedResumeCursor != null &&
+          _pathOrderKey(
+                entity.path,
+              ).compareTo(_pathOrderKey(normalizedResumeCursor)) <=
+              0) {
         continue;
       }
 
@@ -61,15 +73,32 @@ final class StreamingDirectoryScanner implements FileScanner {
       }
     }
 
-    if (!resumeReached && request.resumeCursor != null) {
-      throw StateError('The scan resume cursor is no longer available.');
-    }
     yield ScanBatch(
       records: List<FileRecord>.unmodifiable(batch),
       cursor: cursor,
       isComplete: true,
       scannedCount: scannedCount,
     );
+  }
+
+  Stream<File> _filesUnder(Directory directory) async* {
+    List<FileSystemEntity> entries;
+    try {
+      entries = await directory.list(followLinks: false).toList();
+    } on FileSystemException {
+      return;
+    }
+    entries.sort(
+      (left, right) =>
+          _pathOrderKey(left.path).compareTo(_pathOrderKey(right.path)),
+    );
+    for (final entry in entries) {
+      if (entry is File) {
+        yield entry;
+      } else if (entry is Directory) {
+        yield* _filesUnder(entry);
+      }
+    }
   }
 
   @override
@@ -150,5 +179,12 @@ String _normalizedPath(String path) {
   return Platform.isWindows ? normalized.toLowerCase() : normalized;
 }
 
-bool _samePath(String left, String right) =>
-    _normalizedPath(left) == _normalizedPath(right);
+String _pathOrderKey(String path) =>
+    _normalizedPath(path).replaceAll('/', '\u0000');
+
+bool _isWithinPath(String root, String candidate) {
+  final normalizedRoot = _normalizedPath(root).replaceAll(RegExp(r'/+$'), '');
+  final normalizedCandidate = _normalizedPath(candidate);
+  return normalizedCandidate == normalizedRoot ||
+      normalizedCandidate.startsWith('$normalizedRoot/');
+}
