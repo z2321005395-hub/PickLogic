@@ -22,5 +22,6 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 - Private Draft/Prerelease artifacts with verified hashes, size/privacy reports, and Windows smoke-launch evidence.
 - Pro synthetic PDF reader with bounded rendering, search/highlight, text selection/copy, pinned PDFium, complete notices, and packaged native smoke.
 - Explicit bounded/retryable Mobile platform initialization failures, with hosted Android bridge-registration verification.
+- Opt-in CI-built Android x86_64 validation artifacts with pinned SQLite prefetch and TTDT emulator bridge smoke evidence.
 
 No release has been published.
