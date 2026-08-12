@@ -6,6 +6,7 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'demo_records.dart';
 import 'desktop_repository.dart';
+import 'pro_workspace.dart';
 
 void runPickLogicDesktop({required bool pro}) {
   runApp(PickLogicDesktopApp(pro: pro, repository: WindowsDesktopRepository()));
@@ -179,6 +180,18 @@ final class _DesktopShellState extends State<DesktopShell> {
     }
   }
 
+  void _selectSection(String value) {
+    if (widget.pro && proWorkspaceSections.contains(value)) {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => ProWorkspaceRoute(section: value),
+        ),
+      );
+      return;
+    }
+    setState(() => _section = value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = PickLogicLocalizations.of(context);
@@ -217,7 +230,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                       child: _Navigation(
                         pro: widget.pro,
                         selected: _section,
-                        onSelected: (value) => setState(() => _section = value),
+                        onSelected: _selectSection,
                         locale: widget.locale,
                         onLocaleChanged: widget.onLocaleChanged,
                       ),

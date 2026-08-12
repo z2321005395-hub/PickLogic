@@ -23,8 +23,24 @@ final class ResearchLink {
   final String note;
 }
 
+final class ResearchBucketSummary {
+  const ResearchBucketSummary({required this.bucket, required this.links});
+
+  final ResearchBucket bucket;
+  final List<ResearchLink> links;
+
+  int get count => links.length;
+}
+
 final class ResearchWorkspace {
-  ResearchWorkspace({required this.id, required this.name});
+  ResearchWorkspace({required this.id, required this.name}) {
+    if (id.trim().isEmpty) {
+      throw ArgumentError.value(id, 'id', 'Must not be empty.');
+    }
+    if (name.trim().isEmpty) {
+      throw ArgumentError.value(name, 'name', 'Must not be empty.');
+    }
+  }
 
   final String id;
   final String name;
@@ -32,9 +48,32 @@ final class ResearchWorkspace {
 
   List<ResearchLink> get links => List.unmodifiable(_links);
 
+  List<ResearchBucketSummary> get bucketSummaries => [
+    for (final bucket in ResearchBucket.values)
+      ResearchBucketSummary(bucket: bucket, links: linksFor(bucket)),
+  ];
+
   void link(ResearchLink link) {
-    if (link.projectId != id) throw ArgumentError('Project mismatch');
+    if (link.projectId != id) {
+      throw ArgumentError.value(
+        link.projectId,
+        'projectId',
+        'Project mismatch.',
+      );
+    }
+    if (link.fileId.trim().isEmpty) {
+      throw ArgumentError.value(link.fileId, 'fileId', 'Must not be empty.');
+    }
     _links.removeWhere((item) => item.fileId == link.fileId);
     _links.add(link);
   }
+
+  bool unlink(String fileId) {
+    final previousLength = _links.length;
+    _links.removeWhere((item) => item.fileId == fileId);
+    return _links.length != previousLength;
+  }
+
+  List<ResearchLink> linksFor(ResearchBucket bucket) =>
+      List.unmodifiable(_links.where((link) => link.bucket == bucket));
 }
