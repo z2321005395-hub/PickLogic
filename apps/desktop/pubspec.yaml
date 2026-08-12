@@ -13,6 +13,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  pdfrx: 2.4.7
   picklogic_classification_rules:
     path: ../../packages/classification_rules
   picklogic_core_models:

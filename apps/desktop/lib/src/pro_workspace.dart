@@ -5,12 +5,19 @@ import 'package:picklogic_research_core/picklogic_research_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_system_insight_core/picklogic_system_insight_core.dart';
 
+import 'pro_pdf_reader.dart';
+
 const Set<String> proWorkspaceSections = {'literature', 'research', 'system'};
 
 final class ProWorkspaceRoute extends StatelessWidget {
-  const ProWorkspaceRoute({super.key, required this.section});
+  const ProWorkspaceRoute({
+    super.key,
+    required this.section,
+    this.pdfReaderBuilder,
+  });
 
   final String section;
+  final WidgetBuilder? pdfReaderBuilder;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -18,20 +25,32 @@ final class ProWorkspaceRoute extends StatelessWidget {
     body: Column(
       children: [
         const Align(alignment: Alignment.centerLeft, child: SafeModeBanner()),
-        Expanded(child: ProWorkspaceView(section: section)),
+        Expanded(
+          child: ProWorkspaceView(
+            section: section,
+            pdfReaderBuilder: pdfReaderBuilder,
+          ),
+        ),
       ],
     ),
   );
 }
 
 final class ProWorkspaceView extends StatelessWidget {
-  const ProWorkspaceView({super.key, required this.section});
+  const ProWorkspaceView({
+    super.key,
+    required this.section,
+    this.pdfReaderBuilder,
+  });
 
   final String section;
+  final WidgetBuilder? pdfReaderBuilder;
 
   @override
   Widget build(BuildContext context) => switch (section) {
-    'literature' => const LiteratureManagerLiteView(),
+    'literature' => LiteratureManagerLiteView(
+      pdfReaderBuilder: pdfReaderBuilder,
+    ),
     'research' => const ResearchBucketsView(),
     'system' => const SystemInsightReadOnlyView(),
     _ => const SizedBox.shrink(),
@@ -39,7 +58,9 @@ final class ProWorkspaceView extends StatelessWidget {
 }
 
 final class LiteratureManagerLiteView extends StatefulWidget {
-  const LiteratureManagerLiteView({super.key});
+  const LiteratureManagerLiteView({super.key, this.pdfReaderBuilder});
+
+  final WidgetBuilder? pdfReaderBuilder;
 
   @override
   State<LiteratureManagerLiteView> createState() =>
@@ -126,31 +147,10 @@ final class _LiteratureManagerLiteViewState
         ),
         const SizedBox(height: 12),
         _ProCard(
-          title: 'PDF 阅读区域 · Skeleton',
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.picture_as_pdf_outlined,
-                size: 48,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('PDF rendering: audit gated'),
-                    SizedBox(height: 6),
-                    Text(
-                      '未接入 pdfrx/PDFium；许可证、二进制体积、打包和质量审计通过前，'
-                      '此处不伪装成完整阅读器。',
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          title: 'PDF 阅读区域 · Local',
+          child:
+              widget.pdfReaderBuilder?.call(context) ??
+              const ProSyntheticPdfReader(),
         ),
         const SizedBox(height: 12),
         _ProCard(

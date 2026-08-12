@@ -26,4 +26,5 @@ workspace:
   - test_fixtures
 
 dev_dependencies:
+  crypto: ^3.0.7
   lints: ^6.0.0

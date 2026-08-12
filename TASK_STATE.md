@@ -35,6 +35,9 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Verified the arm64 debug APK signature and ABI. The separate 18,906,037-byte arm64 release artifact is intentionally unsigned for size evidence only.
 - Created a Private Draft/Prerelease `v0.1.0-alpha` with four packages plus checksum, size, privacy, and verification reports; nothing was published.
 - Opened Draft integration PR #14 from `develop` to `main`; it must remain unmerged until maintainer trial, license, signing, and device gates pass.
+- Started isolated branch `codex/pdfium-size-audit`; added a generated two-page Pro PDF reader with search, selection/copy, thumbnails, bounded cache, and injectable tests without reading real PDFs.
+- Verified `pdfrx` 2.4.7's 33 added packages: 97 external and 5 Flutter SDK packages now pass the license gate with zero missing/restricted/unknown findings.
+- Verified the fixed PDFium Windows archive through GitHub attestation, pinned archive/DLL hashes, and added a packaging gate for all 16 upstream notice files.
 
 ## Files changed
 
@@ -59,15 +62,16 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Final package sizes: Android arm64 release 18,906,037 bytes; Standard installed/ZIP 31,606,393/13,541,337 bytes; Pro installed/ZIP 31,835,769/13,628,931 bytes. All release-size targets pass.
 - ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
 - PDF engine dry-run audit: `pdfrx 2.4.7` is MIT over PDFium BSD-3 and would add 33 resolved dependencies plus native assets; it remains unaccepted pending measured size impact.
+- Isolated full gate passed after verified native-asset prefetch: 89 files formatted, root analysis clean, 11 quick + 6 remaining modules passed, desktop tests 7/7, dependency audit clean, and privacy findings 0. A direct native widget test was rejected as invalid because `flutter test` does not package `pdfium.dll`; packaged-executable interaction remains the correct runtime gate.
 
 ## Blockers
 
 - Windows Developer Mode must be enabled by the user in Settings; it is required for Flutter plugin symlinks and the evaluated PDF plugin.
 - Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
 - Native Android and Windows code cannot yet be compiled locally because Flutter plugin symlinks require Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation is green.
-- Embedded PDF page rendering/search/selection remains audit-gated; current Pro code provides bounded metadata and an explicit reader skeleton.
+- Embedded PDF page rendering/search/selection remains isolated from `develop` until hosted size results and packaged-executable interaction pass.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Pause for maintainer-controlled Developer Mode/Visual Studio setup, Android media permission, read-only reference-device validation, first trial, and final license/copyright decisions. After those gates, fix observed device issues, configure signing, and ask separately before Public conversion or release publication.
+Push the isolated PDF branch, run hosted Standard/Pro size builds, inspect packaged notices and PDFium contents, then smoke-test the Pro synthetic reader. Keep maintainer-controlled Developer Mode/Visual Studio, Android media permission, real-data validation, license/copyright, signing, Public conversion, and publication as explicit gates.
