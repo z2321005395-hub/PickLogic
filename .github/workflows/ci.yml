@@ -42,6 +42,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - name: Analyze
         run: dart analyze
+      - name: Prepare pinned SQLite native asset
+        run: dart run tools/prepare_sqlite_native_asset.dart
       - name: Test pure Dart and synthetic modules
         shell: bash
         run: |
@@ -57,6 +59,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          dart run tools/prepare_pdfium_native_asset.dart
           for package in \
             packages/shared_ui platform/windows_bridge platform/android_bridge \
             apps/desktop apps/mobile; do
@@ -94,12 +97,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             if flutter build apk --debug --target-platform android-arm64; then
               break
             fi
-            if (( attempt == 2 )); then exit 1; fi
-            echo 'Retrying Android debug build after a transient tool download failure.'
+            if (( attempt == 3 )); then exit 1; fi
+            delay=$((attempt * 15))
+            echo "Retrying Android debug build in ${delay}s after a transient tool download failure."
+            sleep "$delay"
           done
       - name: Preserve debug APK
         shell: bash
@@ -115,12 +120,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             if flutter build apk --release --target-platform android-arm64; then
               break
             fi
-            if (( attempt == 2 )); then exit 1; fi
-            echo 'Retrying Android release build after a transient tool download failure.'
+            if (( attempt == 3 )); then exit 1; fi
+            delay=$((attempt * 15))
+            echo "Retrying Android release build in ${delay}s after a transient tool download failure."
+            sleep "$delay"
           done
       - name: Preserve and measure unsigned release APK
         shell: bash
@@ -162,9 +169,23 @@ jobs:
         run: |
           flutter config --no-analytics
           flutter pub get
-      - name: Build Standard
+      - name: Prepare pinned native assets for Standard
+        shell: pwsh
+        run: |
+          dart run tools/prepare_sqlite_native_asset.dart
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dart run tools/prepare_pdfium_native_asset.dart
+      - name: Compile Standard
         working-directory: apps/desktop
-        run: flutter build windows --release --target lib/main_standard.dart
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            flutter build windows --release --target lib/main_standard.dart
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 2) { exit 1 }
+            Write-Output 'Retrying Standard build in 15s after a transient native-asset failure.'
+            Start-Sleep -Seconds 15
+          }
       - name: Preserve and measure Standard
         shell: pwsh
         run: |
@@ -172,6 +193,10 @@ jobs:
           $target = 'ci_artifacts/windows-standard'
           New-Item -ItemType Directory -Path $target -Force | Out-Null
           Copy-Item -Path "$source/*" -Destination $target -Recurse
+          dart run tools/package_pdfium_notices.dart --build-directory $target
+          $runtimeBytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Output "WINDOWS_STANDARD_RUNTIME_BYTES=$runtimeBytes"
+          Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination "$target/INSTALLATION.md"
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_STANDARD_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 80MB) { throw 'Windows Standard exceeds the 80 MB base budget.' }
@@ -180,9 +205,31 @@ jobs:
         run: flutter clean
       - name: Resolve workspace for Pro
         run: flutter pub get
+      - name: Prepare pinned native assets for Pro
+        shell: pwsh
+        run: |
+          dart run tools/prepare_sqlite_native_asset.dart
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dart run tools/prepare_pdfium_native_asset.dart
       - name: Build Pro
         working-directory: apps/desktop
-        run: flutter build windows --release --target lib/main_pro.dart
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            flutter build windows --release --target lib/main_pro.dart
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 2) { exit 1 }
+            Write-Output 'Retrying Pro build in 15s after a transient native-asset failure.'
+            Start-Sleep -Seconds 15
+          }
+      - name: Smoke packaged Pro PDF engine
+        shell: pwsh
+        run: |
+          $release = (Resolve-Path -LiteralPath 'apps/desktop/build/windows/x64/runner/Release').Path
+          $exe = Join-Path $release 'picklogic_desktop.exe'
+          $process = Start-Process -FilePath $exe -ArgumentList '--synthetic-pdf-smoke' -WorkingDirectory $release -Wait -PassThru
+          Write-Output "PRO_PDF_ENGINE_SMOKE_EXIT=$($process.ExitCode)"
+          if ($process.ExitCode -ne 0) { throw 'Packaged Pro PDF engine smoke failed.' }
       - name: Preserve and measure Pro
         shell: pwsh
         run: |
@@ -190,14 +237,16 @@ jobs:
           $target = 'ci_artifacts/windows-pro'
           New-Item -ItemType Directory -Path $target -Force | Out-Null
           Copy-Item -Path "$source/*" -Destination $target -Recurse
+          dart run tools/package_pdfium_notices.dart --build-directory $target
+          $runtimeBytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Output "WINDOWS_PRO_RUNTIME_BYTES=$runtimeBytes"
+          Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination "$target/INSTALLATION.md"
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_PRO_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 130MB) { throw 'Windows Pro exceeds the 130 MB base budget.' }
       - name: Package Windows alpha bundles
         shell: pwsh
         run: |
-          Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination 'ci_artifacts/windows-standard/INSTALLATION.md'
-          Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination 'ci_artifacts/windows-pro/INSTALLATION.md'
           Compress-Archive -Path 'ci_artifacts/windows-standard/*' -DestinationPath 'ci_artifacts/picklogic-windows-standard-v0.1.0-alpha.zip' -CompressionLevel Optimal
           Compress-Archive -Path 'ci_artifacts/windows-pro/*' -DestinationPath 'ci_artifacts/picklogic-windows-pro-v0.1.0-alpha.zip' -CompressionLevel Optimal
           $packages = Get-ChildItem -LiteralPath 'ci_artifacts' -Filter '*.zip' -File | Sort-Object Name

@@ -6,11 +6,11 @@ Every runtime dependency requires a measured release-size delta before v0.1. Unv
 |---|---|---|---|---|
 | Flutter 3.44.9 / Dart 3.12.2 | Shared native UI and runtime | BSD-3-Clause | Runtime engine included; measure per target | Mandated stack; no Electron/WebView fallback |
 | SQLite | Local index | Public domain | Small native library; measure | Platform SQLite varies; one consistent audited binding preferred |
-| `sqlite3` 3.5.1 | Direct Dart SQLite access | MIT; SQLite public domain | Accepted; current Windows bundle is about 31.5 MB total before optional PDFium | Manual platform databases increase duplicate code |
+| `sqlite3` 3.5.1 | Direct Dart SQLite access | MIT; SQLite public domain | Accepted; Windows/Linux x64 libraries are 1,710,592/1,801,592 B; deterministic prefetch adds no runtime payload | Manual platform databases increase duplicate code |
 | `crypto` | Streaming SHA-256 | BSD-3-Clause | Accepted; pure Dart and small | `dart:convert` lacks SHA-256 |
 | `path_provider` (candidate) | App database/cache paths | BSD-3-Clause | Small platform plugin | Custom bridge duplicates platform code |
 | `plugin_platform_interface` 2.1.8 | Testable Android/Windows plugin dispatch | BSD-3-Clause | Pure Dart; negligible | Static method channels are smaller in structure but harder to substitute safely in tests |
-| `pdfrx` 2.4.7 / PDFium (evaluated, not accepted) | Pro local PDF render, thumbnails, search, and text selection | `pdfrx` MIT; PDFium BSD-3 plus required third-party notices | Dry-run adds 33 resolved dependencies and native assets; exact Standard/Pro delta pending CI experiment | System open is lighter but cannot satisfy embedded reader requirements |
+| `pdfrx` 2.4.7 / PDFium (accepted) | Pro local PDF render, thumbnails, search, and text selection; reusable Standard PDF preview base | `pdfrx`/bindings MIT; PDFium and bundled components require 16 notice files | Adds 33 packages. Standard +7,707,517 B runtime / +3,850,919 B ZIP; Pro +8,330,109 B / +4,118,626 B | System open cannot satisfy embedded behavior; post-build DLL removal is brittle |
 | AndroidX WorkManager (candidate) | Resumable mobile indexing | Apache-2.0 | Expected low MB | Foreground-only work misses background requirement |
 | TTDT Android toolchain | Local build/ADB/emulator | Mixed official SDK/JDK terms; Temurin GPL-2.0+CPE | Development-only, not packaged | Reused; no duplicate Android Studio install |
 | Visual Studio Build Tools | Windows native compilation | Microsoft proprietary tool license | Development-only | Standalone Build Tools is smaller than full IDE |
@@ -28,6 +28,10 @@ Budgets:
 - Windows Pro: <= 130 MB.
 - Optional OCR languages, models, and advanced PDF extras are disclosed separately.
 
-Gate: no candidate becomes a dependency until its current upstream license, transitive runtime contents, and release-size delta are recorded.
+Gate: no candidate becomes a dependency until its current upstream license, transitive runtime contents, and release-size delta are recorded. PDFium packaging verifies the pinned archive and DLL SHA-256 values and copies the archive's full license directory next to the executable.
 
-Baseline hosted build evidence before PDFium: Windows Standard and Pro installed directories were each 31,492,217 bytes. The universal debug Android APK was 152,956,858 bytes and is not a release-size proxy; CI now measures an arm64 release artifact against the 40 MB budget while retaining a separately labeled installable debug APK.
+The SQLite 3.5.1 package publishes hashes for its release assets. CI pre-seeds the exact Windows x64 (`e6ebc264...c278a`) or Linux x64 (`b1772918...e0d2`) file under the package hook's hash-derived cache path after its own verification. This removes opportunistic downloads from tests/builds without changing packaged bytes.
+
+Final hosted baseline before PDFium: Windows Standard 31,606,393 bytes runtime, Windows Pro 31,835,769 bytes runtime, and Android arm64 release 18,906,037 bytes. The Android release artifact is unsigned size evidence; the separately labeled debug APK is installable.
+
+Hosted accepted runtime: Standard 39,313,910 bytes; Pro 40,165,878 bytes. The distributable payload adds the 1,542-byte installation guide, yielding 39,315,452 and 40,167,420 bytes before compression; ZIPs are 17,392,256 and 17,747,557 bytes. These are 46.9% and 29.5% of the respective budgets. Android arm64 release is 18,907,513 bytes, only 1,476 bytes above baseline; PDFium is not packaged into Mobile. Packaged Pro parse/text/render smoke returned 0.

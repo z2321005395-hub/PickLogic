@@ -23,6 +23,12 @@
 - `tools/picklogic.cmd` — local policy-safe launcher that prefers the TTDT toolchain.
 - `tools/privacy_check.dart` — committed-source privacy and secret pattern gate.
 - `tools/dependency_license_check.dart` — resolved external-package license gate.
+- `tools/package_pdfium_notices.dart` — verifies pinned PDFium hashes and packages all binary notices.
+- `tools/native_asset_io.dart` — shared bounded download and SHA-256 verification for build assets.
+- `tools/pdfium_artifact.dart` — pinned Windows/Linux PDFium source, hash, retry, and extraction contract.
+- `tools/prepare_pdfium_native_asset.dart` — retries, verifies, and pre-seeds pinned PDFium for native builds.
+- `tools/sqlite_native_asset.dart` — official SQLite 3.5.1 Windows/Linux asset names and hashes.
+- `tools/prepare_sqlite_native_asset.dart` — pre-seeds the verified SQLite build-hook cache.
 - `tools/run_module_tests.dart` — concise success / detailed failure module-test orchestrator.
 - `docs/DATA_MODEL.md` — canonical cross-target data/interface contract.
 - `docs/INSTALLATION.md` — private alpha installation and package-type instructions.

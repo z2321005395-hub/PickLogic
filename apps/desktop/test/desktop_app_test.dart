@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_desktop/src/app.dart';
 import 'package:picklogic_desktop/src/desktop_repository.dart';
+import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
 
 void main() {
   testWidgets('Standard shows safe mode and omits Pro navigation', (
@@ -14,7 +15,15 @@ void main() {
   });
 
   testWidgets('Pro composes literature and system navigation', (tester) async {
-    await tester.pumpWidget(const PickLogicDesktopApp(pro: true));
+    await tester.pumpWidget(
+      PickLogicDesktopApp(
+        pro: true,
+        proPdfReaderBuilder: (_) => const SizedBox(
+          key: Key('test-pdf-reader'),
+          child: Text('Embedded PDF reader test double'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('文献'), findsOneWidget);
     expect(find.text('系统洞察'), findsOneWidget);
@@ -25,7 +34,15 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(900, 650));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const PickLogicDesktopApp(pro: true));
+    await tester.pumpWidget(
+      PickLogicDesktopApp(
+        pro: true,
+        proPdfReaderBuilder: (_) => const SizedBox(
+          key: Key('test-pdf-reader'),
+          child: Text('Embedded PDF reader test double'),
+        ),
+      ),
+    );
     await tester.tap(find.text('文献 · Literature'));
     await tester.pumpAndSettle();
 
@@ -35,7 +52,8 @@ void main() {
     );
     expect(find.text('Literature Manager Lite'), findsOneWidget);
     expect(find.text('10.5555/picklogic.synthetic'), findsOneWidget);
-    expect(find.text('PDF rendering: audit gated'), findsOneWidget);
+    expect(find.byKey(const Key('test-pdf-reader')), findsOneWidget);
+    expect(find.text('Embedded PDF reader test double'), findsOneWidget);
     final literatureScrollable = find
         .descendant(
           of: find.byKey(const Key('literature-manager-lite-view')),
@@ -102,5 +120,18 @@ void main() {
     const repository = SyntheticDesktopRepository();
     final results = await repository.search('paper pdf');
     expect(results.map((record) => record.id), ['paper']);
+  });
+
+  test('synthetic literature PDF is deterministic and contains no paths', () {
+    final first = buildSyntheticLiteraturePdf();
+    final second = buildSyntheticLiteraturePdf();
+    expect(first, second);
+    final text = String.fromCharCodes(first);
+    expect(text, startsWith('%PDF-1.4'));
+    expect(text, contains('/Count 2'));
+    expect(text, contains('PickLogic synthetic literature sample'));
+    expect(text, contains('No real file was read.'));
+    expect(text, isNot(contains(r'C:\')));
+    expect(text, endsWith('%%EOF\n'));
   });
 }

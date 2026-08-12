@@ -17,10 +17,12 @@ final class PickLogicDesktopApp extends StatefulWidget {
     super.key,
     required this.pro,
     this.repository = const SyntheticDesktopRepository(),
+    this.proPdfReaderBuilder,
   });
 
   final bool pro;
   final DesktopRepository repository;
+  final WidgetBuilder? proPdfReaderBuilder;
 
   @override
   State<PickLogicDesktopApp> createState() => _PickLogicDesktopAppState();
@@ -46,6 +48,7 @@ final class _PickLogicDesktopAppState extends State<PickLogicDesktopApp> {
     home: DesktopShell(
       pro: widget.pro,
       repository: widget.repository,
+      proPdfReaderBuilder: widget.proPdfReaderBuilder,
       locale: _locale,
       onLocaleChanged: (locale) => setState(() => _locale = locale),
     ),
@@ -57,12 +60,14 @@ final class DesktopShell extends StatefulWidget {
     super.key,
     required this.pro,
     required this.repository,
+    this.proPdfReaderBuilder,
     required this.locale,
     required this.onLocaleChanged,
   });
 
   final bool pro;
   final DesktopRepository repository;
+  final WidgetBuilder? proPdfReaderBuilder;
   final Locale locale;
   final ValueChanged<Locale> onLocaleChanged;
 
@@ -184,7 +189,10 @@ final class _DesktopShellState extends State<DesktopShell> {
     if (widget.pro && proWorkspaceSections.contains(value)) {
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (_) => ProWorkspaceRoute(section: value),
+          builder: (_) => ProWorkspaceRoute(
+            section: value,
+            pdfReaderBuilder: widget.proPdfReaderBuilder,
+          ),
         ),
       );
       return;

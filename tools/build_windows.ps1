@@ -11,7 +11,23 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $appRoot = Join-Path $repoRoot 'apps\desktop'
 $flutter = Join-Path $env:PICKLOGIC_FLUTTER_ROOT 'bin\flutter.bat'
+$dart = Join-Path $env:PICKLOGIC_FLUTTER_ROOT 'bin\dart.bat'
 $target = if ($Edition -eq 'Pro') { 'lib/main_pro.dart' } else { 'lib/main_standard.dart' }
+
+Push-Location $repoRoot
+try {
+    & $dart run tools\prepare_sqlite_native_asset.dart
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Pinned SQLite native-asset preparation failed.'
+    }
+    & $dart run tools\prepare_pdfium_native_asset.dart
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Pinned PDFium native-asset preparation failed.'
+    }
+}
+finally {
+    Pop-Location
+}
 
 Push-Location $appRoot
 try {
@@ -29,6 +45,19 @@ if (-not (Test-Path -LiteralPath $releaseDirectory -PathType Container)) {
     throw 'Flutter reported success but the expected Windows release directory was not found.'
 }
 
+Push-Location $repoRoot
+try {
+    & $dart run tools\package_pdfium_notices.dart --build-directory $releaseDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw 'PDFium notice packaging failed.'
+    }
+}
+finally {
+    Pop-Location
+}
+
+$installationGuide = Join-Path $repoRoot 'docs\INSTALLATION.md'
+Copy-Item -LiteralPath $installationGuide -Destination (Join-Path $releaseDirectory 'INSTALLATION.md')
 $totalBytes = (Get-ChildItem -LiteralPath $releaseDirectory -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $summary = "WINDOWS_BUILD_OK edition=$Edition installed_bytes=$totalBytes"
 
