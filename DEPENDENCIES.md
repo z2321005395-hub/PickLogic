@@ -18,7 +18,7 @@ Before adding a dependency, record its project name, upstream URL, exact version
 
 ## Development-only tools
 
-CI actions are pinned to immutable commits in `.github/workflows/ci.yml`; Flutter, the TTDT Android toolchain, and Visual Studio Build Tools versions and size effects are tracked in `DEPENDENCY_BUDGET.md`. They add no application runtime bytes.
+CI actions are pinned to immutable commits in `.github/workflows/ci.yml`; Flutter, the TTDT Android toolchain, and Visual Studio Build Tools 2022 17.14.37 versions and size effects are tracked in `DEPENDENCY_BUDGET.md`. They add no application runtime bytes.
 
 ## Change gate
 

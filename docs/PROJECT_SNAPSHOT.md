@@ -21,7 +21,7 @@
 - Local Android baseline: TTDT toolchain with JDK 17, Gradle 9.4.1, SDK/API 36, ADB, and existing AVDs.
 - Reference phone verified by ADB: nubia NX736J, Android 15, API 35, arm64-only. Do not record its serial.
 - Verification: merged local suite and hosted Android/Windows builds pass; dependency-license and privacy scans report no findings.
-- Local build gates: Windows Developer Mode is off; Visual Studio C++ Build Tools is absent.
+- Local build gate: Build Tools 2022 17.14.37 with MSVC/CMake/SDK is verified, but Windows Developer Mode is still ineffective and Flutter cannot create plugin symlinks.
 - Mobile bootstrap failures are bounded, explicit, safe, and retryable; platform errors are not presented as permission denial.
 - Mobile MediaStore metadata and per-collection checkpoints use the shared app-private SQLite index; bounded work resumes on next launch without scheduling OCR.
 - A CI-built x86_64 APK passed the TTDT API 36 emulator bridge success path with zero media grants and zero fatal-log matches.

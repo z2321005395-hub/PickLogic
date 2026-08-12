@@ -64,6 +64,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Mobile indexing continues one bounded page at a time with fair collection rotation, supports pause after the current page, resumes from validated checkpoints, and searches persisted records without delaying first paint. Malformed checkpoints restart safely; no WorkManager or other dependency was added.
 - Mobile deletion reconciliation and OS-scheduled wakeups remain explicit follow-ups. No real media, physical-device permission, file mutation, or system setting was used while implementing this slice.
 - Added a permanent repository-wide open-source reuse policy plus canonical dependency and third-party notice ledgers; infrastructure reuse is preferred while PickLogic retains its product logic.
+- Installed the narrowly scoped Visual Studio Build Tools 2022 17.14.37 workload after maintainer authorization: MSVC v143 x64/x86, CMake, and Windows SDK 10.0.26100 are present; ATL/MFC, ASAN, vcpkg, LLVM, ARM64, v142, and unrelated workloads are absent.
 
 ## Files changed
 
@@ -105,15 +106,16 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Repeated hosted HTTP 503 and premature-connection failures later succeeded with unchanged hashes. Native-asset prefetch now permits six bounded attempts with at most 150 seconds of backoff; hash mismatches still fail closed.
 - Current durable-index gate: 94 files formatted unchanged; root analysis clean; Mobile 19/19 and Android bridge 10/10 tests passed; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
 - PR #24 CI `31646213015` and post-merge push/PR runs `31647445953` / `31647449631` passed quality, Android, and Windows jobs. The PR's x86_64 APK matched its manifest, was v2-signed, and passed isolated TTDT API 36 cold-start, app-private SQLite create/reopen, UI wording, zero-media-grant, and zero-fatal-log checks.
+- Current `flutter doctor -v` recognizes Build Tools 17.14.37 and Windows SDK 10.0.26100. The exact install is 3,099,022,241 bytes with a 42,732,999-byte package cache; total system-disk change including shared SDK files was about 5.41 GiB and no reboot was requested.
+- Local synthetic Desktop tests passed 7/7 and Windows bridge tests passed 6/6. The first Standard build then failed closed before compilation because Flutter still cannot create plugin symlinks; a synthetic-only symlink probe independently returned `Administrator privilege required`.
 
 ## Blockers
 
-- Windows Developer Mode must be enabled by the user in Settings; it is required for Flutter plugin symlinks and the evaluated PDF plugin.
-- Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
-- Local iterative Flutter plugin generation remains blocked until the user enables Windows Developer Mode. A hosted x86_64 APK has independently passed the real TTDT emulator bridge path; Windows compilation still needs Visual Studio Build Tools C++.
+- Windows Developer Mode was reported enabled but is not effective: the expected registry value is absent, Flutter rejects plugin symlink generation, and a synthetic-only symlink probe fails without elevation. The user must re-enable it in Settings and accept the confirmation, then restart if required.
+- Visual Studio Build Tools is installed and verified; local Windows compilation is now blocked only by the ineffective Developer Mode setting.
 - Windows Computer Use could capture the running Pro process/window but input activation was blocked twice by `GetCursorPos` access denial; automation stopped without elevation. The packaged engine self-check replaces UI automation for native parse/text/render evidence, while maintainer interaction remains part of first-use validation.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Pause at maintainer-controlled gates. Ask the user to enable Windows Developer Mode and explicitly approve the large Visual Studio C++ installation before local native builds. Separately obtain explicit approval for a Windows reference-directory scan, nubia Debug APK/media permission, license/copyright, first trial, signing, Public conversion, and publication.
+Ask the user to re-enable Developer Mode at Settings > System > Advanced > For developers, accept the administrator confirmation, and restart Windows if the setting does not persist. Then retry local Standard/Pro builds using synthetic data only. Separately obtain explicit approval for a Windows reference-directory scan, nubia Debug APK/media permission, license/copyright, first trial, signing, Public conversion, and publication.

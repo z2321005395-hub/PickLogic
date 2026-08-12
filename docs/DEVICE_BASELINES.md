@@ -6,7 +6,8 @@ Only aggregate, non-private validation data belongs here. Never record device se
 
 - OS family: Windows 11 x64.
 - Exact build observed during Bootstrap: 10.0.26200.0.
-- Flutter Windows compiler: pending Visual Studio Build Tools installation/verification.
+- Flutter Windows compiler: Visual Studio Build Tools 2022 17.14.37, MSVC v143 x64/x86, CMake, and Windows SDK 10.0.26100 verified; no recommended/optional workload expansion.
+- Toolchain footprint: 3,099,022,241-byte Build Tools directory, 42,732,999-byte package cache, and about 5.41 GiB total system-disk change including shared SDK files.
 - Development behavior: synthetic directories only for mutation tests; real directories remain read-only.
 
 ## Android reference phone
@@ -37,7 +38,7 @@ No image metadata index or performance benchmark has been run yet; the ABI query
 - TTDT `TTDT_Modern_64`: Android 16 / API 36 / x86_64; launched headlessly on an emulator-only ADB serial.
 - A temporary x86_64 Debug APK (not a release asset) installed and cold-launched; Developer Safe Mode and all four primary destinations were visible.
 - Files, Screenshots, and Photos displayed their no-permission states without requesting access or reading media.
-- Local Flutter plugin generation was blocked because Windows Developer Mode is off. VM heap evidence identified `MissingPluginException`; this remains a local development-tooling limit.
+- Local Flutter plugin generation remains blocked because Windows Developer Mode is ineffective. Flutter and an independent synthetic-only symlink probe both confirmed the limit after Build Tools installation.
 - The app now bounds bootstrap platform reads and shows a safe retryable error instead of an infinite Storage spinner when platform initialization fails.
 - Opt-in CI run `31639131268` built a 64,724,478-byte, v2-signed, x86_64-only Debug APK. Its SHA-256 was `49f93853...ffc7`, and static DEX inspection found the bridge class plus generated registration call.
 - The CI APK cold-launched in 3.709 seconds on the TTDT API 36 emulator. Safe Mode, all four destinations, the no-permission state, and Storage Insight rendered through the real bridge; media grants and fatal-log matches were both zero.
