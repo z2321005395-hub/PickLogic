@@ -158,8 +158,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          flutter clean
-          flutter pub get
           dart run ../../tools/prepare_sqlite_native_asset.dart --target android-x64
           for attempt in 1 2 3; do
             if flutter build apk --debug --target-platform android-x64; then
@@ -178,8 +176,17 @@ jobs:
           mkdir -p ci_artifacts/android-emulator-x64
           cp apps/mobile/build/app/outputs/flutter-apk/app-debug.apk \
             ci_artifacts/android-emulator-x64/picklogic-mobile-v0.1.0-alpha-debug-x86_64.apk
+          apk=ci_artifacts/android-emulator-x64/picklogic-mobile-v0.1.0-alpha-debug-x86_64.apk
+          native_paths=$(unzip -Z1 "$apk" | grep '^lib/' || true)
+          if [[ -z "$native_paths" ]] || \
+             grep -qv '^lib/x86_64/' <<<"$native_paths" || \
+             ! grep -qx 'lib/x86_64/libsqlite3.so' <<<"$native_paths"; then
+            echo 'Emulator APK must contain only x86_64 native libraries, including SQLite.' >&2
+            printf '%s\n' "$native_paths" >&2
+            exit 1
+          fi
           stat --printf='ANDROID_DEBUG_X86_64_APK_BYTES=%s\n' \
-            ci_artifacts/android-emulator-x64/picklogic-mobile-v0.1.0-alpha-debug-x86_64.apk
+            "$apk"
           (cd ci_artifacts/android-emulator-x64 && sha256sum *.apk > SHA256SUMS.txt)
       - name: Upload x86_64 emulator validation package
         if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'device-validation')

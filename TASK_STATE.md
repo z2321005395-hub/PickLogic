@@ -97,6 +97,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - SQLite 3.5.1 Android x64 is now pre-seeded from its official fixed asset with SHA-256 `949965f0...8772`, preventing opportunistic hook downloads during validation builds.
 - CI run `31639131268` built and uploaded the x86_64 APK; the original quality/Windows attempts recorded unrelated upstream connection closures, and rerunning only failed jobs completed all three checks successfully.
 - The 64,724,478-byte APK matched its manifest, was x86_64-only and v2-signed, and contained the bridge plus generated registration. On the TTDT API 36 emulator it cold-launched in 3.709 seconds, rendered Storage Insight through the real bridge, retained zero media grants, and produced zero fatal-log matches.
+- Repeated hosted HTTP 503 and premature-connection failures later succeeded with unchanged hashes. Native-asset prefetch now permits six bounded attempts with at most 150 seconds of backoff; hash mismatches still fail closed.
 
 ## Blockers
 
