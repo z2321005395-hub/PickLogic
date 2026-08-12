@@ -51,7 +51,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - PR #15 merged as `5b3c011`; Issue #12 is closed. PR CI `31626689047` and post-merge push/PR runs `31627436020` / `31627440015` all passed.
 - Refreshed the Private Draft/Prerelease with four merge-build artifacts, combined checksums, corrected size report, privacy report, and verification summary; it remains unpublished.
 - Final package verification used the TTDT JDK/Android build tools: debug APK signature passed, release-size APK is unsigned by design, both are arm64-only, both Windows payloads contain pinned SQLite/PDFium plus 16 PDFium notices, Standard launched, and Pro native PDF smoke returned 0.
-- GitHub reported Node 20 deprecation annotations for checkout/setup-java. Issue #16 records the real maintenance task; an isolated Integration branch pins official Node 24 releases without adding dependencies or artifact bytes.
+- GitHub reported Node 20 deprecation annotations for checkout/setup-java, then the first migration run exposed the same warning for upload-artifact v4. Issue #16 records the real maintenance task; the isolated Integration branch now pins current official Node 24 releases for all three without adding application dependencies or artifact bytes.
 - Based on measured size, complete notices, pinned hashes, native parse/text/render success, and no material Mobile regression, ADR 0003 accepts `pdfrx` 2.4.7/PDFium for v0.1.
 
 ## Files changed

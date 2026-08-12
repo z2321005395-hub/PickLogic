@@ -16,7 +16,7 @@ Every runtime dependency requires a measured release-size delta before v0.1. Unv
 | Visual Studio Build Tools | Windows native compilation | Microsoft proprietary tool license | Development-only | Standalone Build Tools is smaller than full IDE |
 | `actions/checkout` 7.0.1 | CI source checkout on Node 24 | MIT | CI-only; none in artifacts | Git CLI scripting is less maintainable in Actions |
 | `actions/setup-java` 5.7.0 | CI JDK 17 setup on Node 24 | MIT | CI-only; none in artifacts | Hosted JDK assumptions are less reproducible |
-| `actions/upload-artifact` v4 | Retain synthetic build outputs for seven days | MIT | CI-only; none in artifacts | Build-only checks would not expose installable CI evidence |
+| `actions/upload-artifact` 7.0.1 | Retain synthetic build outputs for seven days on Node 24 | MIT | CI-only; none in artifacts | Build-only checks would not expose installable CI evidence |
 | `subosito/flutter-action` v2 | Pin and cache Flutter 3.44.9 in CI | MIT | CI-only; none in artifacts | Manual SDK download is lighter in dependencies but duplicates setup logic |
 
 All four CI actions are pinned to immutable commits in `.github/workflows/ci.yml`; moving tags are comments only.
