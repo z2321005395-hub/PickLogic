@@ -14,5 +14,10 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 - Shared local SQLite/index/search/classification/duplicate/operation/Insight foundations and synthetic fixtures.
 - Safe Desktop and Mobile vertical-slice shells plus narrow read-only Windows/Android bridges.
 - Pinned CI, privacy/license gates, and TTDT-first local tooling.
+- Resumable SQLite reconciliation, deterministic ranked search, streaming exact-duplicate hashing, and batch operation previews.
+- Pro-only bounded PDF metadata/DOI extraction, rename previews, reading state, virtual research buckets, and evidence-qualified System Insight.
+- Android bounded thumbnails, screenshot timeline groups, review-only gestures, and a one-page-at-a-time metadata queue.
+- Private GitHub milestones/issues and reviewed Track A/B/C pull requests.
+- Alpha package naming, checksums, installation notes, and release-size gates in CI.
 
 No release has been published.

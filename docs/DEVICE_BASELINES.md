@@ -17,11 +17,12 @@ Verified with ADB on 2026-08-12:
 - Model: NX736J.
 - Android: 15.
 - API level: 35.
+- ABI: arm64-v8a only.
 - Build type: user.
 - Security patch reported by device: 2025-11-01.
 - Intended scale checks: about 17,895 images, 6,133 screenshots, and 5,618 camera images; these are user-provided planning figures until measured read-only.
 
-No image metadata index or performance benchmark has been run yet.
+No image metadata index or performance benchmark has been run yet; the ABI query read device properties only.
 
 ## Local Android development toolchain
 

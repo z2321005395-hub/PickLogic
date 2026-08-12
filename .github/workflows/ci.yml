@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feature/**"]
+    branches: [main, develop]
   pull_request:
 
 permissions:
@@ -89,17 +89,40 @@ jobs:
         run: |
           flutter config --no-analytics
           flutter pub get
-      - name: Build debug APK
+      - name: Build installable arm64 debug APK
         working-directory: apps/mobile
-        run: flutter build apk --debug
-      - name: Report APK size
+        run: flutter build apk --debug --target-platform android-arm64
+      - name: Preserve debug APK
         shell: bash
-        run: stat --printf='ANDROID_DEBUG_APK_BYTES=%s\n' apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
-      - name: Upload debug APK
+        run: |
+          set -euo pipefail
+          mkdir -p ci_artifacts/android
+          cp apps/mobile/build/app/outputs/flutter-apk/app-debug.apk \
+            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-debug-arm64.apk
+          stat --printf='ANDROID_DEBUG_ARM64_APK_BYTES=%s\n' \
+            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-debug-arm64.apk
+      - name: Build unsigned arm64 release APK for size gate
+        working-directory: apps/mobile
+        run: flutter build apk --release --target-platform android-arm64
+      - name: Preserve and measure unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp apps/mobile/build/app/outputs/flutter-apk/app-release.apk \
+            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-release-unsigned-arm64.apk
+          bytes=$(stat --printf='%s' \
+            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-release-unsigned-arm64.apk)
+          printf 'ANDROID_RELEASE_UNSIGNED_ARM64_APK_BYTES=%s\n' "$bytes"
+          if (( bytes > 40 * 1024 * 1024 )); then
+            echo 'Android arm64 release APK exceeds the 40 MB base budget.' >&2
+            exit 1
+          fi
+          (cd ci_artifacts/android && sha256sum *.apk > SHA256SUMS.txt)
+      - name: Upload Android alpha packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: picklogic-android-debug
-          path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
+          name: picklogic-android-alpha
+          path: ci_artifacts/android
           if-no-files-found: error
           retention-days: 7
 
@@ -152,10 +175,28 @@ jobs:
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_PRO_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 130MB) { throw 'Windows Pro exceeds the 130 MB base budget.' }
-      - name: Upload Windows builds
+      - name: Package Windows alpha bundles
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination 'ci_artifacts/windows-standard/INSTALLATION.md'
+          Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination 'ci_artifacts/windows-pro/INSTALLATION.md'
+          Compress-Archive -Path 'ci_artifacts/windows-standard/*' -DestinationPath 'ci_artifacts/picklogic-windows-standard-v0.1.0-alpha.zip' -CompressionLevel Optimal
+          Compress-Archive -Path 'ci_artifacts/windows-pro/*' -DestinationPath 'ci_artifacts/picklogic-windows-pro-v0.1.0-alpha.zip' -CompressionLevel Optimal
+          $packages = Get-ChildItem -LiteralPath 'ci_artifacts' -Filter '*.zip' -File | Sort-Object Name
+          $lines = foreach ($package in $packages) {
+            $hash = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($package.Name)"
+          }
+          $lines | Set-Content -LiteralPath 'ci_artifacts/SHA256SUMS.txt' -Encoding ascii
+          foreach ($package in $packages) {
+            Write-Output "WINDOWS_PACKAGE name=$($package.Name) bytes=$($package.Length)"
+          }
+      - name: Upload Windows alpha packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: picklogic-windows-builds
-          path: ci_artifacts
+          name: picklogic-windows-alpha
+          path: |
+            ci_artifacts/*.zip
+            ci_artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

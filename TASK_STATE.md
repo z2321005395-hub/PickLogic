@@ -1,6 +1,6 @@
 # Task State
 
-Updated: 2026-08-12
+Updated: 2026-08-13
 
 ## Goal
 
@@ -9,7 +9,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 ## Completed
 
 - Inspected the initially empty Git repository; renamed the unborn branch from `master` to `main`.
-- Detected Git/GitHub CLI; GitHub session is active, but no remote repository has been created.
+- Created the Private GitHub repository `z2321005395-hub/PickLogic`; Public conversion remains blocked on maintainer approval.
 - Audited Flutter/Windows/Android tool availability and started the official Flutter stable SDK download.
 - Reused the existing TTDT Android toolchain instead of installing Android Studio: JDK 17, Gradle 9.4.1, SDK/API 36, ADB, Emulator, and two AVDs.
 - Verified the reference phone via ADB without recording its serial: nubia NX736J, Android 15, API 35.
@@ -24,7 +24,12 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Added Windows system folder picker/open/reveal/attributes/storage bridge code and wired the Desktop shell to bounded scan batches, classification, SQLite upserts, search, preview, and Insight.
 - Added pinned CI jobs, TTDT-first local tooling, dependency-license checks, privacy/secret checks, artifact build scripts, and size reporting.
 - Created truthful Bootstrap commit `3303b03`, switched Lead to `develop`, and established the requested three feature branches plus clean sibling worktrees.
-- Started three active isolated Codex worktree tasks for Track A, Track B, and Track C; Lead remains integration-only.
+- Completed Track A, B, and C in isolated Codex worktrees; Lead reviewed and merged PRs #9, #10, and #11 into `develop`.
+- Track A added resumable SQLite scan reconciliation, ranked search, streaming exact duplicates, and synthetic-root-only batch operation previews.
+- Track B added bounded PDF metadata/DOI probing, preview-only literature naming, reading progress, virtual research buckets, and read-only System Insight views.
+- Track C added bounded MediaStore thumbnails, screenshot timeline groups, a one-page-at-a-time metadata queue, and explicit scoped-storage limits.
+- Established six truthful GitHub milestones and eight roadmap/validation issues; M0 and the Track A issue are closed with evidence.
+- Baseline and track CI runs compiled Android, Windows Standard, and Windows Pro successfully on hosted runners.
 
 ## Files changed
 
@@ -42,17 +47,21 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - TTDT `java`, `javac`, `adb`, `emulator -list-avds`, `sdkmanager --list_installed`, and basic ADB `getprop` checks passed.
 - `flutter doctor -v`: Flutter, Windows OS, Android toolchain/licenses, network, and connected Android device passed; Visual Studio is the only toolchain failure.
 - `dart pub get` resolved the workspace and SQLite native asset without changing Windows policy.
-- `tools\picklogic.cmd full`: 78 files formatted with zero changes; Dart analysis reported no issues; 11 quick modules plus 6 remaining SQLite/Flutter modules passed with concise summaries.
+- Post-Track-A/B integration `tools\picklogic.cmd full`: 82 files formatted with zero changes; analysis reported no issues; 11 quick modules plus 6 remaining SQLite/Flutter modules passed.
 - Dependency audit: 65 external packages and 4 Flutter SDK packages had recognized licenses; no missing/unknown/strong-copyleft package finding.
 - Committed-source privacy scan passed with zero findings.
+- Latest Track B and Track C GitHub Actions each passed quality, Android debug, and Windows Standard/Pro build jobs.
+- ADB confirmed the reference phone is arm64-only; no media metadata or content was read.
+- PDF engine dry-run audit: `pdfrx 2.4.7` is MIT over PDFium BSD-3 and would add 33 resolved dependencies plus native assets; it remains unaccepted pending measured size impact.
 
 ## Blockers
 
 - Windows Developer Mode must be enabled by the user in Settings; it is required for Flutter plugin symlinks and the evaluated PDF plugin.
 - Visual Studio Build Tools with Desktop C++ is not installed and will require a later user-visible UAC/installer step.
-- Native Android and Windows code cannot yet be compiled locally because Flutter plugin symlinks require Developer Mode; Windows additionally needs Visual Studio Build Tools C++.
-- Final license/copyright owner, private remote creation, Public conversion, real-directory scan, device media permission, and release publication remain gated.
+- Native Android and Windows code cannot yet be compiled locally because Flutter plugin symlinks require Developer Mode; Windows additionally needs Visual Studio Build Tools C++. Hosted CI compilation is green.
+- Embedded PDF page rendering/search/selection remains audit-gated; current Pro code provides bounded metadata and an explicit reader skeleton.
+- Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Review and integrate the three active track commits into their predefined feature branches and then `develop`. After the user enables Developer Mode, compile the Android bridge/APK; Visual Studio Build Tools remains a later explicit UAC handoff for Windows builds.
+Finish integration packaging and size gates, rerun full local/remote verification, download the three private alpha candidates, and create a draft release. Then pause for maintainer-controlled Developer Mode/Visual Studio setup, device permissions, first trial, and license/copyright decisions.

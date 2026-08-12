@@ -2,7 +2,7 @@
 
 - Product: PickLogic / 拾理; contextual explanation: 知件 / Insight.
 - Motto: Small. Local. Useful.
-- Status: Phase 0 code/test baseline complete; native builds remain locally gated; no public release.
+- Status: M1 vertical slices merged to `develop`; private alpha packaging is in progress; no public release.
 - Targets: Windows Standard, Windows Pro, Android Mobile.
 - Architecture: one Flutter/Dart workspace, shared pure-Dart core, narrow Windows/Android bridges.
 - Desktop: one implementation with `main_standard.dart` and `main_pro.dart`; no duplicate app.
@@ -13,21 +13,23 @@
 - AI: optional provider; deterministic rules and metadata come first; app works with AI disabled.
 - Size targets: Android 40 MB, Standard 80 MB, Pro 130 MB.
 - Canonical contracts: `docs/DATA_MODEL.md`.
-- Current state and next action: `TASK_STATE.md`.
+- Current state and next action: `TASK_STATE.md`; installation limits: `docs/KNOWN_ISSUES.md`.
 - Repository map: `docs/REPO_MAP.md`.
 - Dependency gate: `DEPENDENCY_BUDGET.md`.
 - Public gate: final license/copyright, brand review, maintainer approval, clean privacy scan, green CI, installable artifacts, user trial.
 - Known brand risk: exact-name npm/open-source projects and active PickLogic domains; display name unchanged pending maintainer decision.
 - Local Android baseline: TTDT toolchain with JDK 17, Gradle 9.4.1, SDK/API 36, ADB, and existing AVDs.
-- Reference phone verified by ADB: nubia NX736J, Android 15, API 35. Do not record its serial.
-- Verification: full Dart/Flutter module suite, SQLite native asset test, dependency-license audit, and committed-source privacy scan pass locally.
+- Reference phone verified by ADB: nubia NX736J, Android 15, API 35, arm64-only. Do not record its serial.
+- Verification: merged local suite and hosted Android/Windows builds pass; dependency-license and privacy scans report no findings.
 - Local build gates: Windows Developer Mode is off; Visual Studio C++ Build Tools is absent.
+- PDF engine: `pdfrx 2.4.7`/PDFium passed an initial license-capability screen but is not accepted until Standard/Pro size deltas are measured.
+- GitHub: Private repository, real milestones/issues, and merged PRs #9–#11; Public remains maintainer-gated.
 
 ## Ownership
 
-- Track A: core models, file/search index, duplicate/classification/operations, Desktop Standard.
-- Track B: literature, research, system insight, Desktop Pro composition.
-- Track C: Mobile and Android bridge.
+- Track A: merged — core indexing/search/duplicates/safe operations and Desktop Standard.
+- Track B: merged — bounded literature metadata, research skeleton, System Insight, and Pro composition.
+- Track C: merged — Mobile, bounded thumbnails/grouping/index queue, and Android bridge.
 - Lead: contracts, dependency audit, review, CI, integration, release gates, user interaction; no duplicate feature implementation.
 
 ## First commands

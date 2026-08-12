@@ -16,8 +16,8 @@
 - `packages/research_core/` — virtual research workspace skeleton.
 - `packages/system_insight_core/` — read-only Windows storage/system explanations.
 - `packages/shared_ui/` — design tokens, localization, safe-mode banner, shared widgets.
-- `platform/windows_bridge/` — Windows scan/open/reveal/trash and read-only system adapters.
-- `platform/android_bridge/` — MediaStore, SAF, WorkManager, OCR, and storage restriction adapters.
+- `platform/windows_bridge/` — Windows directory picker, open/reveal, attributes, and read-only storage adapters.
+- `platform/android_bridge/` — MediaStore, SAF, bounded thumbnails, permissions, and storage restriction adapters.
 - `test_fixtures/` — synthetic-only public data and generator manifest.
 - `tools/` — local environment, fixture, license, privacy, size, and release checks.
 - `tools/picklogic.cmd` — local policy-safe launcher that prefers the TTDT toolchain.
@@ -25,6 +25,10 @@
 - `tools/dependency_license_check.dart` — resolved external-package license gate.
 - `tools/run_module_tests.dart` — concise success / detailed failure module-test orchestrator.
 - `docs/DATA_MODEL.md` — canonical cross-target data/interface contract.
+- `docs/INSTALLATION.md` — private alpha installation and package-type instructions.
+- `docs/KNOWN_ISSUES.md` — current capability, signing, permission, and local-toolchain limits.
+- `docs/PRIVACY_REPORT.md` — v0.1 data-flow and real-data validation boundary.
+- `docs/RELEASE_NOTES_v0.1.0-alpha.md` — truthful draft release scope and limitations.
 - `docs/decisions/` — concise architecture decision records.
 - `.github/workflows/` — format, analysis, tests, builds, license, and secret checks.
 - `.github/workflows/ci.yml` — pinned quality, Android, and Windows jobs.
