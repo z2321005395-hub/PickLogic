@@ -37,3 +37,5 @@ Opt-in emulator validation similarly pre-seeds the package's Android x64 file (`
 Final hosted baseline before PDFium: Windows Standard 31,606,393 bytes runtime, Windows Pro 31,835,769 bytes runtime, and Android arm64 release 18,906,037 bytes. The Android release artifact is unsigned size evidence; the separately labeled debug APK is installable.
 
 Hosted accepted runtime: Standard 39,313,910 bytes; Pro 40,165,878 bytes. The distributable payload adds the 1,542-byte installation guide, yielding 39,315,452 and 40,167,420 bytes before compression; ZIPs are 17,392,256 and 17,747,557 bytes. These are 46.9% and 29.5% of the respective budgets. Android arm64 release is 18,907,513 bytes, only 1,476 bytes above baseline; PDFium is not packaged into Mobile. Packaged Pro parse/text/render smoke returned 0.
+
+Current candidate after durable Mobile indexing: Android arm64 Debug/unsigned Release are 79,119,128/18,973,293 bytes; the Release increase is 65,616 bytes from the prior candidate and remains 45.2% of its 40 MiB budget. Standard/Pro payloads remain 39,315,452/40,167,420 bytes and ZIPs are 17,392,257/17,747,556 bytes. No runtime dependency was added.
