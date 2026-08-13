@@ -25,10 +25,77 @@ void main() {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.tap(find.text('截图'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('加入删除审查'), findsOneWidget);
+    expect(find.byKey(const Key('screenshot-real-count')), findsOneWidget);
+    expect(find.textContaining('共 4 张可访问截图'), findsOneWidget);
+    expect(find.byKey(const Key('screenshot-thumbnail-grid')), findsOneWidget);
+    expect(find.textContaining('删除审查不会删除、移动或重命名'), findsOneWidget);
     expect(find.textContaining('来源线索不是应用归属结论'), findsOneWidget);
-    expect(find.textContaining('未运行 OCR'), findsOneWidget);
+    expect(find.textContaining('OCR'), findsNothing);
     expect(find.textContaining('一键放心删除'), findsNothing);
+  });
+
+  testWidgets('screenshot month filter and local review queue are usable', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const PickLogicMobileApp());
+    await tester.tap(find.text('截图'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screenshot-month-2026-07')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('screenshot-item-Screenshot_4.png')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('screenshot-item-Screenshot_1.png')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const Key('screenshot-month-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('screenshot-item-Screenshot_1.png')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('screenshot-item-details')), findsOneWidget);
+    expect(find.textContaining('OCR：未请求'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('screenshot-mark-delete-review')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('删除审查 1'), findsOneWidget);
+    expect(find.textContaining('未修改原文件'), findsOneWidget);
+  });
+
+  testWidgets('files collections remain usable without photo permission', (
+    tester,
+  ) async {
+    final repository = _RetryMobileRepository(
+      failBootstrapOnce: false,
+      bootstrapState: _deniedBootstrap,
+    );
+    await tester.pumpWidget(PickLogicMobileApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('files-documents')), findsOneWidget);
+    expect(find.text('Document_1.txt'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('files-downloads')));
+    await tester.pumpAndSettle();
+    expect(find.text('Download_1.pdf'), findsOneWidget);
+  });
+
+  testWidgets('photos support bounded current-page metadata search', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const PickLogicMobileApp());
+    await tester.tap(find.text('照片'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('photos-search-field')),
+      'Photo_12',
+    );
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Photo_12.jpg'), findsOneWidget);
+    expect(find.bySemanticsLabel('Photo_1.jpg'), findsNothing);
   });
 
   testWidgets('storage insight exposes platform and attribution limits', (
@@ -60,7 +127,7 @@ void main() {
     await tester.tap(find.byKey(const Key('mobile-bootstrap-retry')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('mobile-bootstrap-failure')), findsNothing);
-    expect(find.text('最近 · Recent'), findsOneWidget);
+    expect(find.text('文件集合'), findsOneWidget);
     expect(repository.bootstrapCalls, 2);
   });
 
@@ -75,6 +142,8 @@ void main() {
     await tester.pumpWidget(PickLogicMobileApp(repository: repository));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('截图'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('选择媒体权限'));
     await tester.pumpAndSettle();
 
@@ -133,6 +202,9 @@ final class _RetryMobileRepository implements MobileRepository {
     int limit = 60,
     int offset = 0,
   }) => _delegate.loadScreenshotGroups(limit: limit, offset: offset);
+
+  @override
+  Future<int> countMedia(AndroidMediaKind kind) => _delegate.countMedia(kind);
 
   @override
   Future<Uint8List?> loadThumbnail(

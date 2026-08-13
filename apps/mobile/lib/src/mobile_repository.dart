@@ -39,6 +39,8 @@ abstract interface class MobileRepository {
     int offset = 0,
   });
 
+  Future<int> countMedia(AndroidMediaKind kind);
+
   Future<Uint8List?> loadThumbnail(
     FileRecord record, {
     required int maxWidth,
@@ -166,6 +168,9 @@ final class AndroidMobileRepository implements MobileRepository {
       ),
     );
   }
+
+  @override
+  Future<int> countMedia(AndroidMediaKind kind) => bridge.countMedia(kind);
 
   @override
   Future<Uint8List?> loadThumbnail(
@@ -350,11 +355,13 @@ final class SyntheticMobileRepository implements MobileRepository {
       DateTime.utc(2026, 8, 12, 10, 2),
       DateTime.utc(2026, 8, 12, 10),
       DateTime.utc(2026, 8, 12, 8),
+      DateTime.utc(2026, 7, 28, 16),
     ];
     final sources = <String>[
       'synthetic.notes',
       'synthetic.notes',
       'synthetic.browser',
+      'synthetic.reader',
     ];
     final candidates = <MobileScreenshotCandidate>[
       for (var index = 0; index < times.length; index++)
@@ -379,6 +386,13 @@ final class SyntheticMobileRepository implements MobileRepository {
     ];
     return buildScreenshotGroups(candidates.skip(offset).take(limit));
   }
+
+  @override
+  Future<int> countMedia(AndroidMediaKind kind) async => switch (kind) {
+    AndroidMediaKind.screenshots => 4,
+    AndroidMediaKind.photos || AndroidMediaKind.images => 12,
+    _ => 3,
+  };
 
   @override
   Future<Uint8List?> loadThumbnail(

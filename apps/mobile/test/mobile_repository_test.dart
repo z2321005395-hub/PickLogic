@@ -195,6 +195,7 @@ void main() {
                 'canInspectOtherAppPrivateData': false,
                 'systemRestriction': 'restricted',
               },
+              'countMedia' => 11,
               'getPrivateIndexDatabasePath' =>
                 'synthetic-private/picklogic-index.sqlite3',
               'queryMediaPage' => () {
@@ -343,6 +344,15 @@ void main() {
       expect(first, <int>[1, 2, 3, 4]);
       expect(second, same(first));
       expect(thumbnailCalls, 1);
+      await repository.close();
+    });
+
+    test('returns the real MediaStore collection count', () async {
+      final repository = AndroidMobileRepository(
+        indexPersistence: SqliteMobileIndexPersistence.inMemory(),
+      );
+
+      expect(await repository.countMedia(AndroidMediaKind.screenshots), 11);
       await repository.close();
     });
 

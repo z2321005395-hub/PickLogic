@@ -45,6 +45,13 @@ class MethodChannelPicklogicAndroidBridge
   }
 
   @override
+  Future<int> countMedia(AndroidMediaKind kind) async =>
+      await methodChannel.invokeMethod<int>('countMedia', <String, Object>{
+        'kind': kind.name,
+      }) ??
+      0;
+
+  @override
   Future<AndroidThumbnail?> loadThumbnail(
     AndroidThumbnailRequest request,
   ) async {

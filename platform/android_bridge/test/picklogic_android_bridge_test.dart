@@ -30,6 +30,9 @@ class MockPicklogicAndroidBridgePlatform
       const AndroidMediaPage(items: [], offset: 0, hasMore: false);
 
   @override
+  Future<int> countMedia(AndroidMediaKind kind) async => 7;
+
+  @override
   Future<AndroidThumbnail?> loadThumbnail(
     AndroidThumbnailRequest request,
   ) async => AndroidThumbnail(bytes: Uint8List.fromList(<int>[1, 2, 3]));
@@ -82,6 +85,7 @@ void main() {
     final page = await bridge.queryMediaPage(
       const AndroidMediaQuery(kind: AndroidMediaKind.screenshots),
     );
+    final count = await bridge.countMedia(AndroidMediaKind.screenshots);
     final storage = await bridge.getStorageSnapshot();
     final indexPath = await bridge.getPrivateIndexDatabasePath();
     final thumbnail = await bridge.loadThumbnail(
@@ -96,6 +100,7 @@ void main() {
 
     expect(state.canReadVisualMedia, isFalse);
     expect(page.items, isEmpty);
+    expect(count, 7);
     expect(storage.canInspectOtherAppPrivateData, isFalse);
     expect(indexPath, endsWith('picklogic-index.sqlite3'));
     expect(thumbnail?.bytes, <int>[1, 2, 3]);

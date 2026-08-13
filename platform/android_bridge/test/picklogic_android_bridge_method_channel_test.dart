@@ -44,6 +44,7 @@ void main() {
               'offset': 0,
               'hasMore': true,
             },
+            'countMedia' => 37,
             'loadThumbnail' => Uint8List.fromList(<int>[1, 2, 3, 4]),
             'getStorageSnapshot' => <String, Object>{
               'totalBytes': 1000,
@@ -82,6 +83,7 @@ void main() {
     expect(page.items.single.relativePath, 'Pictures/Screenshots/');
     expect(page.items.single.sourceHint, 'com.example.synthetic');
     expect(page.hasMore, isTrue);
+    expect(await platform.countMedia(AndroidMediaKind.screenshots), 37);
   });
 
   test('requests a strictly bounded thumbnail', () async {

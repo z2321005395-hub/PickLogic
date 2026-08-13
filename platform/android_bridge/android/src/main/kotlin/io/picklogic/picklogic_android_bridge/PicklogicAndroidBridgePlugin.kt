@@ -66,6 +66,7 @@ class PicklogicAndroidBridgePlugin :
                 File(applicationContext.noBackupFilesDir, PRIVATE_INDEX_FILENAME).absolutePath,
             )
             "queryMediaPage" -> queryMediaPage(call, result)
+            "countMedia" -> countMedia(call, result)
             "loadThumbnail" -> loadBoundedThumbnail(call, result)
             "pickDocumentTree" -> pickDocumentTree(result)
             "openContentUri" -> openContentUri(call, result)
@@ -86,14 +87,10 @@ class PicklogicAndroidBridgePlugin :
         val permissions = when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
             )
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO,
             )
             else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
@@ -186,6 +183,55 @@ class PicklogicAndroidBridgePlugin :
                     result.error(
                         "media_query_failed",
                         "Android could not read this media metadata page.",
+                        null,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun countMedia(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        val kind = (call.arguments as? Map<*, *>)?.get("kind") as? String
+        if (kind == null) {
+            result.error("invalid_query", "A media collection is required.", null)
+            return
+        }
+        val worker = executor
+        if (worker == null || worker.isShutdown) {
+            result.error("bridge_unavailable", "The Android bridge is detached.", null)
+            return
+        }
+        worker.execute {
+            try {
+                val target = queryTarget(kind)
+                val selection = target.selections.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
+                val selectionArgs = target.selectionArguments.takeIf { it.isNotEmpty() }?.toTypedArray()
+                val count = applicationContext.contentResolver.query(
+                    target.uri,
+                    arrayOf(MediaStore.MediaColumns._ID),
+                    selection,
+                    selectionArgs,
+                    null,
+                )?.use { it.count } ?: 0
+                mainHandler.post { result.success(count) }
+            } catch (_: SecurityException) {
+                mainHandler.post {
+                    result.error(
+                        "permission_denied",
+                        "Media permission is required before counting this collection.",
+                        null,
+                    )
+                }
+            } catch (error: IllegalArgumentException) {
+                mainHandler.post { result.error("invalid_query", error.message, null) }
+            } catch (_: Exception) {
+                mainHandler.post {
+                    result.error(
+                        "media_query_failed",
+                        "Android could not count this media collection.",
                         null,
                     )
                 }

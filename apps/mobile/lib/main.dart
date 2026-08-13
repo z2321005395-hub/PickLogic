@@ -120,7 +120,7 @@ final class _MobileShellState extends State<MobileShell> {
       delegate: _MobileSearchDelegate(widget.repository),
     );
     if (record != null && mounted) {
-      _showInsight(context, record, widget.repository);
+      _showMediaItem(context, record, widget.repository);
     }
   }
 
@@ -136,19 +136,21 @@ final class _MobileShellState extends State<MobileShell> {
           _FilesPage(
             repository: widget.repository,
             active: _index == 0,
-            canReadMedia: canReadMedia,
-            onRequestAccess: _requestMediaAccess,
             onChooseTree: _chooseDocumentTree,
           ),
           _ScreenshotsPage(
             repository: widget.repository,
             active: _index == 1,
             canReadMedia: canReadMedia,
+            onRequestAccess: _requestMediaAccess,
+            onChooseTree: _chooseDocumentTree,
           ),
           _PhotosPage(
             repository: widget.repository,
             active: _index == 2,
             canReadMedia: canReadMedia,
+            onRequestAccess: _requestMediaAccess,
+            onChooseTree: _chooseDocumentTree,
           ),
           _StoragePage(
             bootstrap: bootstrap,
@@ -254,15 +256,11 @@ final class _FilesPage extends StatefulWidget {
   const _FilesPage({
     required this.repository,
     required this.active,
-    required this.canReadMedia,
-    required this.onRequestAccess,
     required this.onChooseTree,
   });
 
   final MobileRepository repository;
   final bool active;
-  final bool canReadMedia;
-  final VoidCallback onRequestAccess;
   final VoidCallback onChooseTree;
 
   @override
@@ -270,6 +268,7 @@ final class _FilesPage extends StatefulWidget {
 }
 
 final class _FilesPageState extends State<_FilesPage> {
+  AndroidMediaKind _kind = AndroidMediaKind.documents;
   Future<List<FileRecord>>? _records;
 
   @override
@@ -281,31 +280,51 @@ final class _FilesPageState extends State<_FilesPage> {
   @override
   void didUpdateWidget(covariant _FilesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.canReadMedia && widget.canReadMedia) _records = null;
+    if (oldWidget.repository != widget.repository) _records = null;
     _ensureLoaded();
   }
 
   void _ensureLoaded() {
-    if (widget.active && widget.canReadMedia && _records == null) {
-      _records = widget.repository.loadMedia(AndroidMediaKind.documents);
+    if (widget.active && _records == null) {
+      _records = widget.repository.loadMedia(_kind);
     }
+  }
+
+  void _selectCollection(AndroidMediaKind kind) {
+    if (_kind == kind) return;
+    setState(() {
+      _kind = kind;
+      _records = widget.repository.loadMedia(kind);
+    });
   }
 
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(16),
     children: [
-      Text('最近 · Recent', style: Theme.of(context).textTheme.titleLarge),
+      Text('文件集合', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 8),
-      const Text('元数据按页读取；不会在首屏加载完整文件。'),
+      const Text('每次只读取一页 MediaStore 元数据；其他共享目录使用 SAF 只读授权。'),
       const SizedBox(height: 12),
-      if (!widget.canReadMedia)
-        _AccessRequired(
-          onRequestAccess: widget.onRequestAccess,
-          onChooseTree: widget.onChooseTree,
-        )
-      else
-        _RecordList(future: _records, repository: widget.repository),
+      Wrap(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            key: const Key('files-documents'),
+            label: const Text('文档'),
+            selected: _kind == AndroidMediaKind.documents,
+            onSelected: (_) => _selectCollection(AndroidMediaKind.documents),
+          ),
+          ChoiceChip(
+            key: const Key('files-downloads'),
+            label: const Text('下载'),
+            selected: _kind == AndroidMediaKind.downloads,
+            onSelected: (_) => _selectCollection(AndroidMediaKind.downloads),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _RecordList(future: _records, repository: widget.repository),
       const SizedBox(height: 12),
       OutlinedButton.icon(
         onPressed: widget.onChooseTree,
@@ -342,7 +361,7 @@ final class _RecordList extends StatelessWidget {
                 subtitle: Text(
                   '${record.category.name} · ${_formatBytes(record.sizeBytes)}',
                 ),
-                onTap: () => _showInsight(context, record, repository),
+                onTap: () => _showMediaItem(context, record, repository),
               ),
             ),
         ],
@@ -356,20 +375,24 @@ final class _ScreenshotsPage extends StatefulWidget {
     required this.repository,
     required this.active,
     required this.canReadMedia,
+    required this.onRequestAccess,
+    required this.onChooseTree,
   });
 
   final MobileRepository repository;
   final bool active;
   final bool canReadMedia;
+  final VoidCallback onRequestAccess;
+  final VoidCallback onChooseTree;
 
   @override
   State<_ScreenshotsPage> createState() => _ScreenshotsPageState();
 }
 
 final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
-  final PageController _controller = PageController();
   final Map<String, ScreenshotReviewState> _review = {};
-  Future<List<MobileScreenshotGroup>>? _groups;
+  Future<_ScreenshotSnapshot>? _snapshot;
+  String? _month;
 
   @override
   void initState() {
@@ -380,20 +403,33 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
   @override
   void didUpdateWidget(covariant _ScreenshotsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.canReadMedia && widget.canReadMedia) _groups = null;
+    if ((!oldWidget.canReadMedia && widget.canReadMedia) ||
+        oldWidget.repository != widget.repository) {
+      _snapshot = null;
+    }
     _ensureLoaded();
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void _ensureLoaded() {
+    if (widget.active && widget.canReadMedia && _snapshot == null) {
+      _snapshot = _loadSnapshot();
+    }
   }
 
-  void _ensureLoaded() {
-    if (widget.active && widget.canReadMedia && _groups == null) {
-      _groups = widget.repository.loadScreenshotGroups();
-    }
+  Future<_ScreenshotSnapshot> _loadSnapshot() async {
+    final countFuture = widget.repository
+        .countMedia(AndroidMediaKind.screenshots)
+        .catchError((_) => -1);
+    final groups = await widget.repository.loadScreenshotGroups(limit: 60);
+    final loaded = groups.fold<int>(
+      0,
+      (sum, group) => sum + group.records.length,
+    );
+    final count = await countFuture;
+    return _ScreenshotSnapshot(
+      groups: groups,
+      totalCount: count < 0 ? loaded : count,
+    );
   }
 
   void _mark(FileRecord record, ScreenshotReviewState state) {
@@ -405,19 +441,28 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
       ScreenshotReviewState.protected => '已保护',
       ScreenshotReviewState.unreviewed => '尚未判断',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(label)));
-    _controller.nextPage(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$label · 仅保存为本地审查标记，未修改原文件')));
   }
 
   @override
   Widget build(BuildContext context) {
     if (!widget.canReadMedia) {
-      return const Center(child: Text('授予媒体只读权限后显示截图；不会自动 OCR。'));
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('截图', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          _AccessRequired(
+            onRequestAccess: widget.onRequestAccess,
+            onChooseTree: widget.onChooseTree,
+          ),
+          const Text('授权后只读取 MediaStore 元数据与可见项的有界缩略图；不会自动 OCR。'),
+        ],
+      );
     }
-    if (_groups == null) {
+    if (_snapshot == null) {
       return const Center(child: Text('进入截图页后按需加载。'));
     }
     return Padding(
@@ -425,18 +470,15 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('截图时间线', style: Theme.of(context).textTheme.titleLarge),
-          const Text('按时间与来源线索连续分组；来源线索不是应用归属结论。'),
-          const SizedBox(height: 16),
           Expanded(
-            child: FutureBuilder<List<MobileScreenshotGroup>>(
-              future: _groups,
+            child: FutureBuilder<_ScreenshotSnapshot>(
+              future: _snapshot,
               builder: (context, snapshot) {
                 if (snapshot.hasError) return const Text('当前无法读取截图集合。');
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final groups = snapshot.data!;
+                final groups = snapshot.data!.groups;
                 if (groups.isEmpty) {
                   return const Center(child: Text('没有可访问截图。'));
                 }
@@ -445,99 +487,160 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                     for (final record in group.records)
                       _ScreenshotPageEntry(group: group, record: record),
                 ];
-                return PageView.builder(
-                  controller: _controller,
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    final record = entry.record;
-                    final group = entry.group.summary;
-                    final state =
-                        _review[record.id] ?? ScreenshotReviewState.unreviewed;
-                    return GestureDetector(
-                      onVerticalDragEnd: (details) {
-                        if ((details.primaryVelocity ?? 0) < -250) {
-                          _mark(record, ScreenshotReviewState.later);
-                        }
-                      },
-                      child: Dismissible(
-                        key: ValueKey(record.id),
-                        direction: DismissDirection.horizontal,
-                        confirmDismiss: (direction) async {
-                          _mark(
-                            record,
-                            direction == DismissDirection.startToEnd
-                                ? ScreenshotReviewState.keep
-                                : ScreenshotReviewState.deleteReview,
-                          );
-                          return false;
-                        },
-                        child: Card(
-                          child: InkWell(
-                            onTap: () => _showInsight(
-                              context,
-                              record,
-                              widget.repository,
+                final months = <String>{
+                  for (final entry in entries)
+                    _monthKey(
+                      entry.record.createdAt ?? entry.record.modifiedAt,
+                    ),
+                }.toList(growable: false);
+                final visible = entries
+                    .where(
+                      (entry) =>
+                          _month == null ||
+                          _monthKey(
+                                entry.record.createdAt ??
+                                    entry.record.modifiedAt,
+                              ) ==
+                              _month,
+                    )
+                    .toList(growable: false);
+                final keepCount = _review.values
+                    .where((state) => state == ScreenshotReviewState.keep)
+                    .length;
+                final laterCount = _review.values
+                    .where((state) => state == ScreenshotReviewState.later)
+                    .length;
+                final deleteCount = _review.values
+                    .where(
+                      (state) => state == ScreenshotReviewState.deleteReview,
+                    )
+                    .length;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('截图', style: Theme.of(context).textTheme.titleLarge),
+                    Text(
+                      '共 ${snapshot.data!.totalCount} 张可访问截图 · '
+                      '当前显示最近 ${entries.length} 张（日期倒序）',
+                      key: const Key('screenshot-real-count'),
+                    ),
+                    const Text('按时间与来源线索连续分组；来源线索不是应用归属结论。'),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ChoiceChip(
+                            key: const Key('screenshot-month-all'),
+                            label: const Text('全部月份'),
+                            selected: _month == null,
+                            onSelected: (_) => setState(() => _month = null),
+                          ),
+                          for (final month in months) ...[
+                            const SizedBox(width: 8),
+                            ChoiceChip(
+                              key: Key('screenshot-month-$month'),
+                              label: Text(month),
+                              selected: _month == month,
+                              onSelected: (_) => setState(() => _month = month),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '本地审查队列：保留 $keepCount · 稍后 $laterCount · 删除审查 $deleteCount',
+                      key: const Key('screenshot-review-summary'),
+                    ),
+                    const Text('这些是当前会话的本地标记；删除审查不会删除、移动或重命名媒体。'),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: GridView.builder(
+                        key: const Key('screenshot-thumbnail-grid'),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 6,
+                              mainAxisSpacing: 6,
+                              childAspectRatio: 0.82,
+                            ),
+                        itemCount: visible.length,
+                        itemBuilder: (context, index) {
+                          final entry = visible[index];
+                          final record = entry.record;
+                          final group = entry.group.summary;
+                          final state =
+                              _review[record.id] ??
+                              ScreenshotReviewState.unreviewed;
+                          return Card(
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              key: Key('screenshot-item-${record.id}'),
+                              onTap: () => _showScreenshotItem(
+                                context,
+                                record,
+                                entry.group,
+                                state,
+                                widget.repository,
+                                _mark,
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
                                 children: [
-                                  Expanded(
-                                    child: _OnDemandThumbnail(
-                                      repository: widget.repository,
-                                      record: record,
-                                      maxWidth: 320,
-                                      maxHeight: 240,
-                                      fallbackIcon:
-                                          Icons.screenshot_monitor_outlined,
+                                  _OnDemandThumbnail(
+                                    repository: widget.repository,
+                                    record: record,
+                                    maxWidth: 192,
+                                    maxHeight: 192,
+                                    fallbackIcon:
+                                        Icons.screenshot_monitor_outlined,
+                                  ),
+                                  Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: Container(
+                                      width: double.infinity,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surface
+                                          .withValues(alpha: 0.90),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 4,
+                                      ),
+                                      child: Text(
+                                        _formatDateTime(
+                                          record.createdAt ?? record.modifiedAt,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall,
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    record.displayName,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    '来源线索：${group.sourceHint}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
-                                    '${group.memberIds.length > 1 ? '连续 ${group.memberIds.length} 张' : '单张'}',
-                                  ),
-                                  Text(
-                                    state == ScreenshotReviewState.unreviewed
-                                        ? '尚未判断 · 未运行 OCR'
-                                        : state.name,
-                                  ),
-                                  IconButton(
-                                    tooltip: '保护/保留',
-                                    onPressed: () => _mark(
-                                      record,
-                                      ScreenshotReviewState.protected,
+                                  if (group.memberIds.length > 1)
+                                    _GridBadge(
+                                      alignment: Alignment.topLeft,
+                                      label: '连续 ${group.memberIds.length}',
                                     ),
-                                    icon: const Icon(Icons.shield_outlined),
-                                  ),
+                                  if (state != ScreenshotReviewState.unreviewed)
+                                    _GridBadge(
+                                      alignment: Alignment.topRight,
+                                      label: _reviewLabel(state),
+                                    ),
                                 ],
                               ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 );
               },
             ),
-          ),
-          const SizedBox(height: 12),
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [Text('← 加入删除审查'), Text('↑ 稍后'), Text('保留 →')],
           ),
         ],
       ),
@@ -550,11 +653,15 @@ final class _PhotosPage extends StatefulWidget {
     required this.repository,
     required this.active,
     required this.canReadMedia,
+    required this.onRequestAccess,
+    required this.onChooseTree,
   });
 
   final MobileRepository repository;
   final bool active;
   final bool canReadMedia;
+  final VoidCallback onRequestAccess;
+  final VoidCallback onChooseTree;
 
   @override
   State<_PhotosPage> createState() => _PhotosPageState();
@@ -562,6 +669,7 @@ final class _PhotosPage extends StatefulWidget {
 
 final class _PhotosPageState extends State<_PhotosPage> {
   Future<List<FileRecord>>? _records;
+  String _query = '';
 
   @override
   void initState() {
@@ -572,7 +680,10 @@ final class _PhotosPageState extends State<_PhotosPage> {
   @override
   void didUpdateWidget(covariant _PhotosPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.canReadMedia && widget.canReadMedia) _records = null;
+    if ((!oldWidget.canReadMedia && widget.canReadMedia) ||
+        oldWidget.repository != widget.repository) {
+      _records = null;
+    }
     _ensureLoaded();
   }
 
@@ -585,46 +696,97 @@ final class _PhotosPageState extends State<_PhotosPage> {
   @override
   Widget build(BuildContext context) {
     if (!widget.canReadMedia) {
-      return const Center(child: Text('媒体权限未开启；PickLogic 不会读取照片。'));
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('照片', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          _AccessRequired(
+            onRequestAccess: widget.onRequestAccess,
+            onChooseTree: widget.onChooseTree,
+          ),
+          const Text('未授权时 PickLogic 不读取照片。'),
+        ],
+      );
     }
     if (_records == null) {
       return const Center(child: Text('进入照片页后按需加载。'));
     }
-    return FutureBuilder<List<FileRecord>>(
-      future: _records,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return const Center(child: Text('当前无法读取照片集合。'));
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('照片', style: Theme.of(context).textTheme.titleLarge),
+          const Text('当前页元数据搜索；缩略图只在可见时按需读取。'),
+          const SizedBox(height: 8),
+          TextField(
+            key: const Key('photos-search-field'),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: '搜索照片名称或类型',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (value) =>
+                setState(() => _query = value.trim().toLowerCase()),
           ),
-          itemCount: snapshot.data!.length,
-          itemBuilder: (context, index) {
-            final record = snapshot.data![index];
-            return Card(
-              child: InkWell(
-                onTap: () => _showInsight(context, record, widget.repository),
-                child: Semantics(
-                  label: record.displayName,
-                  child: _OnDemandThumbnail(
-                    repository: widget.repository,
-                    record: record,
-                    maxWidth: 160,
-                    maxHeight: 160,
-                    fallbackIcon: Icons.image_outlined,
+          const SizedBox(height: 8),
+          Expanded(
+            child: FutureBuilder<List<FileRecord>>(
+              future: _records,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(child: Text('当前无法读取照片集合。'));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final records = snapshot.data!
+                    .where(
+                      (record) =>
+                          _query.isEmpty ||
+                          record.displayName.toLowerCase().contains(_query) ||
+                          record.mimeType.toLowerCase().contains(_query),
+                    )
+                    .toList(growable: false);
+                if (records.isEmpty) {
+                  return const Center(child: Text('当前页没有匹配照片。'));
+                }
+                return GridView.builder(
+                  key: const Key('photos-thumbnail-grid'),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
                   ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+                  itemCount: records.length,
+                  itemBuilder: (context, index) {
+                    final record = records[index];
+                    return Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () =>
+                            _showMediaItem(context, record, widget.repository),
+                        child: Semantics(
+                          label: record.displayName,
+                          child: _OnDemandThumbnail(
+                            repository: widget.repository,
+                            record: record,
+                            maxWidth: 160,
+                            maxHeight: 160,
+                            fallbackIcon: Icons.image_outlined,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -634,6 +796,41 @@ final class _ScreenshotPageEntry {
 
   final MobileScreenshotGroup group;
   final FileRecord record;
+}
+
+final class _ScreenshotSnapshot {
+  const _ScreenshotSnapshot({required this.groups, required this.totalCount});
+
+  final List<MobileScreenshotGroup> groups;
+  final int totalCount;
+}
+
+final class _GridBadge extends StatelessWidget {
+  const _GridBadge({required this.alignment, required this.label});
+
+  final Alignment alignment;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: alignment,
+    child: Container(
+      margin: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.inverseSurface.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onInverseSurface,
+        ),
+      ),
+    ),
+  );
 }
 
 final class _OnDemandThumbnail extends StatefulWidget {
@@ -864,7 +1061,7 @@ final class _StorageTile extends StatelessWidget {
     subtitle: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(detail),
+        Text('${inspectable ? '可访问' : '受限'} · $detail'),
         LinearProgressIndicator(value: value),
       ],
     ),
@@ -1003,7 +1200,20 @@ String _formatDateTime(DateTime value) {
       '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
 }
 
-void _showInsight(
+String _monthKey(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}';
+}
+
+String _reviewLabel(ScreenshotReviewState state) => switch (state) {
+  ScreenshotReviewState.keep => '保留',
+  ScreenshotReviewState.later => '稍后',
+  ScreenshotReviewState.deleteReview => '删除审查',
+  ScreenshotReviewState.protected => '保护',
+  ScreenshotReviewState.unreviewed => '未标记',
+};
+
+void _showMediaItem(
   BuildContext context,
   FileRecord record,
   MobileRepository repository,
@@ -1014,9 +1224,21 @@ void _showInsight(
     showDragHandle: true,
     isScrollControlled: true,
     builder: (sheetContext) => FractionallySizedBox(
-      heightFactor: 0.72,
+      heightFactor: 0.82,
       child: Column(
         children: [
+          ListTile(
+            key: const Key('media-item-details'),
+            leading: Icon(_iconFor(record.category)),
+            title: Text(record.displayName),
+            subtitle: Text(
+              '${record.mimeType} · ${_formatBytes(record.sizeBytes)}\n'
+              '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
+              '${record.sourceKind.name}',
+            ),
+            isThreeLine: true,
+          ),
+          const Divider(height: 1),
           Expanded(child: InsightPanel(insight: insight)),
           SafeArea(
             top: false,
@@ -1032,6 +1254,121 @@ void _showInsight(
                 },
                 icon: const Icon(Icons.open_in_new),
                 label: const Text('打开'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+void _showScreenshotItem(
+  BuildContext context,
+  FileRecord record,
+  MobileScreenshotGroup group,
+  ScreenshotReviewState state,
+  MobileRepository repository,
+  void Function(FileRecord, ScreenshotReviewState) onMark,
+) {
+  final insight = const BasicInsightEngine().explainFile(record);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => FractionallySizedBox(
+      heightFactor: 0.92,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 160,
+            width: double.infinity,
+            child: _OnDemandThumbnail(
+              repository: repository,
+              record: record,
+              maxWidth: 320,
+              maxHeight: 240,
+              fallbackIcon: Icons.screenshot_monitor_outlined,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Column(
+              key: const Key('screenshot-item-details'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  record.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
+                Text(
+                  '${record.mimeType} · ${_formatBytes(record.sizeBytes)} · '
+                  '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
+                ),
+                Text(
+                  '来源线索：${group.summary.sourceHint} · '
+                  '${group.records.length > 1 ? '连续 ${group.records.length} 张' : '单张'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text('本地标记：${_reviewLabel(state)} · OCR：未请求'),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(child: InsightPanel(insight: insight)),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  FilledButton.tonalIcon(
+                    key: const Key('screenshot-mark-keep'),
+                    onPressed: () {
+                      onMark(record, ScreenshotReviewState.keep);
+                      Navigator.pop(sheetContext);
+                    },
+                    icon: const Icon(Icons.bookmark_added_outlined),
+                    label: const Text('保留'),
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('screenshot-mark-later'),
+                    onPressed: () {
+                      onMark(record, ScreenshotReviewState.later);
+                      Navigator.pop(sheetContext);
+                    },
+                    icon: const Icon(Icons.schedule_outlined),
+                    label: const Text('稍后'),
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('screenshot-mark-delete-review'),
+                    onPressed: () {
+                      onMark(record, ScreenshotReviewState.deleteReview);
+                      Navigator.pop(sheetContext);
+                    },
+                    icon: const Icon(Icons.rule_folder_outlined),
+                    label: const Text('删除审查'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final opened = await repository.open(record);
+                      if (!sheetContext.mounted) return;
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        SnackBar(
+                          content: Text(opened ? '已交给系统打开' : '没有可用的打开方式'),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('打开'),
+                  ),
+                ],
               ),
             ),
           ),
