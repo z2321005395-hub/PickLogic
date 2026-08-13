@@ -37,6 +37,8 @@ void main() {
     for (final label in ['Files', 'Screenshots', 'Photos', 'Storage']) {
       expect(find.text(label), findsOneWidget);
     }
+    expect(find.text('PickLogic'), findsOneWidget);
+    expect(find.text('拾理'), findsNothing);
 
     await tester.tap(find.text('Screenshots'));
     await tester.pumpAndSettle();

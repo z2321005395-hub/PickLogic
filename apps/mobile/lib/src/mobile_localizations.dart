@@ -164,7 +164,7 @@ final class MobileLocalizations {
       'sourceUnknownKind': 'Unknown',
     },
     'zh': {
-      'switchLanguage': 'Switch to English',
+      'switchLanguage': '切换到英文',
       'bootstrapTitle': '本地平台能力暂时不可用',
       'bootstrapBody': 'PickLogic 未读取任何媒体或文件。请重试；若仍失败，请重新启动应用。',
       'retryBootstrap': '重试本地初始化',

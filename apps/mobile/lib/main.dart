@@ -198,7 +198,7 @@ final class _MobileShellState extends State<MobileShell> {
         ];
         return Scaffold(
           appBar: AppBar(
-            title: const Text('PickLogic · 拾理'),
+            title: Text(widget.languageCode == 'zh' ? '拾理' : 'PickLogic'),
             actions: [
               Tooltip(
                 message: mobileStrings.text('switchLanguage'),
