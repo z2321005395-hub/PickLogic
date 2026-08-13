@@ -12,6 +12,7 @@ import 'package:picklogic_duplicate_engine/picklogic_duplicate_engine.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 void main() {
   testWidgets('Standard starts as a pure-Chinese dual-pane read-only browser', (
@@ -23,6 +24,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('拾理'), findsOneWidget);
+    expect(find.text('首页'), findsOneWidget);
     expect(find.text('文件'), findsOneWidget);
     expect(find.text('搜索'), findsOneWidget);
     expect(find.text('重复项'), findsOneWidget);
@@ -51,7 +53,7 @@ void main() {
   });
 
   testWidgets(
-    'Standard panels navigate independently and details stay opt-in',
+    'Standard panels navigate independently and selection opens context',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1800, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -108,12 +110,14 @@ void main() {
       tester
           .widget<InkWell>(find.byKey(const ValueKey('pane-0-entry-report')))
           .onTap!();
-      await tester.pump();
-      expect(find.byKey(const Key('detail-pane')), findsNothing);
-      await tester.tap(find.byKey(const Key('preview-tool')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('detail-pane')), findsOneWidget);
-      expect(find.text('只读元数据预览；原位置保持不变。'), findsOneWidget);
+      expect(find.text('预览与知件'), findsOneWidget);
+      expect(find.byType(PdfViewer), findsOneWidget);
+      await tester.tap(find.text('知件'));
+      await tester.pumpAndSettle();
+      expect(find.text('实际路径'), findsOneWidget);
+      expect(find.text('置信度'), findsOneWidget);
       await tester.tap(find.byKey(const Key('close-detail-pane')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('detail-pane')), findsNothing);
@@ -281,7 +285,10 @@ void main() {
         find.text('Developer Safe Mode: On, real files are read-only'),
         findsOneWidget,
       );
-      expect(find.text('Automatically index common folders'), findsOneWidget);
+      expect(
+        find.textContaining('Common-folder indexing completed'),
+        findsOneWidget,
+      );
       expect(find.text('Files'), findsOneWidget);
       expect(find.text('Search'), findsOneWidget);
       expect(find.text('Duplicates'), findsOneWidget);
