@@ -9,6 +9,8 @@ environment:
 resolution: workspace
 
 dependencies:
+  archive: 4.0.9
+  desktop_drop: 0.7.1
   flutter:
     sdk: flutter
   flutter_localizations:

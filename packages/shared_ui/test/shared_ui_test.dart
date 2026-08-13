@@ -5,6 +5,23 @@ import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 void main() {
+  testWidgets('shared visual icon renders from the package asset', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: PickLogicIcon(
+            PickLogicVisualIcon.image,
+            semanticLabel: 'Images',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Images'), findsOneWidget);
+  });
+
   testWidgets('safe mode banner follows locale without mixed labels', (
     tester,
   ) async {

@@ -11,6 +11,7 @@ resolution: workspace
 dependencies:
   picklogic_core_models:
     path: ../core_models
+  sqlite3: 3.5.1
 
 dev_dependencies:
   lints: ^6.0.0
