@@ -54,6 +54,18 @@ Scope: the whole repository. A nearer `AGENTS.md` may add narrower rules but can
 - Keep Git history truthful and scoped. Do not fabricate issues, users, dates, downloads, stars, or activity.
 - Do not create or publish a remote, select a final license/copyright owner, make the repository public, scan real directories, mutate real files, or publish media without the user's required confirmation.
 
+## GitHub development history
+
+- The Private repository `z2321005395-hub/PickLogic` is the canonical, continuous, auditable engineering history. Preserve this same history if the repository is later made Public; do not replace it with a clean one-commit import.
+- The maintainer grants ongoing authorization to commit, push feature branches or `develop`, create/update genuine PRs, run Actions, and merge completed green internal PRs into `develop`, provided privacy and secret checks are clean. Private-to-Public conversion, formal GitHub Releases, public artifact publication, final license/copyright changes, important remote-branch deletion, force pushes, and published-history rewrites still require explicit confirmation.
+- One coherent engineering change equals one meaningful commit. Use the real current date and configured author. Never manufacture activity, contributors, feedback, bugs, issues, PRs, dates, downloads, or stars.
+- Use real feature branches and PRs for meaningful multi-track work. Prefer normal merge/no-ff history that preserves useful commits; do not squash an entire feature branch by default. Never force push `main` or `develop`.
+- A medium task normally needs 1–4 checkpoint commits: a usable page, completed interaction, platform integration, real fix, measured optimization, dependency change, or user-visible capability. Do not create trivial commits for activity.
+- Git history records engineering work. `CHANGELOG.md` records only user-visible changes. Keep `docs/development-log.md` concise: only a few milestone bullets per important development day.
+- Create Issues and PRs only for genuine requirements, bugs, regressions, architecture problems, device findings, or user feedback. Redact private names, paths, screenshots, media, research data, and device identifiers; use aggregate evidence.
+- At the end of a substantial task: inspect status/diff, run privacy and secret checks, commit coherent changes, push feature branches, create/update real PRs, run the necessary CI once, merge completed green PRs into `develop`, push `develop`, and verify local/remote synchronization. Routine Private pushes do not need repeated approval.
+- Keep history maintenance lightweight: targeted tests before commits, one full CI after integration, and no repeated repository-wide, license, or long-report work unless the change requires it.
+
 ## Token-efficient reporting
 
 - Success logs contain summaries; inspect detailed logs only on failure.
