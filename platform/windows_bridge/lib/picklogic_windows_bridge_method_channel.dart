@@ -38,6 +38,18 @@ class MethodChannelPicklogicWindowsBridge
       .invokeMethod<String>('getApplicationSupportDirectory'))!;
 
   @override
+  Future<List<WindowsBrowseRoot>> getBrowseRoots() async {
+    final raw = await methodChannel.invokeListMethod<Object?>('getBrowseRoots');
+    return (raw ?? const <Object?>[])
+        .map(
+          (item) => WindowsBrowseRoot.fromMap(
+            Map<Object?, Object?>.from(item! as Map<Object?, Object?>),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
   Future<bool> openItem(String path) async =>
       await methodChannel.invokeMethod<bool>('openItem', {'path': path}) ??
       false;

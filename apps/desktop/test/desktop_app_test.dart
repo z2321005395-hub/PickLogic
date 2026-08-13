@@ -14,88 +14,50 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 void main() {
-  testWidgets('Standard shows safe mode and omits Pro navigation', (
+  testWidgets('Standard starts as a pure-Chinese dual-pane read-only browser', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 900));
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const PickLogicDesktopApp(pro: false));
     await tester.pumpAndSettle();
-    expect(find.text('Developer Safe Mode: ON'), findsOneWidget);
-    expect(find.text('开发者安全模式 — 真实文件只读。'), findsWidgets);
-    expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
-    expect(find.textContaining('文献'), findsNothing);
-    expect(
-      tester
-          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '移动'))
-          .onPressed,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '重命名'))
-          .onPressed,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '删除'))
-          .onPressed,
-      isNull,
-    );
-  });
 
-  testWidgets('Standard newly added strings follow the 中/EN locale switch', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final repository = _TrackARepository();
-    await tester.pumpWidget(
-      PickLogicDesktopApp(pro: false, repository: repository),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '文档/PDF'), findsOneWidget);
-    expect(find.text('开发者安全模式 — 真实文件只读。'), findsWidgets);
-
-    await tester.tap(find.text('选择文件夹 · 只读扫描'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('重复项 · Duplicates'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('精确重复项：1 组 · 2 个文件'), findsOneWidget);
-
-    await tester.tap(find.text('EN'));
-    await tester.pumpAndSettle();
-    expect(find.text('Choose folder · Read-only scan'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Documents/PDF'), findsOneWidget);
+    expect(find.text('拾理'), findsOneWidget);
+    expect(find.text('文件'), findsOneWidget);
+    expect(find.text('搜索'), findsOneWidget);
+    expect(find.text('重复项'), findsOneWidget);
+    expect(find.text('存储'), findsOneWidget);
+    expect(find.text('左栏'), findsOneWidget);
+    expect(find.text('右栏'), findsOneWidget);
+    expect(find.text('开发者安全模式：已开启，真实文件只读'), findsOneWidget);
+    expect(find.byKey(const Key('detail-pane')), findsNothing);
     expect(
-      find.text('Developer Safe Mode — real files are read-only.'),
-      findsWidgets,
+      tester.widget<Switch>(find.byKey(const Key('auto-index-switch'))).value,
+      isFalse,
     );
+    expect(find.textContaining('磁盘根仅用于浏览'), findsOneWidget);
     expect(
-      find.textContaining('Exact duplicates: 1 group(s) · 2 files'),
+      find.byKey(const ValueKey('pane-0-root-drive:synthetic')),
       findsOneWidget,
     );
-    expect(find.widgetWithText(OutlinedButton, 'Move'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Rename'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);
-    expect(find.text('选择文件夹 · 只读扫描'), findsNothing);
-    expect(find.text('开发者安全模式 — 真实文件只读。'), findsNothing);
-
-    await tester.tap(find.text('中'));
-    await tester.pumpAndSettle();
-    expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '文档/PDF'), findsOneWidget);
-    expect(find.text('开发者安全模式 — 真实文件只读。'), findsWidgets);
-    expect(find.textContaining('精确重复项：1 组 · 2 个文件'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pane-1-root-drive:synthetic')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.byKey(const Key('move-to-target')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.textContaining('Left pane'), findsNothing);
+    expect(find.textContaining('Developer Safe Mode'), findsNothing);
   });
 
   testWidgets(
-    'Standard selected-folder flow exposes categories search duplicates and shell actions',
+    'Standard panels navigate independently and details stay opt-in',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1500, 900));
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final repository = _TrackARepository();
       await tester.pumpWidget(
@@ -103,44 +65,233 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('选择文件夹 · 只读扫描'));
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey('pane-0-root-drive:synthetic')),
+          )
+          .onDoubleTap!();
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('record-report')), findsOneWidget);
-      expect(find.byKey(const ValueKey('record-figure')), findsOneWidget);
-      expect(find.text('standard-fixtures · 4 items'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('pane-0-entry-directory:documents')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('pane-1-root-drive:synthetic')),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '图片'));
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey('pane-0-entry-directory:documents')),
+          )
+          .onDoubleTap!();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pane-0-entry-report')), findsOneWidget);
+      expect(find.byKey(const Key('detail-pane')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('pane-0-crumb-synthetic:/drive/Documents')),
+        findsOneWidget,
+      );
+      final upButton = tester.widget<IconButton>(
+        find.byKey(const ValueKey('pane-0-up')),
+      );
+      expect(upButton.onPressed, isNotNull);
+      upButton.onPressed!();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('pane-0-entry-directory:documents')),
+        findsOneWidget,
+      );
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey('pane-0-entry-directory:documents')),
+          )
+          .onDoubleTap!();
+      await tester.pumpAndSettle();
+
+      tester
+          .widget<InkWell>(find.byKey(const ValueKey('pane-0-entry-report')))
+          .onTap!();
       await tester.pump();
-      expect(find.byKey(const ValueKey('record-figure')), findsOneWidget);
-      expect(find.byKey(const ValueKey('record-report')), findsNothing);
-
-      await tester.tap(find.widgetWithText(ChoiceChip, '全部'));
-      await tester.enterText(find.byType(TextField), 'report');
+      expect(find.byKey(const Key('detail-pane')), findsNothing);
+      await tester.tap(find.byKey(const Key('preview-tool')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('record-report')), findsOneWidget);
-      expect(find.byKey(const ValueKey('record-figure')), findsNothing);
-      await tester.enterText(find.byType(TextField), '');
+      expect(find.byKey(const Key('detail-pane')), findsOneWidget);
+      expect(find.text('只读元数据预览；原位置保持不变。'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('close-detail-pane')));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('detail-pane')), findsNothing);
 
-      await tester.tap(find.text('重复项 · Duplicates'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('精确重复项：1 组 · 2 个文件'), findsOneWidget);
-      expect(find.byKey(const ValueKey('record-duplicate-a')), findsOneWidget);
-      expect(find.byKey(const ValueKey('record-duplicate-b')), findsOneWidget);
-      expect(find.byKey(const ValueKey('record-report')), findsNothing);
-
-      await tester.tap(find.text('Synthetic duplicate A.txt'));
-      await tester.tap(find.widgetWithText(FilledButton, '打开'));
-      await tester.tap(find.widgetWithText(OutlinedButton, '原位置定位'));
+      tester
+          .widget<InkWell>(find.byKey(const ValueKey('pane-0-entry-report')))
+          .onDoubleTap!();
       await tester.pump();
-      expect(repository.opened, ['duplicate-a']);
-      expect(repository.revealed, ['duplicate-a']);
-      expect(find.text('知件 · Insight'), findsOneWidget);
-      expect(find.textContaining('locally indexed documents'), findsOneWidget);
+      expect(repository.opened, ['report']);
+
+      await tester.tap(find.byKey(const ValueKey('pane-1-home')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('choose-folder')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pane-1-entry-report')), findsOneWidget);
+      tester
+          .widget<InkWell>(find.byKey(const ValueKey('pane-1-entry-figure')))
+          .onTap!();
+      await tester.pump();
+      expect(find.text('移动到左栏'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('active-pane-search')),
+        'figure',
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('pane-1-entry-figure')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pane-1-entry-report')), findsNothing);
+      expect(find.byKey(const ValueKey('pane-0-entry-report')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('pane-0-home')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('nav-search')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('active-pane-search')),
+        'indexed archive',
+      );
+      await tester.tap(find.byKey(const Key('search-index')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('pane-0-entry-indexed-away')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('pane-1-entry-figure')), findsOneWidget);
+      expect(find.text('移动到右栏'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Standard keeps duplicate and read-only storage tools reachable',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _TrackARepository();
+      await tester.pumpWidget(
+        PickLogicDesktopApp(pro: false, repository: repository),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('nav-duplicates')));
+      await tester.pump();
+      expect(find.textContaining('请先在活动栏打开包含文件的目录'), findsOneWidget);
+      expect(repository.duplicateRuns, 0);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey('pane-0-root-drive:synthetic')),
+          )
+          .onDoubleTap!();
+      await tester.pumpAndSettle();
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey('pane-0-entry-directory:documents')),
+          )
+          .onDoubleTap!();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-duplicates')));
+      await tester.pumpAndSettle();
+
+      expect(repository.duplicateRuns, 1);
+      expect(
+        find.byKey(const ValueKey('pane-0-entry-duplicate-a')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('pane-0-entry-duplicate-b')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('pane-0-entry-report')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('pane-1-root-drive:synthetic')),
+        findsOneWidget,
+      );
+      expect(find.text('精确重复项：2 个文件'), findsOneWidget);
+
+      tester
+          .widget<IconButton>(find.byKey(const Key('toggle-language')))
+          .onPressed!();
+      await tester.pumpAndSettle();
+      expect(find.text('Exact duplicates: 2 files'), findsOneWidget);
+      expect(find.textContaining('精确重复项'), findsNothing);
+      tester
+          .widget<IconButton>(find.byKey(const Key('toggle-language')))
+          .onPressed!();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('nav-storage')));
+      await tester.pumpAndSettle();
+      expect(repository.storageSummaryRuns, 1);
+      expect(find.byKey(const Key('storage-summary-view')), findsOneWidget);
+      expect(find.text('存储概览'), findsOneWidget);
+      expect(find.text('S:\\'), findsOneWidget);
+      expect(find.textContaining('不会扫描或修改文件'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('nav-files')));
+      await tester.pumpAndSettle();
+      expect(find.text('左栏'), findsOneWidget);
+      expect(find.text('右栏'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('pane-1-root-drive:synthetic')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Standard discloses auto-index sources and switches locale cleanly',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _TrackARepository();
+      await tester.pumpWidget(
+        PickLogicDesktopApp(pro: false, repository: repository),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('auto-index-switch')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('来源包括桌面、文档和下载目录'), findsOneWidget);
+      expect(find.textContaining('磁盘根仍不会自动递归扫描'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('confirm-auto-index')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Switch>(find.byKey(const Key('auto-index-switch'))).value,
+        isTrue,
+      );
+      expect(repository.commonIndexRuns, 1);
+      expect(find.textContaining('本次常用目录索引已完成'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('toggle-language')));
+      await tester.pumpAndSettle();
+      expect(find.text('PickLogic'), findsOneWidget);
+      expect(find.text('Left pane'), findsOneWidget);
+      expect(find.text('Right pane'), findsOneWidget);
+      expect(
+        find.text('Developer Safe Mode: On, real files are read-only'),
+        findsOneWidget,
+      );
+      expect(find.text('Automatically index common folders'), findsOneWidget);
+      expect(find.text('Files'), findsOneWidget);
+      expect(find.text('Search'), findsOneWidget);
+      expect(find.text('Duplicates'), findsOneWidget);
+      expect(find.text('Storage'), findsOneWidget);
+      expect(find.textContaining('拾理'), findsNothing);
+      expect(find.textContaining('左栏'), findsNothing);
+      expect(find.textContaining('开发者安全模式'), findsNothing);
     },
   );
 
   testWidgets('Pro composes literature and system navigation', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       PickLogicDesktopApp(
         pro: true,
@@ -151,8 +302,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('文献'), findsOneWidget);
+    expect(find.text('文献'), findsOneWidget);
+    expect(find.text('研究'), findsOneWidget);
     expect(find.text('系统洞察'), findsOneWidget);
+    expect(find.textContaining('Literature'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('toggle-language')));
+    await tester.pumpAndSettle();
+    expect(find.text('Literature'), findsOneWidget);
+    expect(find.text('Research'), findsOneWidget);
+    expect(find.text('System Insight'), findsOneWidget);
+    expect(find.textContaining('文献'), findsNothing);
   });
 
   testWidgets('Pro literature route shows persistent metadata and page state', (
@@ -381,8 +541,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 650));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const PickLogicDesktopApp(pro: true));
-    await tester.ensureVisible(find.text('研究 · Research'));
-    await tester.tap(find.text('研究 · Research'));
+    await tester.ensureVisible(find.text('研究'));
+    await tester.tap(find.text('研究'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('research-buckets-view')), findsOneWidget);
@@ -439,6 +599,9 @@ void main() {
 }
 
 final class _TrackARepository implements DesktopRepository {
+  static const drivePath = 'synthetic:/drive';
+  static const documentsPath = 'synthetic:/drive/Documents';
+
   final records = <FileRecord>[
     _record(
       id: 'report',
@@ -465,9 +628,108 @@ final class _TrackARepository implements DesktopRepository {
       size: 10,
     ),
   ];
+  final indexedOnlyRecord = _record(
+    id: 'indexed-away',
+    name: 'Indexed archive.zip',
+    category: VirtualCategory.archives,
+    size: 64,
+  );
 
   final List<String> opened = <String>[];
   final List<String> revealed = <String>[];
+  int commonIndexRuns = 0;
+  int duplicateRuns = 0;
+  int storageSummaryRuns = 0;
+
+  @override
+  Future<List<WindowsBrowseRoot>> browseRoots() async => const [
+    WindowsBrowseRoot(
+      id: 'drive:synthetic',
+      path: drivePath,
+      kind: WindowsBrowseRootKind.drive,
+    ),
+    WindowsBrowseRoot(
+      id: 'documents',
+      path: documentsPath,
+      kind: WindowsBrowseRootKind.documents,
+    ),
+  ];
+
+  @override
+  Future<DirectorySnapshot> browseDirectory(
+    String path, {
+    int maxEntries = 1000,
+  }) async {
+    if (path == drivePath) {
+      return const DirectorySnapshot(
+        path: drivePath,
+        parentPath: null,
+        crumbs: [BrowseCrumb(label: 'S:', path: drivePath)],
+        entries: [
+          BrowseEntry(
+            id: 'directory:documents',
+            path: documentsPath,
+            name: 'Documents',
+            isDirectory: true,
+            sizeBytes: 0,
+            modifiedAt: null,
+            category: VirtualCategory.unknown,
+          ),
+        ],
+        truncated: false,
+      );
+    }
+    return DirectorySnapshot(
+      path: documentsPath,
+      parentPath: drivePath,
+      crumbs: const [
+        BrowseCrumb(label: 'S:', path: drivePath),
+        BrowseCrumb(label: 'Documents', path: documentsPath),
+      ],
+      entries: records
+          .map(
+            (record) => BrowseEntry(
+              id: record.id,
+              path: record.locator.value,
+              name: record.displayName,
+              isDirectory: false,
+              sizeBytes: record.sizeBytes,
+              modifiedAt: record.modifiedAt,
+              category: record.category,
+              record: record,
+            ),
+          )
+          .toList(growable: false),
+      truncated: false,
+    );
+  }
+
+  @override
+  Future<String?> chooseBrowseFolder({required bool chinese}) async =>
+      documentsPath;
+
+  @override
+  Future<bool> openBrowseEntry(BrowseEntry entry) async {
+    opened.add(entry.id);
+    return true;
+  }
+
+  @override
+  Future<bool> revealBrowseEntry(BrowseEntry entry) async {
+    revealed.add(entry.id);
+    return true;
+  }
+
+  @override
+  Stream<DesktopScanProgress> indexCommonFolders() async* {
+    commonIndexRuns += 1;
+    yield DesktopScanProgress(
+      records: records,
+      scannedCount: records.length,
+      complete: true,
+      rootLabel: 'Documents',
+    );
+  }
 
   @override
   Stream<DesktopScanProgress> chooseAndScan() async* {
@@ -486,6 +748,7 @@ final class _TrackARepository implements DesktopRepository {
   Future<ExactDuplicateScanResult> findExactDuplicates(
     Iterable<FileRecord> source,
   ) async {
+    duplicateRuns += 1;
     final hashed = source
         .map(
           (record) => record.id.startsWith('duplicate-')
@@ -520,16 +783,24 @@ final class _TrackARepository implements DesktopRepository {
   }
 
   @override
-  Future<List<FileRecord>> search(String query) async => records
-      .where(
-        (record) => record.displayName.toLowerCase().contains(
-          query.trim().toLowerCase(),
-        ),
-      )
-      .toList(growable: false);
+  Future<List<FileRecord>> search(String query) async =>
+      [...records, indexedOnlyRecord]
+          .where(
+            (record) => record.displayName.toLowerCase().contains(
+              query.trim().toLowerCase(),
+            ),
+          )
+          .toList(growable: false);
 
   @override
-  Future<WindowsStorageSummary?> systemDriveSummary() async => null;
+  Future<WindowsStorageSummary?> systemDriveSummary() async {
+    storageSummaryRuns += 1;
+    return const WindowsStorageSummary(
+      root: 'S:\\',
+      totalBytes: 100,
+      availableBytes: 40,
+    );
+  }
 }
 
 FileRecord _record({

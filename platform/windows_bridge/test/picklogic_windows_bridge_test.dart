@@ -22,6 +22,15 @@ class MockPicklogicWindowsBridgePlatform
       r'X:\synthetic\app-support';
 
   @override
+  Future<List<WindowsBrowseRoot>> getBrowseRoots() async => const [
+    WindowsBrowseRoot(
+      id: 'drive:X',
+      path: r'X:\',
+      kind: WindowsBrowseRootKind.drive,
+    ),
+  ];
+
+  @override
   Future<bool> openItem(String path) async => true;
 
   @override
@@ -72,6 +81,10 @@ void main() {
     expect(
       await bridge.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',
+    );
+    expect(
+      (await bridge.getBrowseRoots()).single.kind,
+      WindowsBrowseRootKind.drive,
     );
     expect((await bridge.getPathAttributes('synthetic'))!.readOnly, isTrue);
     expect((await bridge.getSystemDriveSummary()).availableBytes, 40);

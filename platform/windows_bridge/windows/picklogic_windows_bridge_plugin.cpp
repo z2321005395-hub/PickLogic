@@ -12,11 +12,13 @@
 #include <flutter/standard_method_codec.h>
 
 #include <cstdint>
+#include <cwchar>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace picklogic_windows_bridge {
 namespace {
@@ -88,6 +90,31 @@ bool HasPdfExtension(const std::wstring& path) {
   return CompareStringOrdinal(path.data() + path.size() - extension_length,
                               extension_length, extension, extension_length,
                               TRUE) == CSTR_EQUAL;
+}
+
+void AddBrowseRoot(flutter::EncodableList* roots, const std::string& id,
+                   const std::wstring& path, const std::string& kind) {
+  if (path.empty() ||
+      GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+    return;
+  }
+  flutter::EncodableMap root;
+  root[flutter::EncodableValue("id")] = flutter::EncodableValue(id);
+  root[flutter::EncodableValue("path")] =
+      flutter::EncodableValue(WideToUtf8(path));
+  root[flutter::EncodableValue("kind")] = flutter::EncodableValue(kind);
+  roots->push_back(flutter::EncodableValue(root));
+}
+
+void AddKnownFolder(flutter::EncodableList* roots, REFKNOWNFOLDERID folder_id,
+                    const std::string& id, const std::string& kind) {
+  PWSTR raw_path = nullptr;
+  const HRESULT status = SHGetKnownFolderPath(
+      folder_id, KF_FLAG_DEFAULT, nullptr, &raw_path);
+  if (SUCCEEDED(status) && raw_path != nullptr) {
+    AddBrowseRoot(roots, id, std::wstring(raw_path), kind);
+  }
+  if (raw_path != nullptr) CoTaskMemFree(raw_path);
 }
 
 }  // namespace
@@ -269,6 +296,28 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     CoTaskMemFree(local_app_data);
     support_path += L"\\PickLogic";
     result->Success(flutter::EncodableValue(WideToUtf8(support_path)));
+    return;
+  }
+
+  if (method == "getBrowseRoots") {
+    flutter::EncodableList roots;
+    const DWORD required = GetLogicalDriveStringsW(0, nullptr);
+    if (required > 0) {
+      std::vector<wchar_t> drives(required + 1, L'\0');
+      if (GetLogicalDriveStringsW(required, drives.data()) > 0) {
+        for (const wchar_t* drive = drives.data(); *drive != L'\0';
+             drive += wcslen(drive) + 1) {
+          const UINT type = GetDriveTypeW(drive);
+          if (type == DRIVE_UNKNOWN || type == DRIVE_NO_ROOT_DIR) continue;
+          const std::wstring path(drive);
+          AddBrowseRoot(&roots, "drive:" + WideToUtf8(path), path, "drive");
+        }
+      }
+    }
+    AddKnownFolder(&roots, FOLDERID_Desktop, "desktop", "desktop");
+    AddKnownFolder(&roots, FOLDERID_Documents, "documents", "documents");
+    AddKnownFolder(&roots, FOLDERID_Downloads, "downloads", "downloads");
+    result->Success(flutter::EncodableValue(roots));
     return;
   }
 

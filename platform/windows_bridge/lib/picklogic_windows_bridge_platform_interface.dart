@@ -43,6 +43,10 @@ abstract class PicklogicWindowsBridgePlatform extends PlatformInterface {
     );
   }
 
+  Future<List<WindowsBrowseRoot>> getBrowseRoots() {
+    throw UnimplementedError('getBrowseRoots() has not been implemented.');
+  }
+
   Future<bool> openItem(String path) {
     throw UnimplementedError('openItem() has not been implemented.');
   }

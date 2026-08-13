@@ -17,6 +17,18 @@ void main() {
             'pickDirectory' => 'synthetic-root',
             'pickPdfFile' => r'X:\synthetic\paper.pdf',
             'getApplicationSupportDirectory' => r'X:\synthetic\app-support',
+            'getBrowseRoots' => <Object>[
+              <String, Object>{
+                'id': 'drive:X',
+                'path': r'X:\',
+                'kind': 'drive',
+              },
+              <String, Object>{
+                'id': 'documents',
+                'path': r'X:\synthetic\Documents',
+                'kind': 'documents',
+              },
+            ],
             'openItem' || 'revealItem' => true,
             'getPathAttributes' => <String, Object>{
               'hidden': true,
@@ -62,5 +74,13 @@ void main() {
     );
     expect(await platform.openItem('synthetic'), isTrue);
     expect(await platform.revealItem('synthetic'), isTrue);
+  });
+
+  test('parses synthetic browse roots', () async {
+    final roots = await platform.getBrowseRoots();
+    expect(roots, hasLength(2));
+    expect(roots.first.kind.name, 'drive');
+    expect(roots.last.kind.name, 'documents');
+    expect(roots.last.path, r'X:\synthetic\Documents');
   });
 }

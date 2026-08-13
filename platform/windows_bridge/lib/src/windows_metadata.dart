@@ -38,3 +38,24 @@ final class WindowsStorageSummary {
   final int totalBytes;
   final int availableBytes;
 }
+
+enum WindowsBrowseRootKind { drive, desktop, documents, downloads, folder }
+
+final class WindowsBrowseRoot {
+  const WindowsBrowseRoot({
+    required this.id,
+    required this.path,
+    required this.kind,
+  });
+
+  factory WindowsBrowseRoot.fromMap(Map<Object?, Object?> map) =>
+      WindowsBrowseRoot(
+        id: map['id']! as String,
+        path: map['path']! as String,
+        kind: WindowsBrowseRootKind.values.byName(map['kind']! as String),
+      );
+
+  final String id;
+  final String path;
+  final WindowsBrowseRootKind kind;
+}

@@ -108,4 +108,83 @@ void main() {
       );
     },
   );
+
+  test(
+    'directory browsing is bounded, non-recursive, and metadata-only',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'picklogic-browser-root-',
+      );
+      final index = SqliteFileIndex.inMemory();
+      final nested = await Directory(
+        '${root.path}${Platform.pathSeparator}nested',
+      ).create();
+      await File(
+        '${root.path}${Platform.pathSeparator}visible.pdf',
+      ).writeAsBytes(const [1, 2, 3]);
+      await File(
+        '${nested.path}${Platform.pathSeparator}not-listed.txt',
+      ).writeAsString('nested synthetic fixture');
+      addTearDown(() async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('picklogic_windows_bridge'),
+              null,
+            );
+        index.close();
+        await root.delete(recursive: true);
+      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('picklogic_windows_bridge'),
+            (call) async => switch (call.method) {
+              'getBrowseRoots' => <Object>[
+                <String, Object>{
+                  'id': 'drive:synthetic',
+                  'path': root.path,
+                  'kind': 'drive',
+                },
+                <String, Object>{
+                  'id': 'documents',
+                  'path': root.path,
+                  'kind': 'documents',
+                },
+              ],
+              _ => null,
+            },
+          );
+
+      final repository = WindowsDesktopRepository(indexFactory: () => index);
+      final roots = await repository.browseRoots();
+      final snapshot = await repository.browseDirectory(root.path);
+
+      expect(roots, hasLength(2));
+      expect(roots.first.path, root.path);
+      expect(snapshot.entries.map((entry) => entry.name), [
+        'nested',
+        'visible.pdf',
+      ]);
+      expect(snapshot.entries.first.isDirectory, isTrue);
+      expect(snapshot.entries.last.category, VirtualCategory.pdf);
+      expect(
+        snapshot.entries.any((entry) => entry.name == 'not-listed.txt'),
+        isFalse,
+      );
+      expect(snapshot.truncated, isFalse);
+
+      final bounded = await repository.browseDirectory(
+        root.path,
+        maxEntries: 1,
+      );
+      expect(bounded.entries, hasLength(1));
+      expect(bounded.truncated, isTrue);
+
+      final progress = await repository.indexCommonFolders().toList();
+      expect(progress, isNotEmpty);
+      expect(
+        (await repository.search('visible pdf')).single.displayName,
+        'visible.pdf',
+      );
+    },
+  );
 }

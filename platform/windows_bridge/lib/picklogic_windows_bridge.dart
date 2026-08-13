@@ -18,6 +18,9 @@ final class PicklogicWindowsBridge {
   Future<String> getApplicationSupportDirectory() =>
       PicklogicWindowsBridgePlatform.instance.getApplicationSupportDirectory();
 
+  Future<List<WindowsBrowseRoot>> getBrowseRoots() =>
+      PicklogicWindowsBridgePlatform.instance.getBrowseRoots();
+
   Future<bool> openItem(String path) =>
       PicklogicWindowsBridgePlatform.instance.openItem(path);
 
