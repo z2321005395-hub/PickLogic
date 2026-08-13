@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:picklogic_classification_rules/picklogic_classification_rules.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_duplicate_engine/picklogic_duplicate_engine.dart';
 import 'package:picklogic_file_index/picklogic_file_index.dart';
 import 'package:picklogic_search_index/picklogic_search_index.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
@@ -35,6 +36,10 @@ abstract interface class DesktopRepository {
 
   Future<List<FileRecord>> search(String query);
 
+  Future<ExactDuplicateScanResult> findExactDuplicates(
+    Iterable<FileRecord> records,
+  );
+
   Future<WindowsStorageSummary?> systemDriveSummary();
 }
 
@@ -43,18 +48,25 @@ final class WindowsDesktopRepository implements DesktopRepository {
     this.bridge = const PicklogicWindowsBridge(),
     StreamingDirectoryScanner? scanner,
     RuleClassificationEngine? classifier,
+    Sha256DuplicateDetector? duplicateDetector,
+    SqliteFileIndex Function()? indexFactory,
   }) : _scanner = scanner ?? StreamingDirectoryScanner(),
-       _classifier = classifier ?? RuleClassificationEngine();
+       _classifier = classifier ?? RuleClassificationEngine(),
+       _duplicateDetector = duplicateDetector ?? Sha256DuplicateDetector(),
+       _index = indexFactory?.call();
 
   final PicklogicWindowsBridge bridge;
   final StreamingDirectoryScanner _scanner;
   final RuleClassificationEngine _classifier;
+  final Sha256DuplicateDetector _duplicateDetector;
   SqliteFileIndex? _index;
+  Set<String> _activeRecordIds = const <String>{};
 
   @override
   Stream<DesktopScanProgress> chooseAndScan() async* {
     final rootPath = await bridge.pickDirectory(title: 'PickLogic · 选择只读扫描目录');
     if (rootPath == null) return;
+    _activeRecordIds = <String>{};
     final root = FileLocator(
       value: rootPath,
       sourceKind: SourceKind.fileSystem,
@@ -67,6 +79,7 @@ final class WindowsDesktopRepository implements DesktopRepository {
       final records = batch.records
           .map(_classifier.classify)
           .toList(growable: false);
+      _activeRecordIds.addAll(records.map((record) => record.id));
       await index.upsertIncrementalBatch(
         session: session,
         records: records,
@@ -76,6 +89,9 @@ final class WindowsDesktopRepository implements DesktopRepository {
       final completion = batch.isComplete
           ? index.completeIncrementalScan(session)
           : null;
+      if (completion != null) {
+        _activeRecordIds.removeAll(completion.removedIds);
+      }
       yield DesktopScanProgress(
         records: records,
         scannedCount: batch.scannedCount,
@@ -99,8 +115,16 @@ final class WindowsDesktopRepository implements DesktopRepository {
   @override
   Future<List<FileRecord>> search(String query) async {
     final index = await _openIndex();
-    return index.search(query);
+    final results = await index.search(query);
+    return results
+        .where((record) => _activeRecordIds.contains(record.id))
+        .toList(growable: false);
   }
+
+  @override
+  Future<ExactDuplicateScanResult> findExactDuplicates(
+    Iterable<FileRecord> records,
+  ) => _duplicateDetector.findExactFiles(records);
 
   @override
   Future<WindowsStorageSummary?> systemDriveSummary() async =>
@@ -153,6 +177,19 @@ final class SyntheticDesktopRepository implements DesktopRepository {
     final index = InMemorySearchIndex();
     await index.upsertBatch(syntheticDesktopRecords());
     return index.search(query);
+  }
+
+  @override
+  Future<ExactDuplicateScanResult> findExactDuplicates(
+    Iterable<FileRecord> records,
+  ) async {
+    final source = records.toList(growable: false);
+    return ExactDuplicateScanResult(
+      records: source,
+      groups: const <List<FileRecord>>[],
+      hashedCount: 0,
+      failedCount: 0,
+    );
   }
 
   @override

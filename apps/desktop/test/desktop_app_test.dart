@@ -1,18 +1,94 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_desktop/src/app.dart';
 import 'package:picklogic_desktop/src/desktop_repository.dart';
 import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
+import 'package:picklogic_duplicate_engine/picklogic_duplicate_engine.dart';
+import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 void main() {
   testWidgets('Standard shows safe mode and omits Pro navigation', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const PickLogicDesktopApp(pro: false));
     await tester.pumpAndSettle();
     expect(find.text('Developer Safe Mode: ON'), findsOneWidget);
+    expect(
+      find.text('Developer Safe Mode — real files are read-only.'),
+      findsWidgets,
+    );
+    expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
     expect(find.textContaining('文献'), findsNothing);
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '移动'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '重命名'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '删除'))
+          .onPressed,
+      isNull,
+    );
   });
+
+  testWidgets(
+    'Standard selected-folder flow exposes categories search duplicates and shell actions',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _TrackARepository();
+      await tester.pumpWidget(
+        PickLogicDesktopApp(pro: false, repository: repository),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('选择文件夹 · 只读扫描'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('record-report')), findsOneWidget);
+      expect(find.byKey(const ValueKey('record-figure')), findsOneWidget);
+      expect(find.text('standard-fixtures · 4 items'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '图片'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('record-figure')), findsOneWidget);
+      expect(find.byKey(const ValueKey('record-report')), findsNothing);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '全部'));
+      await tester.enterText(find.byType(TextField), 'report');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('record-report')), findsOneWidget);
+      expect(find.byKey(const ValueKey('record-figure')), findsNothing);
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('重复项 · Duplicates'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('精确重复项：1 组 · 2 个文件'), findsOneWidget);
+      expect(find.byKey(const ValueKey('record-duplicate-a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('record-duplicate-b')), findsOneWidget);
+      expect(find.byKey(const ValueKey('record-report')), findsNothing);
+
+      await tester.tap(find.text('Synthetic duplicate A.txt'));
+      await tester.tap(find.widgetWithText(FilledButton, '打开'));
+      await tester.tap(find.widgetWithText(OutlinedButton, '原位置定位'));
+      await tester.pump();
+      expect(repository.opened, ['duplicate-a']);
+      expect(repository.revealed, ['duplicate-a']);
+      expect(find.text('知件 · Insight'), findsOneWidget);
+      expect(find.textContaining('locally indexed documents'), findsOneWidget);
+    },
+  );
 
   testWidgets('Pro composes literature and system navigation', (tester) async {
     await tester.pumpWidget(
@@ -135,3 +211,127 @@ void main() {
     expect(text, endsWith('%%EOF\n'));
   });
 }
+
+final class _TrackARepository implements DesktopRepository {
+  final records = <FileRecord>[
+    _record(
+      id: 'report',
+      name: 'Synthetic report.pdf',
+      category: VirtualCategory.pdf,
+      size: 30,
+    ),
+    _record(
+      id: 'figure',
+      name: 'Synthetic figure.png',
+      category: VirtualCategory.images,
+      size: 20,
+    ),
+    _record(
+      id: 'duplicate-a',
+      name: 'Synthetic duplicate A.txt',
+      category: VirtualCategory.documents,
+      size: 10,
+    ),
+    _record(
+      id: 'duplicate-b',
+      name: 'Synthetic duplicate B.txt',
+      category: VirtualCategory.documents,
+      size: 10,
+    ),
+  ];
+
+  final List<String> opened = <String>[];
+  final List<String> revealed = <String>[];
+
+  @override
+  Stream<DesktopScanProgress> chooseAndScan() async* {
+    yield DesktopScanProgress(
+      records: records,
+      scannedCount: records.length,
+      complete: true,
+      rootLabel: 'standard-fixtures',
+    );
+  }
+
+  @override
+  Future<void> cancelScan() async {}
+
+  @override
+  Future<ExactDuplicateScanResult> findExactDuplicates(
+    Iterable<FileRecord> source,
+  ) async {
+    final hashed = source
+        .map(
+          (record) => record.id.startsWith('duplicate-')
+              ? record.copyWith(
+                  hashState: HashState.complete,
+                  sha256:
+                      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                )
+              : record,
+        )
+        .toList(growable: false);
+    return ExactDuplicateScanResult(
+      records: hashed,
+      groups: [
+        hashed.where((record) => record.id.startsWith('duplicate-')).toList(),
+      ],
+      hashedCount: 2,
+      failedCount: 0,
+    );
+  }
+
+  @override
+  Future<bool> open(FileRecord record) async {
+    opened.add(record.id);
+    return true;
+  }
+
+  @override
+  Future<bool> reveal(FileRecord record) async {
+    revealed.add(record.id);
+    return true;
+  }
+
+  @override
+  Future<List<FileRecord>> search(String query) async => records
+      .where(
+        (record) => record.displayName.toLowerCase().contains(
+          query.trim().toLowerCase(),
+        ),
+      )
+      .toList(growable: false);
+
+  @override
+  Future<WindowsStorageSummary?> systemDriveSummary() async => null;
+}
+
+FileRecord _record({
+  required String id,
+  required String name,
+  required VirtualCategory category,
+  required int size,
+}) => FileRecord(
+  id: id,
+  locator: FileLocator(
+    value: 'synthetic://standard/$id',
+    sourceKind: SourceKind.synthetic,
+    platform: PickLogicPlatform.synthetic,
+  ),
+  displayName: name,
+  extension: name.split('.').last.toLowerCase(),
+  mimeType: '',
+  sizeBytes: size,
+  createdAt: DateTime.utc(2026, 8, 13),
+  modifiedAt: DateTime.utc(2026, 8, 13),
+  parentLocator: null,
+  sourceKind: SourceKind.synthetic,
+  platform: PickLogicPlatform.synthetic,
+  isHidden: false,
+  isSystem: false,
+  isAccessible: true,
+  isProtected: false,
+  category: category,
+  hashState: HashState.notRequested,
+  ocrState: OcrState.notRequested,
+);

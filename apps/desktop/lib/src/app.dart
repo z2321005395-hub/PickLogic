@@ -81,10 +81,17 @@ final class _DesktopShellState extends State<DesktopShell> {
   List<FileRecord>? _searchResults;
   FileRecord? _selected;
   String _section = 'home';
+  String _categoryFilter = 'all';
   bool _scanning = false;
   int _scannedCount = 0;
   String _rootLabel = 'Synthetic fixtures';
   int _searchGeneration = 0;
+  int _duplicateGeneration = 0;
+  bool _duplicatesRunning = false;
+  bool _duplicatesReady = false;
+  int _duplicateHashedCount = 0;
+  int _duplicateFailedCount = 0;
+  List<List<FileRecord>> _duplicateGroups = const <List<FileRecord>>[];
 
   @override
   void initState() {
@@ -103,9 +110,13 @@ final class _DesktopShellState extends State<DesktopShell> {
     var firstBatch = true;
     _searchController.clear();
     _searchGeneration += 1;
+    _duplicateGeneration += 1;
     setState(() {
       _searchResults = null;
       _scanning = true;
+      _duplicatesReady = false;
+      _duplicatesRunning = false;
+      _duplicateGroups = const <List<FileRecord>>[];
     });
     try {
       await for (final progress in widget.repository.chooseAndScan()) {
@@ -128,8 +139,13 @@ final class _DesktopShellState extends State<DesktopShell> {
           _selected ??= _records.firstOrNull;
           _scannedCount = progress.scannedCount;
           _rootLabel = progress.rootLabel;
-          if (progress.complete) _scanning = false;
+          if (progress.complete) {
+            _scanning = false;
+          }
         });
+        if (progress.complete && _section == 'duplicates') {
+          await _findDuplicates();
+        }
       }
     } catch (_) {
       if (!mounted) return;
@@ -160,7 +176,48 @@ final class _DesktopShellState extends State<DesktopShell> {
       results = const <FileRecord>[];
     }
     if (!mounted || generation != _searchGeneration) return;
-    setState(() => _searchResults = results);
+    final currentIds = _records.map((record) => record.id).toSet();
+    setState(
+      () => _searchResults = results
+          .where((record) => currentIds.contains(record.id))
+          .toList(growable: false),
+    );
+  }
+
+  Future<void> _findDuplicates() async {
+    if (_scanning || _duplicatesRunning) return;
+    final generation = ++_duplicateGeneration;
+    setState(() {
+      _duplicatesRunning = true;
+      _duplicatesReady = false;
+    });
+    try {
+      final result = await widget.repository.findExactDuplicates(_records);
+      if (!mounted || generation != _duplicateGeneration) return;
+      final updatedById = {
+        for (final record in result.records) record.id: record,
+      };
+      setState(() {
+        for (var index = 0; index < _records.length; index += 1) {
+          _records[index] = updatedById[_records[index].id] ?? _records[index];
+        }
+        _duplicateGroups = result.groups;
+        _duplicateHashedCount = result.hashedCount;
+        _duplicateFailedCount = result.failedCount;
+        _duplicatesReady = true;
+      });
+    } catch (_) {
+      if (!mounted || generation != _duplicateGeneration) return;
+      setState(() {
+        _duplicateGroups = const <List<FileRecord>>[];
+        _duplicateFailedCount = 1;
+        _duplicatesReady = true;
+      });
+    } finally {
+      if (mounted && generation == _duplicateGeneration) {
+        setState(() => _duplicatesRunning = false);
+      }
+    }
   }
 
   Future<void> _openSelected() async {
@@ -198,13 +255,16 @@ final class _DesktopShellState extends State<DesktopShell> {
       return;
     }
     setState(() => _section = value);
+    if (value == 'duplicates') {
+      _findDuplicates();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final strings = PickLogicLocalizations.of(context);
     final query = _searchController.text.toLowerCase();
-    final visible = query.isEmpty
+    var visible = query.isEmpty
         ? _records
         : _searchResults ??
               _records
@@ -213,6 +273,18 @@ final class _DesktopShellState extends State<DesktopShell> {
                         record.displayName.toLowerCase().contains(query),
                   )
                   .toList();
+    visible = visible
+        .where((record) => _matchesCategory(record, _categoryFilter))
+        .toList(growable: false);
+    if (_section == 'duplicates') {
+      final duplicateIds = _duplicateGroups
+          .expand((group) => group)
+          .map((record) => record.id)
+          .toSet();
+      visible = visible
+          .where((record) => duplicateIds.contains(record.id))
+          .toList(growable: false);
+    }
     final selected = _selected;
     final insight = selected == null
         ? const InsightRecord(
@@ -227,6 +299,13 @@ final class _DesktopShellState extends State<DesktopShell> {
       body: Column(
         children: [
           const Align(alignment: Alignment.centerLeft, child: SafeModeBanner()),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Text('Developer Safe Mode — real files are read-only.'),
+            ),
+          ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -263,7 +342,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                                           ? null
                                           : _scanSelectedDirectory,
                                       icon: const Icon(Icons.folder_open),
-                                      label: const Text('选择目录 · 只读扫描'),
+                                      label: const Text('选择文件夹 · 只读扫描'),
                                     ),
                                     if (_scanning)
                                       OutlinedButton.icon(
@@ -276,6 +355,26 @@ final class _DesktopShellState extends State<DesktopShell> {
                                     Text('$_rootLabel · $_scannedCount items'),
                                   ],
                                 ),
+                                const SizedBox(height: 12),
+                                _CategoryFilters(
+                                  selected: _categoryFilter,
+                                  onSelected: (value) =>
+                                      setState(() => _categoryFilter = value),
+                                ),
+                                if (_section == 'duplicates') ...[
+                                  const SizedBox(height: 12),
+                                  _DuplicateStatus(
+                                    running: _duplicatesRunning,
+                                    ready: _duplicatesReady,
+                                    groupCount: _duplicateGroups.length,
+                                    fileCount: _duplicateGroups.fold(
+                                      0,
+                                      (total, group) => total + group.length,
+                                    ),
+                                    hashedCount: _duplicateHashedCount,
+                                    failedCount: _duplicateFailedCount,
+                                  ),
+                                ],
                                 const SizedBox(height: 12),
                                 TextField(
                                   controller: _searchController,
@@ -297,6 +396,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                               itemBuilder: (context, index) {
                                 final record = visible[index];
                                 return Card(
+                                  key: ValueKey('record-${record.id}'),
                                   color: record.id == _selected?.id
                                       ? Theme.of(
                                           context,
@@ -413,6 +513,86 @@ final class _CompactDetailPane extends StatelessWidget {
   );
 }
 
+final class _CategoryFilters extends StatelessWidget {
+  const _CategoryFilters({required this.selected, required this.onSelected});
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    const filters = <(String, String)>[
+      ('all', '全部'),
+      ('documents', '文档/PDF'),
+      ('spreadsheets', '表格'),
+      ('images', '图片'),
+      ('media', '音视频'),
+      ('archives', '压缩包'),
+      ('other', '其他'),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final filter in filters)
+          ChoiceChip(
+            label: Text(filter.$2),
+            selected: selected == filter.$1,
+            onSelected: (_) => onSelected(filter.$1),
+          ),
+      ],
+    );
+  }
+}
+
+final class _DuplicateStatus extends StatelessWidget {
+  const _DuplicateStatus({
+    required this.running,
+    required this.ready,
+    required this.groupCount,
+    required this.fileCount,
+    required this.hashedCount,
+    required this.failedCount,
+  });
+
+  final bool running;
+  final bool ready;
+  final int groupCount;
+  final int fileCount;
+  final int hashedCount;
+  final int failedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    if (running) {
+      return const Row(
+        children: [
+          SizedBox.square(
+            dimension: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Expanded(child: Text('正在只读计算 SHA-256 精确重复项…')),
+        ],
+      );
+    }
+    if (!ready) {
+      return const Text('选择重复项后，将只读计算大小相同文件的 SHA-256。');
+    }
+    if (groupCount == 0) {
+      return Text(
+        failedCount == 0
+            ? '未发现精确重复项；原文件未更改。'
+            : '重复项检查完成，但有 $failedCount 个候选无法读取；原文件未更改。',
+      );
+    }
+    return Text(
+      '精确重复项：$groupCount 组 · $fileCount 个文件 · '
+      '本次哈希 $hashedCount 个${failedCount == 0 ? '' : ' · 失败 $failedCount 个'}。',
+    );
+  }
+}
+
 final class _Navigation extends StatelessWidget {
   const _Navigation({
     required this.pro,
@@ -524,8 +704,55 @@ final class _PreviewPane extends StatelessWidget {
           ),
         ],
       ),
+      const SizedBox(height: 16),
+      const Text('Developer Safe Mode — real files are read-only.'),
+      const SizedBox(height: 8),
+      const Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton(onPressed: null, child: Text('移动')),
+          OutlinedButton(onPressed: null, child: Text('重命名')),
+          OutlinedButton(onPressed: null, child: Text('删除')),
+        ],
+      ),
       const SizedBox(height: 32),
       const Text('Read-only metadata preview. Original location is unchanged.'),
     ],
   );
 }
+
+bool _matchesCategory(FileRecord record, String filter) => switch (filter) {
+  'all' => true,
+  'documents' => const {
+    VirtualCategory.documents,
+    VirtualCategory.pdf,
+    VirtualCategory.academicPapers,
+    VirtualCategory.presentations,
+    VirtualCategory.code,
+  }.contains(record.category),
+  'spreadsheets' => record.category == VirtualCategory.spreadsheets,
+  'images' => const {
+    VirtualCategory.images,
+    VirtualCategory.screenshots,
+  }.contains(record.category),
+  'media' => const {
+    VirtualCategory.videos,
+    VirtualCategory.audio,
+  }.contains(record.category),
+  'archives' => record.category == VirtualCategory.archives,
+  'other' => !const {
+    VirtualCategory.documents,
+    VirtualCategory.pdf,
+    VirtualCategory.academicPapers,
+    VirtualCategory.presentations,
+    VirtualCategory.code,
+    VirtualCategory.spreadsheets,
+    VirtualCategory.images,
+    VirtualCategory.screenshots,
+    VirtualCategory.videos,
+    VirtualCategory.audio,
+    VirtualCategory.archives,
+  }.contains(record.category),
+  _ => true,
+};
