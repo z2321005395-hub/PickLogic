@@ -211,7 +211,8 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     return;
   }
 
-  if (method == "pickPdfFile") {
+  if (method == "pickPdfFile" || method == "pickPdfFiles") {
+    const bool allow_multiple = method == "pickPdfFiles";
     IFileOpenDialog* dialog = nullptr;
     HRESULT status = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
                                       CLSCTX_INPROC_SERVER,
@@ -230,9 +231,10 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     DWORD options = 0;
     if (SUCCEEDED(status)) status = dialog->GetOptions(&options);
     if (SUCCEEDED(status)) {
-      status = dialog->SetOptions(options | FOS_FORCEFILESYSTEM |
-                                  FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST |
-                                  FOS_STRICTFILETYPES | FOS_NOCHANGEDIR);
+      status = dialog->SetOptions(
+          options | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST |
+          FOS_FILEMUSTEXIST | FOS_STRICTFILETYPES | FOS_NOCHANGEDIR |
+          (allow_multiple ? FOS_ALLOWMULTISELECT : 0));
     }
     if (FAILED(status)) {
       dialog->Release();
@@ -253,6 +255,47 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     if (FAILED(status)) {
       dialog->Release();
       result->Error("dialog_failed", "Windows PDF selection failed.");
+      return;
+    }
+    if (allow_multiple) {
+      IShellItemArray* items = nullptr;
+      status = dialog->GetResults(&items);
+      dialog->Release();
+      if (FAILED(status) || items == nullptr) {
+        result->Error("dialog_failed", "Windows returned no selected PDFs.");
+        return;
+      }
+      DWORD count = 0;
+      status = items->GetCount(&count);
+      flutter::EncodableList selected_paths;
+      if (SUCCEEDED(status)) selected_paths.reserve(count);
+      for (DWORD index = 0; SUCCEEDED(status) && index < count; ++index) {
+        IShellItem* item = nullptr;
+        status = items->GetItemAt(index, &item);
+        if (FAILED(status) || item == nullptr) break;
+        PWSTR path = nullptr;
+        status = item->GetDisplayName(SIGDN_FILESYSPATH, &path);
+        item->Release();
+        if (FAILED(status) || path == nullptr) break;
+        const std::wstring selected_path(path);
+        const std::string utf8_path = WideToUtf8(selected_path);
+        CoTaskMemFree(path);
+        const DWORD attributes = GetFileAttributesW(selected_path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES ||
+            (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
+            !HasPdfExtension(selected_path)) {
+          status = E_INVALIDARG;
+          break;
+        }
+        selected_paths.emplace_back(utf8_path);
+      }
+      items->Release();
+      if (FAILED(status)) {
+        result->Error("invalid_pdf",
+                      "A selected item is not a local PDF file.");
+        return;
+      }
+      result->Success(flutter::EncodableValue(selected_paths));
       return;
     }
     IShellItem* item = nullptr;

@@ -15,6 +15,9 @@ final class PicklogicWindowsBridge {
   Future<String?> pickPdfFile({String? title}) =>
       PicklogicWindowsBridgePlatform.instance.pickPdfFile(title: title);
 
+  Future<List<String>> pickPdfFiles({String? title}) =>
+      PicklogicWindowsBridgePlatform.instance.pickPdfFiles(title: title);
+
   Future<String> getApplicationSupportDirectory() =>
       PicklogicWindowsBridgePlatform.instance.getApplicationSupportDirectory();
 

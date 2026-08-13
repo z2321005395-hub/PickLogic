@@ -63,6 +63,69 @@ void main() {
     },
   );
 
+  testWidgets('Literature imports multiple PDFs and saves manual metadata', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final store = _MemoryLiteratureStore([]);
+    final source = _MemoryPdfSource(
+      '%PDF-1.7 /Title (Synthetic batch item) %%EOF'.codeUnits,
+    );
+
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: ProWorkspaceRoute(
+          section: 'literature',
+          libraryStore: store,
+          pdfMultiPicker: () async => <String>[
+            r'X:\synthetic\first.pdf',
+            r'X:\synthetic\second.pdf',
+            r'X:\synthetic\notes.txt',
+          ],
+          pdfSourceBuilder: (_) => source,
+          literaturePdfReaderBuilder: (_, _, _) =>
+              const SizedBox(key: Key('batch-reader-test-double')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('literature-add-action')));
+    await tester.pumpAndSettle();
+
+    expect(store.entries, hasLength(2));
+    expect(find.textContaining('2 item(s) added'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('literature-metadata-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('literature-edit-metadata-action')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('literature-title-field')),
+      'Corrected synthetic title',
+    );
+    await tester.enterText(
+      find.byKey(const Key('literature-authors-field')),
+      'Ada Example; Lin Test',
+    );
+    await tester.enterText(
+      find.byKey(const Key('literature-journal-field')),
+      'Synthetic Journal',
+    );
+    await tester.enterText(
+      find.byKey(const Key('literature-year-field')),
+      '2026',
+    );
+    await tester.tap(find.byKey(const Key('literature-save-metadata-action')));
+    await tester.pumpAndSettle();
+
+    expect(store.entries.first.record.title, 'Corrected synthetic title');
+    expect(store.entries.first.record.authors, ['Ada Example', 'Lin Test']);
+    expect(store.entries.first.record.journal, 'Synthetic Journal');
+    expect(store.entries.first.record.metadataSource, 'manual local edit');
+    expect(find.textContaining('Metadata saved'), findsOneWidget);
+  });
+
   testWidgets(
     'all three Pro workspaces switch between pure Chinese and English',
     (tester) async {
@@ -234,5 +297,23 @@ final class _MemoryLiteratureStore implements LiteratureLibraryStore {
   @override
   Future<void> save(List<LiteratureLibraryEntry> entries) async {
     this.entries = List<LiteratureLibraryEntry>.of(entries);
+  }
+}
+
+final class _MemoryPdfSource implements PdfByteSource {
+  _MemoryPdfSource(this.bytes);
+
+  final List<int> bytes;
+
+  @override
+  Future<int> length() async => bytes.length;
+
+  @override
+  Future<List<int>> readRange({
+    required int offset,
+    required int length,
+  }) async {
+    if (offset >= bytes.length) return const <int>[];
+    return bytes.sublist(offset, (offset + length).clamp(0, bytes.length));
   }
 }

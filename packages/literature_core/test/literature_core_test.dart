@@ -241,6 +241,64 @@ void main() {
       expect(restored.single.record.readingProgress, 0.5);
     },
   );
+
+  test(
+    'SQLite library store atomically preserves order and metadata',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'picklogic-literature-sqlite-synthetic-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final store = SqliteLiteratureLibraryStore(
+        '${root.path}${Platform.pathSeparator}catalog.db',
+      );
+      final first = LiteratureLibraryEntry(
+        record: const LiteratureRecord(
+          id: 'lit-first',
+          localFileId: 'local-lit-first',
+          title: 'First synthetic paper',
+          metadataConfidence: 0.5,
+        ),
+        localPath: r'X:\synthetic\first.pdf',
+        fileName: 'first.pdf',
+        addedAt: DateTime.utc(2026, 8, 14),
+      );
+      final second = LiteratureLibraryEntry(
+        record: const LiteratureRecord(
+          id: 'lit-second',
+          localFileId: 'local-lit-second',
+          title: 'Second synthetic paper',
+          metadataConfidence: 0.5,
+        ),
+        localPath: r'X:\synthetic\second.pdf',
+        fileName: 'second.pdf',
+        addedAt: DateTime.utc(2026, 8, 14),
+      );
+
+      expect(await store.load(), isEmpty);
+      await store.save([second, first]);
+      var restored = await store.load();
+      expect(restored.map((entry) => entry.id), ['lit-second', 'lit-first']);
+
+      final editedRecord = LiteratureRecord(
+        id: first.record.id,
+        localFileId: first.record.localFileId,
+        title: 'Manually corrected title',
+        authors: const ['Test Author'],
+        journal: 'Synthetic Journal',
+        year: 2026,
+        metadataSource: 'manual local edit',
+        metadataConfidence: 1,
+      );
+      await store.save([first.replaceRecord(editedRecord)]);
+      restored = await store.load();
+
+      expect(restored, hasLength(1));
+      expect(restored.single.record.title, 'Manually corrected title');
+      expect(restored.single.record.journal, 'Synthetic Journal');
+      expect(restored.single.localPath, first.localPath);
+    },
+  );
 }
 
 final class _RecordingPdfSource implements PdfByteSource {

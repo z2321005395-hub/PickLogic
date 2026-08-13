@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import 'pdf_metadata_reader.dart';
 import 'reading_progress.dart';
@@ -46,6 +47,25 @@ final class LiteratureLibraryEntry {
   final int? totalPages;
 
   String get id => record.id;
+
+  /// Replaces app-owned metadata while preserving the source reference and
+  /// reading position. The source PDF is never opened for writing.
+  LiteratureLibraryEntry replaceRecord(LiteratureRecord updatedRecord) {
+    if (updatedRecord.id != id ||
+        updatedRecord.localFileId != record.localFileId) {
+      throw ArgumentError(
+        'Updated metadata must preserve the literature and local-file IDs.',
+      );
+    }
+    return LiteratureLibraryEntry(
+      record: updatedRecord,
+      localPath: localPath,
+      fileName: fileName,
+      addedAt: addedAt,
+      currentPage: currentPage,
+      totalPages: totalPages,
+    );
+  }
 
   LiteratureLibraryEntry recordPosition({
     required int currentPage,
@@ -221,6 +241,76 @@ final class JsonFileLiteratureLibraryStore implements LiteratureLibraryStore {
       'entries': entries.map((entry) => entry.toJson()).toList(growable: false),
     });
     await file.writeAsString(payload, flush: true);
+  }
+}
+
+/// SQLite persistence for the app-owned Pro literature catalog.
+///
+/// Each entry remains a compact, versioned JSON payload inside SQLite. This
+/// keeps the stable model serializer authoritative while providing atomic
+/// catalog replacement and durable ordering without touching source PDFs.
+final class SqliteLiteratureLibraryStore implements LiteratureLibraryStore {
+  const SqliteLiteratureLibraryStore(this.catalogPath);
+
+  final String catalogPath;
+
+  @override
+  Future<List<LiteratureLibraryEntry>> load() async {
+    final database = await _open();
+    try {
+      final rows = database.select(
+        'SELECT payload_json FROM literature_catalog ORDER BY sort_index',
+      );
+      return List<LiteratureLibraryEntry>.unmodifiable(
+        rows.map(
+          (row) => LiteratureLibraryEntry.fromJson(
+            jsonDecode(row['payload_json']! as String),
+          ),
+        ),
+      );
+    } finally {
+      database.close();
+    }
+  }
+
+  @override
+  Future<void> save(List<LiteratureLibraryEntry> entries) async {
+    final database = await _open();
+    PreparedStatement? insert;
+    try {
+      database.execute('BEGIN IMMEDIATE');
+      database.execute('DELETE FROM literature_catalog');
+      insert = database.prepare(
+        'INSERT INTO literature_catalog '
+        '(entry_id, sort_index, payload_json) VALUES (?, ?, ?)',
+      );
+      for (var index = 0; index < entries.length; index++) {
+        final entry = entries[index];
+        insert.execute(<Object?>[entry.id, index, jsonEncode(entry.toJson())]);
+      }
+      database.execute('COMMIT');
+    } on Object {
+      if (database.autocommit == false) database.execute('ROLLBACK');
+      rethrow;
+    } finally {
+      insert?.close();
+      database.close();
+    }
+  }
+
+  Future<Database> _open() async {
+    final file = File(catalogPath);
+    await file.parent.create(recursive: true);
+    final database = sqlite3.open(catalogPath);
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS literature_catalog (
+        entry_id TEXT PRIMARY KEY NOT NULL,
+        sort_index INTEGER NOT NULL,
+        payload_json TEXT NOT NULL
+      )
+    ''');
+    database.execute('PRAGMA user_version = 1');
+    return database;
   }
 }
 

@@ -415,7 +415,7 @@ void main() {
     expect(find.textContaining('仅预览'), findsOneWidget);
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
-    expect(find.text('翻译 · 即将推出'), findsOneWidget);
+    expect(find.text('翻译 · 即将推出'), findsNothing);
   });
 
   testWidgets(
@@ -501,7 +501,7 @@ void main() {
     expect(find.text('轻量文献管理'), findsOneWidget);
     expect(find.text('添加文献'), findsOneWidget);
     expect(find.text('文献列表'), findsOneWidget);
-    expect(find.text('翻译 · 即将推出'), findsOneWidget);
+    expect(find.text('翻译 · 即将推出'), findsNothing);
     expect(find.textContaining('不会扫描目录'), findsOneWidget);
 
     await tester.pumpWidget(build(const Locale('en')));
@@ -509,7 +509,7 @@ void main() {
     expect(find.text('Literature Manager Lite'), findsOneWidget);
     expect(find.text('Add literature'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('Translation · Coming next'), findsOneWidget);
+    expect(find.text('Translation · Coming next'), findsNothing);
     expect(find.textContaining('no directory will be scanned'), findsOneWidget);
     expect(find.text('添加文献'), findsNothing);
   });

@@ -16,6 +16,10 @@ void main() {
             'getPlatformVersion' => '42',
             'pickDirectory' => 'synthetic-root',
             'pickPdfFile' => r'X:\synthetic\paper.pdf',
+            'pickPdfFiles' => <String>[
+              r'X:\synthetic\paper.pdf',
+              r'X:\synthetic\second.pdf',
+            ],
             'getApplicationSupportDirectory' => r'X:\synthetic\app-support',
             'getBrowseRoots' => <Object>[
               <String, Object>{
@@ -68,6 +72,10 @@ void main() {
       await platform.pickPdfFile(title: 'Pick PDF'),
       r'X:\synthetic\paper.pdf',
     );
+    expect(await platform.pickPdfFiles(title: 'Pick PDFs'), <String>[
+      r'X:\synthetic\paper.pdf',
+      r'X:\synthetic\second.pdf',
+    ]);
     expect(
       await platform.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',
