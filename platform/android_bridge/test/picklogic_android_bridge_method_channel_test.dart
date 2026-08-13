@@ -103,6 +103,8 @@ void main() {
     final requested = await platform.requestMediaPermissions();
     final storage = await platform.getStorageSnapshot();
     expect(permission.images, isTrue);
+    expect(requested.images, isTrue);
+    expect(requested.videos, isTrue);
     expect(requested.audio, isTrue);
     expect(storage.canInspectOtherAppPrivateData, isFalse);
     expect(storage.isAggregateOnly, isTrue);

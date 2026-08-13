@@ -5,17 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
-import 'package:picklogic_insight_engine/picklogic_insight_engine.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'src/incremental_index_queue.dart';
+import 'src/mobile_localizations.dart';
 import 'src/mobile_repository.dart';
 import 'src/screenshot_grouping.dart';
 
 void main() =>
     runApp(PickLogicMobileApp(repository: AndroidMobileRepository()));
 
-final class PickLogicMobileApp extends StatelessWidget {
+final class PickLogicMobileApp extends StatefulWidget {
   const PickLogicMobileApp({
     super.key,
     this.repository = const SyntheticMobileRepository(),
@@ -24,27 +24,52 @@ final class PickLogicMobileApp extends StatelessWidget {
   final MobileRepository repository;
 
   @override
+  State<PickLogicMobileApp> createState() => _PickLogicMobileAppState();
+}
+
+final class _PickLogicMobileAppState extends State<PickLogicMobileApp> {
+  Locale _locale = const Locale('zh');
+
+  void _toggleLanguage() {
+    setState(() {
+      _locale = Locale(_locale.languageCode == 'zh' ? 'en' : 'zh');
+    });
+  }
+
+  @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'PickLogic Mobile',
     theme: PickLogicTokens.lightTheme(),
     darkTheme: PickLogicTokens.darkTheme(),
-    locale: const Locale('zh'),
+    locale: _locale,
     supportedLocales: PickLogicLocalizations.supportedLocales,
     localizationsDelegates: const [
       PickLogicLocalizations.delegate,
+      MobileLocalizations.delegate,
       GlobalMaterialLocalizations.delegate,
       GlobalWidgetsLocalizations.delegate,
       GlobalCupertinoLocalizations.delegate,
     ],
-    home: MobileShell(repository: repository),
+    home: MobileShell(
+      repository: widget.repository,
+      onToggleLanguage: _toggleLanguage,
+      languageCode: _locale.languageCode,
+    ),
   );
 }
 
 final class MobileShell extends StatefulWidget {
-  const MobileShell({super.key, required this.repository});
+  const MobileShell({
+    super.key,
+    required this.repository,
+    required this.onToggleLanguage,
+    required this.languageCode,
+  });
 
   final MobileRepository repository;
+  final VoidCallback onToggleLanguage;
+  final String languageCode;
 
   @override
   State<MobileShell> createState() => _MobileShellState();
@@ -91,7 +116,11 @@ final class _MobileShellState extends State<MobileShell> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('媒体权限检查未完成；PickLogic 未读取任何媒体或文件。')),
+        SnackBar(
+          content: Text(
+            MobileLocalizations.of(context).text('permissionError'),
+          ),
+        ),
       );
       setState(() {
         _bootstrap = widget.repository.loadBootstrap();
@@ -103,21 +132,28 @@ final class _MobileShellState extends State<MobileShell> {
     try {
       final tree = await widget.repository.chooseDocumentTree();
       if (!mounted || tree == null) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('目录只读授权已保存；未移动或修改任何文件。')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MobileLocalizations.of(context).text('safSaved')),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('未获得目录只读授权。')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MobileLocalizations.of(context).text('safDenied')),
+        ),
+      );
     }
   }
 
   Future<void> _startSearch() async {
     final record = await showSearch<FileRecord?>(
       context: context,
-      delegate: _MobileSearchDelegate(widget.repository),
+      delegate: _MobileSearchDelegate(
+        widget.repository,
+        MobileLocalizations.of(context),
+      ),
     );
     if (record != null && mounted) {
       _showMediaItem(context, record, widget.repository);
@@ -127,6 +163,7 @@ final class _MobileShellState extends State<MobileShell> {
   @override
   Widget build(BuildContext context) {
     final strings = PickLogicLocalizations.of(context);
+    final mobileStrings = MobileLocalizations.of(context);
     return FutureBuilder<MobileBootstrapState>(
       future: _bootstrap,
       builder: (context, snapshot) {
@@ -162,6 +199,18 @@ final class _MobileShellState extends State<MobileShell> {
           appBar: AppBar(
             title: const Text('PickLogic · 拾理'),
             actions: [
+              Tooltip(
+                message: mobileStrings.text('switchLanguage'),
+                child: TextButton.icon(
+                  key: const Key('language-switch'),
+                  onPressed: widget.onToggleLanguage,
+                  icon: const Icon(Icons.translate),
+                  label: Text(widget.languageCode == 'zh' ? 'EN' : '中'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
               IconButton(
                 tooltip: strings.text('search'),
                 icon: const Icon(Icons.search),
@@ -213,43 +262,43 @@ final class _BootstrapFailure extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 420),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          key: const Key('mobile-bootstrap-failure'),
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.phonelink_erase_outlined,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '本地平台能力暂时不可用',
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'PickLogic 未读取任何媒体或文件。请重试；若仍失败，请重新启动应用。',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              key: const Key('mobile-bootstrap-retry'),
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试本地初始化'),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            key: const Key('mobile-bootstrap-failure'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.phonelink_erase_outlined,
+                size: 48,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                strings.text('bootstrapTitle'),
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(strings.text('bootstrapBody'), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                key: const Key('mobile-bootstrap-retry'),
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: Text(strings.text('retryBootstrap')),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 final class _FilesPage extends StatefulWidget {
@@ -299,40 +348,46 @@ final class _FilesPageState extends State<_FilesPage> {
   }
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      Text('文件集合', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 8),
-      const Text('每次只读取一页 MediaStore 元数据；其他共享目录使用 SAF 只读授权。'),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        children: [
-          ChoiceChip(
-            key: const Key('files-documents'),
-            label: const Text('文档'),
-            selected: _kind == AndroidMediaKind.documents,
-            onSelected: (_) => _selectCollection(AndroidMediaKind.documents),
-          ),
-          ChoiceChip(
-            key: const Key('files-downloads'),
-            label: const Text('下载'),
-            selected: _kind == AndroidMediaKind.downloads,
-            onSelected: (_) => _selectCollection(AndroidMediaKind.downloads),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      _RecordList(future: _records, repository: widget.repository),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(
-        onPressed: widget.onChooseTree,
-        icon: const Icon(Icons.create_new_folder_outlined),
-        label: const Text('选择可访问目录（SAF，只读）'),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          strings.text('filesTitle'),
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Text(strings.text('filesDescription')),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              key: const Key('files-documents'),
+              label: Text(strings.text('documents')),
+              selected: _kind == AndroidMediaKind.documents,
+              onSelected: (_) => _selectCollection(AndroidMediaKind.documents),
+            ),
+            ChoiceChip(
+              key: const Key('files-downloads'),
+              label: Text(strings.text('downloads')),
+              selected: _kind == AndroidMediaKind.downloads,
+              onSelected: (_) => _selectCollection(AndroidMediaKind.downloads),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _RecordList(future: _records, repository: widget.repository),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: widget.onChooseTree,
+          icon: const Icon(Icons.create_new_folder_outlined),
+          label: Text(strings.text('chooseSafReadOnly')),
+        ),
+      ],
+    );
+  }
 }
 
 final class _RecordList extends StatelessWidget {
@@ -345,12 +400,13 @@ final class _RecordList extends StatelessWidget {
   Widget build(BuildContext context) => FutureBuilder<List<FileRecord>>(
     future: future,
     builder: (context, snapshot) {
-      if (future == null) return const Text('进入页面后按需加载。');
+      final strings = MobileLocalizations.of(context);
+      if (future == null) return Text(strings.text('lazyLoad'));
       if (snapshot.hasError) {
-        return const Text('此集合当前不可访问；可改用 SAF 选择共享目录。');
+        return Text(strings.text('collectionUnavailable'));
       }
       if (!snapshot.hasData) return const LinearProgressIndicator();
-      if (snapshot.data!.isEmpty) return const Text('当前页没有可访问项目。');
+      if (snapshot.data!.isEmpty) return Text(strings.text('emptyCollection'));
       return Column(
         children: [
           for (final record in snapshot.data!)
@@ -434,36 +490,40 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
 
   void _mark(FileRecord record, ScreenshotReviewState state) {
     setState(() => _review[record.id] = state);
-    final label = switch (state) {
-      ScreenshotReviewState.keep => '保留',
-      ScreenshotReviewState.deleteReview => '加入删除审查',
-      ScreenshotReviewState.later => '稍后',
-      ScreenshotReviewState.protected => '已保护',
-      ScreenshotReviewState.unreviewed => '尚未判断',
-    };
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$label · 仅保存为本地审查标记，未修改原文件')));
+    final strings = MobileLocalizations.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          strings.format('markerSaved', <String, Object>{
+            'state': _reviewLabel(strings, state),
+          }),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
     if (!widget.canReadMedia) {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('截图', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            strings.text('screenshotsTitle'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 12),
           _AccessRequired(
             onRequestAccess: widget.onRequestAccess,
             onChooseTree: widget.onChooseTree,
           ),
-          const Text('授权后只读取 MediaStore 元数据与可见项的有界缩略图；不会自动 OCR。'),
+          Text(strings.text('screenshotPermissionDetail')),
         ],
       );
     }
     if (_snapshot == null) {
-      return const Center(child: Text('进入截图页后按需加载。'));
+      return Center(child: Text(strings.text('screenshotLazy')));
     }
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -474,13 +534,15 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
             child: FutureBuilder<_ScreenshotSnapshot>(
               future: _snapshot,
               builder: (context, snapshot) {
-                if (snapshot.hasError) return const Text('当前无法读取截图集合。');
+                if (snapshot.hasError) {
+                  return Text(strings.text('screenshotError'));
+                }
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 final groups = snapshot.data!.groups;
                 if (groups.isEmpty) {
-                  return const Center(child: Text('没有可访问截图。'));
+                  return Center(child: Text(strings.text('screenshotEmpty')));
                 }
                 final entries = <_ScreenshotPageEntry>[
                   for (final group in groups)
@@ -518,13 +580,18 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('截图', style: Theme.of(context).textTheme.titleLarge),
                     Text(
-                      '共 ${snapshot.data!.totalCount} 张可访问截图 · '
-                      '当前显示最近 ${entries.length} 张（日期倒序）',
+                      strings.text('screenshotsTitle'),
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    Text(
+                      strings.format('screenshotCount', <String, Object>{
+                        'total': snapshot.data!.totalCount,
+                        'visible': entries.length,
+                      }),
                       key: const Key('screenshot-real-count'),
                     ),
-                    const Text('按时间与来源线索连续分组；来源线索不是应用归属结论。'),
+                    Text(strings.text('groupNote')),
                     const SizedBox(height: 8),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -532,7 +599,7 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                         children: [
                           ChoiceChip(
                             key: const Key('screenshot-month-all'),
-                            label: const Text('全部月份'),
+                            label: Text(strings.text('allMonths')),
                             selected: _month == null,
                             onSelected: (_) => setState(() => _month = null),
                           ),
@@ -550,10 +617,14 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '本地审查队列：保留 $keepCount · 稍后 $laterCount · 删除审查 $deleteCount',
+                      strings.format('reviewSummary', <String, Object>{
+                        'keep': keepCount,
+                        'later': laterCount,
+                        'delete': deleteCount,
+                      }),
                       key: const Key('screenshot-review-summary'),
                     ),
-                    const Text('这些是当前会话的本地标记；删除审查不会删除、移动或重命名媒体。'),
+                    Text(strings.text('reviewSafety')),
                     const SizedBox(height: 8),
                     Expanded(
                       child: GridView.builder(
@@ -623,12 +694,17 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                                   if (group.memberIds.length > 1)
                                     _GridBadge(
                                       alignment: Alignment.topLeft,
-                                      label: '连续 ${group.memberIds.length}',
+                                      label: strings.format(
+                                        'consecutive',
+                                        <String, Object>{
+                                          'count': group.memberIds.length,
+                                        },
+                                      ),
                                     ),
                                   if (state != ScreenshotReviewState.unreviewed)
                                     _GridBadge(
                                       alignment: Alignment.topRight,
-                                      label: _reviewLabel(state),
+                                      label: _reviewLabel(strings, state),
                                     ),
                                 ],
                               ),
@@ -695,37 +771,44 @@ final class _PhotosPageState extends State<_PhotosPage> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
     if (!widget.canReadMedia) {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('照片', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            strings.text('photosTitle'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 12),
           _AccessRequired(
             onRequestAccess: widget.onRequestAccess,
             onChooseTree: widget.onChooseTree,
           ),
-          const Text('未授权时 PickLogic 不读取照片。'),
+          Text(strings.text('photosNoAccess')),
         ],
       );
     }
     if (_records == null) {
-      return const Center(child: Text('进入照片页后按需加载。'));
+      return Center(child: Text(strings.text('photosLazy')));
     }
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('照片', style: Theme.of(context).textTheme.titleLarge),
-          const Text('当前页元数据搜索；缩略图只在可见时按需读取。'),
+          Text(
+            strings.text('photosTitle'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          Text(strings.text('photosDescription')),
           const SizedBox(height: 8),
           TextField(
             key: const Key('photos-search-field'),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: '搜索照片名称或类型',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: strings.text('photosSearchHint'),
+              border: const OutlineInputBorder(),
               isDense: true,
             ),
             onChanged: (value) =>
@@ -737,7 +820,7 @@ final class _PhotosPageState extends State<_PhotosPage> {
               future: _records,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return const Center(child: Text('当前无法读取照片集合。'));
+                  return Center(child: Text(strings.text('photosError')));
                 }
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -751,7 +834,7 @@ final class _PhotosPageState extends State<_PhotosPage> {
                     )
                     .toList(growable: false);
                 if (records.isEmpty) {
-                  return const Center(child: Text('当前页没有匹配照片。'));
+                  return Center(child: Text(strings.text('photosNoMatches')));
                 }
                 return GridView.builder(
                   key: const Key('photos-thumbnail-grid'),
@@ -963,53 +1046,62 @@ final class _StoragePageState extends State<_StoragePage> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
     final storage = widget.bootstrap?.storage;
     if (storage == null) {
-      return const Center(child: Text('正在读取系统存储摘要…'));
+      return Center(child: Text(strings.text('storageLoading')));
     }
     final used = storage.totalBytes - storage.availableBytes;
     final fraction = storage.totalBytes == 0 ? 0.0 : used / storage.totalBytes;
     final queue = widget.repository.indexQueueSnapshot;
     final visualAccess = widget.bootstrap!.permissions.partialVisualAccess
-        ? '仅限用户选择的照片和视频'
+        ? strings.text('selectedVisualOnly')
         : storage.canInspectSharedMedia
-        ? '仅限已授权的 MediaStore 集合'
-        : '尚未授权，无法检查';
+        ? strings.text('authorizedCollections')
+        : strings.text('notAuthorized');
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Storage Insight', style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          strings.text('storageTitle'),
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 12),
         _StorageTile(
-          '设备数据卷已用空间（系统聚合）',
+          strings.text('volumeUsed'),
           fraction.clamp(0, 1),
           true,
-          '${_formatBytes(used)} / ${_formatBytes(storage.totalBytes)}；'
-              '不可据此归因到文件或应用',
+          strings.format('volumeDetail', <String, Object>{
+            'used': _formatBytes(used),
+            'total': _formatBytes(storage.totalBytes),
+          }),
         ),
         _StorageTile(
-          '共享媒体可见范围',
+          strings.text('sharedMedia'),
           storage.canInspectSharedMedia ? 1 : 0,
           storage.canInspectSharedMedia,
           visualAccess,
         ),
         _StorageTile(
-          '下载、安装包与压缩包',
+          strings.text('downloadStorage'),
           0,
           storage.canInspectDownloads,
           storage.canInspectDownloads
-              ? '仅统计 MediaStore/SAF 可见项'
-              : '需要用户通过 SAF 选择目录',
+              ? strings.text('mediaStoreSafOnly')
+              : strings.text('safRequired'),
         ),
         _StorageTile(
-          '后台增量元数据队列',
+          strings.text('metadataQueue'),
           queue.isRunning ? null : 0,
           true,
-          queue.persistsAcrossRestarts
-              ? '已索引 ${queue.indexedItems} 项；完成 ${queue.completedBatches} 批；'
-                    '失败 ${queue.failedBatches} 批；SQLite 检查点可恢复；不调度 OCR'
-              : '已索引 ${queue.indexedItems} 项；完成 ${queue.completedBatches} 批；'
-                    '当前会话状态；不调度 OCR',
+          strings.format(
+            queue.persistsAcrossRestarts ? 'queuePersistent' : 'queueSession',
+            <String, Object>{
+              'items': queue.indexedItems,
+              'done': queue.completedBatches,
+              'failed': queue.failedBatches,
+            },
+          ),
         ),
         Align(
           alignment: Alignment.centerLeft,
@@ -1024,23 +1116,31 @@ final class _StoragePageState extends State<_StoragePage> {
             ),
             label: Text(
               queue.isRunning || queue.pendingBatches > 0
-                  ? '暂停索引'
+                  ? strings.text('pauseIndex')
                   : queue.isPaused
-                  ? '继续索引'
-                  : '检查新增内容',
+                  ? strings.text('resumeIndex')
+                  : strings.text('checkNew'),
             ),
           ),
         ),
-        const _StorageTile('其他应用私有数据', 0, false, '平台限制'),
+        _StorageTile(
+          strings.text('privateData'),
+          0,
+          false,
+          strings.text('platformRestriction'),
+        ),
         const SizedBox(height: 16),
-        Text('明确限制', style: Theme.of(context).textTheme.titleMedium),
-        Text('• ${storage.systemRestriction}'),
-        const Text('• 系统聚合值包含 PickLogic 无法枚举或归因的数据。'),
-        const Text('• 不读取其他应用私有目录，不估算其内容，不提供清理按钮。'),
-        const Text('• 仅处理按页返回的元数据；缩略图在可见时按需读取。'),
-        for (final limitation in storage.limitations) Text('• $limitation'),
+        Text(
+          strings.text('explicitLimits'),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        Text('• ${strings.text('limitPlatform')}'),
+        Text('• ${strings.text('limitAggregate')}'),
+        Text('• ${strings.text('limitPrivate')}'),
+        Text('• ${strings.text('limitBounded')}'),
+        Text('• ${strings.text('limitDownloads')}'),
         const SizedBox(height: 8),
-        const Text('可使用 SAF 查看用户明确选择的共享目录；任何媒体操作仍需另行预览与确认。'),
+        Text(strings.text('safStorageNote')),
       ],
     );
   }
@@ -1055,20 +1155,25 @@ final class _StorageTile extends StatelessWidget {
   final String detail;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    title: Text(label),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('${inspectable ? '可访问' : '受限'} · $detail'),
-        LinearProgressIndicator(value: value),
-      ],
-    ),
-    trailing: Icon(
-      inspectable ? Icons.visibility_outlined : Icons.lock_outline,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${strings.text(inspectable ? 'accessible' : 'restricted')} · $detail',
+          ),
+          LinearProgressIndicator(value: value),
+        ],
+      ),
+      trailing: Icon(
+        inspectable ? Icons.visibility_outlined : Icons.lock_outline,
+      ),
+    );
+  }
 }
 
 final class _AccessRequired extends StatelessWidget {
@@ -1081,41 +1186,45 @@ final class _AccessRequired extends StatelessWidget {
   final VoidCallback onChooseTree;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('尚未获得媒体只读权限。'),
-          const Text('首屏保持可用；不会在后台绕过 Android scoped storage。'),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              FilledButton(
-                onPressed: onRequestAccess,
-                child: const Text('选择媒体权限'),
-              ),
-              OutlinedButton(
-                onPressed: onChooseTree,
-                child: const Text('选择共享目录'),
-              ),
-            ],
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(strings.text('permissionMissing')),
+            Text(strings.text('permissionSafety')),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                FilledButton(
+                  onPressed: onRequestAccess,
+                  child: Text(strings.text('selectMedia')),
+                ),
+                OutlinedButton(
+                  onPressed: onChooseTree,
+                  child: Text(strings.text('selectFolder')),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 final class _MobileSearchDelegate extends SearchDelegate<FileRecord?> {
-  _MobileSearchDelegate(this.repository);
+  _MobileSearchDelegate(this.repository, this.strings);
 
   final MobileRepository repository;
+  final MobileLocalizations strings;
 
   @override
-  String get searchFieldLabel => '按名称、类型或分类搜索';
+  String get searchFieldLabel => strings.text('searchField');
 
   @override
   List<Widget>? buildActions(BuildContext context) => [
@@ -1137,7 +1246,7 @@ final class _MobileSearchDelegate extends SearchDelegate<FileRecord?> {
 
   @override
   Widget buildSuggestions(BuildContext context) => query.trim().length < 2
-      ? const Center(child: Text('输入至少两个字符；仅搜索本地元数据。'))
+      ? Center(child: Text(strings.text('searchMinimum')))
       : buildResults(context);
 }
 
@@ -1151,11 +1260,16 @@ final class _SearchResults extends StatelessWidget {
   Widget build(BuildContext context) => FutureBuilder<List<FileRecord>>(
     future: future,
     builder: (context, snapshot) {
-      if (snapshot.hasError) return const Center(child: Text('当前索引不可访问。'));
+      final strings = MobileLocalizations.of(context);
+      if (snapshot.hasError) {
+        return Center(child: Text(strings.text('indexUnavailable')));
+      }
       if (!snapshot.hasData) {
         return const Center(child: CircularProgressIndicator());
       }
-      if (snapshot.data!.isEmpty) return const Center(child: Text('没有匹配结果。'));
+      if (snapshot.data!.isEmpty) {
+        return Center(child: Text(strings.text('noSearchResults')));
+      }
       return ListView.builder(
         itemCount: snapshot.data!.length,
         itemBuilder: (context, index) {
@@ -1169,6 +1283,76 @@ final class _SearchResults extends StatelessWidget {
         },
       );
     },
+  );
+}
+
+final class _MobileInsightPanel extends StatelessWidget {
+  const _MobileInsightPanel({required this.record});
+
+  final FileRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return ListView(
+      key: const Key('mobile-insight-panel'),
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          strings.text('insightTitle'),
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          strings.format('insightSummary', <String, Object>{
+            'type': record.category.name,
+          }),
+        ),
+        const SizedBox(height: 12),
+        _InsightDetail(
+          label: strings.text('type'),
+          value: record.category.name,
+        ),
+        _InsightDetail(
+          label: strings.text('risk'),
+          value: strings.text('reviewRisk'),
+        ),
+        _InsightDetail(label: strings.text('confidence'), value: '80%'),
+        _InsightDetail(
+          label: strings.text('bytes'),
+          value: '${record.sizeBytes}',
+        ),
+        _InsightDetail(
+          label: strings.text('captured'),
+          value: _formatDateTime(record.createdAt ?? record.modifiedAt),
+        ),
+        _InsightDetail(
+          label: strings.text('source'),
+          value: record.sourceKind.name,
+        ),
+        const SizedBox(height: 8),
+        Text(strings.text('metadataEvidence')),
+      ],
+    );
+  }
+}
+
+final class _InsightDetail extends StatelessWidget {
+  const _InsightDetail({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(width: 88, child: Text(label)),
+        Expanded(child: Text(value)),
+      ],
+    ),
   );
 }
 
@@ -1205,61 +1389,68 @@ String _monthKey(DateTime value) {
   return '${local.year}-${local.month.toString().padLeft(2, '0')}';
 }
 
-String _reviewLabel(ScreenshotReviewState state) => switch (state) {
-  ScreenshotReviewState.keep => '保留',
-  ScreenshotReviewState.later => '稍后',
-  ScreenshotReviewState.deleteReview => '删除审查',
-  ScreenshotReviewState.protected => '保护',
-  ScreenshotReviewState.unreviewed => '未标记',
-};
+String _reviewLabel(MobileLocalizations strings, ScreenshotReviewState state) =>
+    switch (state) {
+      ScreenshotReviewState.keep => strings.text('keep'),
+      ScreenshotReviewState.later => strings.text('later'),
+      ScreenshotReviewState.deleteReview => strings.text('deleteReview'),
+      ScreenshotReviewState.protected => strings.text('protected'),
+      ScreenshotReviewState.unreviewed => strings.text('unreviewed'),
+    };
 
 void _showMediaItem(
   BuildContext context,
   FileRecord record,
   MobileRepository repository,
 ) {
-  final insight = const BasicInsightEngine().explainFile(record);
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (sheetContext) => FractionallySizedBox(
-      heightFactor: 0.82,
-      child: Column(
-        children: [
-          ListTile(
-            key: const Key('media-item-details'),
-            leading: Icon(_iconFor(record.category)),
-            title: Text(record.displayName),
-            subtitle: Text(
-              '${record.mimeType} · ${_formatBytes(record.sizeBytes)}\n'
-              '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
-              '${record.sourceKind.name}',
+    builder: (sheetContext) {
+      final strings = MobileLocalizations.of(sheetContext);
+      return FractionallySizedBox(
+        heightFactor: 0.82,
+        child: Column(
+          children: [
+            ListTile(
+              key: const Key('media-item-details'),
+              leading: Icon(_iconFor(record.category)),
+              title: Text(record.displayName),
+              subtitle: Text(
+                '${record.mimeType} · ${_formatBytes(record.sizeBytes)}\n'
+                '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
+                '${record.sourceKind.name}',
+              ),
+              isThreeLine: true,
             ),
-            isThreeLine: true,
-          ),
-          const Divider(height: 1),
-          Expanded(child: InsightPanel(insight: insight)),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: FilledButton.icon(
-                onPressed: () async {
-                  final opened = await repository.open(record);
-                  if (!sheetContext.mounted) return;
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(content: Text(opened ? '已交给系统打开' : '没有可用的打开方式')),
-                  );
-                },
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('打开'),
+            const Divider(height: 1),
+            Expanded(child: _MobileInsightPanel(record: record)),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final opened = await repository.open(record);
+                    if (!sheetContext.mounted) return;
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          strings.text(opened ? 'opened' : 'noViewer'),
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.open_in_new),
+                  label: Text(strings.text('open')),
+                ),
               ),
             ),
-          ),
-        ],
-      ),
-    ),
+          ],
+        ),
+      );
+    },
   );
 }
 
@@ -1271,109 +1462,117 @@ void _showScreenshotItem(
   MobileRepository repository,
   void Function(FileRecord, ScreenshotReviewState) onMark,
 ) {
-  final insight = const BasicInsightEngine().explainFile(record);
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (sheetContext) => FractionallySizedBox(
-      heightFactor: 0.92,
-      child: Column(
-        children: [
-          SizedBox(
-            height: 160,
-            width: double.infinity,
-            child: _OnDemandThumbnail(
-              repository: repository,
-              record: record,
-              maxWidth: 320,
-              maxHeight: 240,
-              fallbackIcon: Icons.screenshot_monitor_outlined,
+    builder: (sheetContext) {
+      final strings = MobileLocalizations.of(sheetContext);
+      return FractionallySizedBox(
+        heightFactor: 0.92,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 160,
+              width: double.infinity,
+              child: _OnDemandThumbnail(
+                repository: repository,
+                record: record,
+                maxWidth: 320,
+                maxHeight: 240,
+                fallbackIcon: Icons.screenshot_monitor_outlined,
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-            child: Column(
-              key: const Key('screenshot-item-details'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  record.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(sheetContext).textTheme.titleMedium,
-                ),
-                Text(
-                  '${record.mimeType} · ${_formatBytes(record.sizeBytes)} · '
-                  '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
-                ),
-                Text(
-                  '来源线索：${group.summary.sourceHint} · '
-                  '${group.records.length > 1 ? '连续 ${group.records.length} 张' : '单张'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text('本地标记：${_reviewLabel(state)} · OCR：未请求'),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(child: InsightPanel(insight: insight)),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 4,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+              child: Column(
+                key: const Key('screenshot-item-details'),
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FilledButton.tonalIcon(
-                    key: const Key('screenshot-mark-keep'),
-                    onPressed: () {
-                      onMark(record, ScreenshotReviewState.keep);
-                      Navigator.pop(sheetContext);
-                    },
-                    icon: const Icon(Icons.bookmark_added_outlined),
-                    label: const Text('保留'),
+                  Text(
+                    record.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(sheetContext).textTheme.titleMedium,
                   ),
-                  OutlinedButton.icon(
-                    key: const Key('screenshot-mark-later'),
-                    onPressed: () {
-                      onMark(record, ScreenshotReviewState.later);
-                      Navigator.pop(sheetContext);
-                    },
-                    icon: const Icon(Icons.schedule_outlined),
-                    label: const Text('稍后'),
+                  Text(
+                    '${record.mimeType} · ${_formatBytes(record.sizeBytes)} · '
+                    '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
                   ),
-                  OutlinedButton.icon(
-                    key: const Key('screenshot-mark-delete-review'),
-                    onPressed: () {
-                      onMark(record, ScreenshotReviewState.deleteReview);
-                      Navigator.pop(sheetContext);
-                    },
-                    icon: const Icon(Icons.rule_folder_outlined),
-                    label: const Text('删除审查'),
+                  Text(
+                    '${strings.format('sourceClue', <String, Object>{'source': group.summary.sourceHint})} · '
+                    '${group.records.length > 1 ? strings.format('consecutive', <String, Object>{'count': group.records.length}) : strings.text('single')}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final opened = await repository.open(record);
-                      if (!sheetContext.mounted) return;
-                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                        SnackBar(
-                          content: Text(opened ? '已交给系统打开' : '没有可用的打开方式'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('打开'),
+                  Text(
+                    strings.format('localMarker', <String, Object>{
+                      'state': _reviewLabel(strings, state),
+                    }),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    ),
+            const Divider(height: 1),
+            Expanded(child: _MobileInsightPanel(record: record)),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    FilledButton.tonalIcon(
+                      key: const Key('screenshot-mark-keep'),
+                      onPressed: () {
+                        onMark(record, ScreenshotReviewState.keep);
+                        Navigator.pop(sheetContext);
+                      },
+                      icon: const Icon(Icons.bookmark_added_outlined),
+                      label: Text(strings.text('keep')),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('screenshot-mark-later'),
+                      onPressed: () {
+                        onMark(record, ScreenshotReviewState.later);
+                        Navigator.pop(sheetContext);
+                      },
+                      icon: const Icon(Icons.schedule_outlined),
+                      label: Text(strings.text('later')),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('screenshot-mark-delete-review'),
+                      onPressed: () {
+                        onMark(record, ScreenshotReviewState.deleteReview);
+                        Navigator.pop(sheetContext);
+                      },
+                      icon: const Icon(Icons.rule_folder_outlined),
+                      label: Text(strings.text('deleteReview')),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final opened = await repository.open(record);
+                        if (!sheetContext.mounted) return;
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              strings.text(opened ? 'opened' : 'noViewer'),
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: Text(strings.text('open')),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
   );
 }

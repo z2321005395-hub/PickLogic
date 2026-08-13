@@ -126,4 +126,26 @@ void main() {
       throwsRangeError,
     );
   });
+
+  test('permission state distinguishes full and selected visual access', () {
+    const full = AndroidMediaPermissionState(
+      images: true,
+      videos: true,
+      audio: true,
+      partialVisualAccess: false,
+    );
+    const selected = AndroidMediaPermissionState(
+      images: false,
+      videos: false,
+      audio: false,
+      partialVisualAccess: true,
+    );
+
+    expect(full.canReadVisualMedia, isTrue);
+    expect(full.videos, isTrue);
+    expect(full.audio, isTrue);
+    expect(selected.canReadImages, isTrue);
+    expect(selected.videos, isFalse);
+    expect(selected.audio, isFalse);
+  });
 }

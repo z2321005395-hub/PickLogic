@@ -19,6 +19,62 @@ void main() {
     for (final label in ['文件', '截图', '照片', '存储']) {
       expect(find.text(label), findsOneWidget);
     }
+    expect(find.byKey(const Key('language-switch')), findsOneWidget);
+  });
+
+  testWidgets('visible language switch updates navigation and permission CTA', (
+    tester,
+  ) async {
+    final repository = _RetryMobileRepository(
+      failBootstrapOnce: false,
+      bootstrapState: _deniedBootstrap,
+    );
+    await tester.pumpWidget(PickLogicMobileApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('language-switch')));
+    await tester.pumpAndSettle();
+    for (final label in ['Files', 'Screenshots', 'Photos', 'Storage']) {
+      expect(find.text(label), findsOneWidget);
+    }
+
+    await tester.tap(find.text('Screenshots'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose media permissions'), findsOneWidget);
+    expect(find.text('Choose shared folder'), findsOneWidget);
+  });
+
+  testWidgets('English covers media, Insight, review, and Storage actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const PickLogicMobileApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('language-switch')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Screenshots'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('4 accessible screenshots'), findsOneWidget);
+    expect(find.textContaining('Local review'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('screenshot-item-Screenshot_1.png')));
+    await tester.pumpAndSettle();
+    expect(find.text('Insight'), findsOneWidget);
+    expect(find.text('Keep'), findsOneWidget);
+    expect(find.text('Later'), findsOneWidget);
+    expect(find.text('Delete review'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('screenshot-mark-later')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Photos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Search photo name or type'), findsOneWidget);
+
+    await tester.tap(find.text('Storage'));
+    await tester.pumpAndSettle();
+    expect(find.text('Storage Insight'), findsOneWidget);
+    await tester.drag(find.text('Storage Insight'), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.text('Explicit limits'), findsOneWidget);
   });
 
   testWidgets('screenshot route uses review-safe language', (tester) async {
@@ -104,7 +160,7 @@ void main() {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.tap(find.text('存储'));
     await tester.pumpAndSettle();
-    await tester.drag(find.text('Storage Insight'), const Offset(0, -500));
+    await tester.drag(find.text('存储知件'), const Offset(0, -500));
     await tester.pumpAndSettle();
     expect(find.text('明确限制'), findsOneWidget);
     expect(find.textContaining('无法枚举或归因'), findsOneWidget);

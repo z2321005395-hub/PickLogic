@@ -29,6 +29,16 @@ import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+internal fun hasRequestedMediaAccess(
+    sdkInt: Int,
+    state: Map<String, Boolean>,
+): Boolean {
+    val fullVisual = state["images"] == true && state["videos"] == true
+    val selectedVisual = sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+        state["partialVisualAccess"] == true
+    return (fullVisual || selectedVisual) && state["audio"] == true
+}
+
 /** Read-only Android metadata bridge for PickLogic. */
 class PicklogicAndroidBridgePlugin :
     FlutterPlugin,
@@ -87,15 +97,20 @@ class PicklogicAndroidBridgePlugin :
         val permissions = when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_AUDIO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
             )
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_AUDIO,
             )
             else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (permissions.all(::hasPermission)) {
-            result.success(mediaPermissionState())
+        val current = mediaPermissionState()
+        if (hasRequestedMediaAccess(Build.VERSION.SDK_INT, current)) {
+            result.success(current)
             return
         }
         pendingPermissionResult = result
