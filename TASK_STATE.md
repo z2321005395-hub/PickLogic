@@ -130,3 +130,17 @@ Obtain explicit approval for a Windows reference-directory read-only scan and nu
 - Final bilingual Standard/Pro user-test ZIPs were built and launched from the ASCII worktree; Pro packaged PDF smoke exited 0.
 - A bilingual arm64 Android user-test APK was built, installed, and launched on nubia NX736J as the parallel package `io.picklogic.mobile.usertest`, preserving the previous differently signed PickLogic package and its data.
 - No real file or media mutation was enabled. Android media permission remains user-controlled and was still ungranted at the last check.
+
+## Usability convergence stage
+
+- Mobile Screenshots, Photos, Files, and recent media now page through all accessible MediaStore metadata in stable date order (120 items per page) instead of stopping at 60; thumbnails remain visible-only and bounded. Synthetic 145-item tests verify cross-page order, deduplication, and completion.
+- Standard and Pro now share one localized dual-pane Windows shell with drive/common-folder entry points, independent navigation, indexed search into the active pane, exact duplicate review, read-only storage summary, and opt-in Preview/Insight drawers.
+- Desktop auto-index is off by default. After an in-app disclosure and confirmation it scans only Desktop, Documents, and Downloads into the local index; drive roots remain browse-only. Safe Mode keeps create/move/rename/delete unavailable.
+- Pro Literature uses a library-and-reader layout; metadata and rename preview open only on request. Research and System Insight now follow the selected language and shared theme.
+- Integrated gates passed: Desktop 19/19, Mobile 28/28, Shared UI 2/2, Windows bridge 7/7; Dart analyses were clean. Windows Standard and Pro Release builds succeeded, and Pro packaged PDF smoke exited 0.
+- Final local user-test sizes: Standard 39,505,916 B installed / 17,108,478 B ZIP; Pro 40,456,188 B installed / 17,487,652 B ZIP; Android arm64 Debug 79,255,936 B. Debug APK size remains above the 40 MB release target; release-size measurement is still the relevant budget gate.
+- Updated `io.picklogic.mobile.usertest` installed and launched on nubia NX736J. Existing image/video/audio permissions were preserved; no fatal log matches were found and no media mutation was enabled.
+
+## Next action
+
+Collect the maintainer's hands-on feedback from the new Standard dual-pane shell, Pro Literature reader, and Z70 all-screenshots pagination. Do not add more features before that feedback.
