@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -5,38 +6,97 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
-/// A real, local PDF rendering slice backed only by a generated fixture.
-///
-/// It deliberately accepts no path or network source while dependency and
-/// packaging measurements are under review.
-final class ProSyntheticPdfReader extends StatefulWidget {
+typedef LiteratureReadingPositionChanged =
+    void Function(int currentPage, int totalPages);
+
+/// Reads one explicitly selected local PDF without modifying it.
+final class ProLocalPdfReader extends StatelessWidget {
+  const ProLocalPdfReader({
+    super.key,
+    required this.path,
+    required this.fileName,
+    required this.initialPageNumber,
+    required this.onPositionChanged,
+  });
+
+  final String path;
+  final String fileName;
+  final int initialPageNumber;
+  final LiteratureReadingPositionChanged onPositionChanged;
+
+  @override
+  Widget build(BuildContext context) => _ProPdfReader(
+    filePath: path,
+    sourceName: fileName,
+    initialPageNumber: initialPageNumber,
+    onPositionChanged: onPositionChanged,
+  );
+}
+
+/// Generated-fixture reader retained for tests and packaged engine smoke.
+final class ProSyntheticPdfReader extends StatelessWidget {
   const ProSyntheticPdfReader({super.key});
 
   @override
-  State<ProSyntheticPdfReader> createState() => _ProSyntheticPdfReaderState();
+  Widget build(BuildContext context) => _ProPdfReader(
+    documentBytes: buildSyntheticLiteraturePdf(),
+    sourceName: 'picklogic-synthetic-literature-v1.pdf',
+    initialPageNumber: 1,
+    onPositionChanged: _ignorePosition,
+  );
+
+  static void _ignorePosition(int currentPage, int totalPages) {}
 }
 
-final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
+final class _ProPdfReader extends StatefulWidget {
+  const _ProPdfReader({
+    this.filePath,
+    this.documentBytes,
+    required this.sourceName,
+    required this.initialPageNumber,
+    required this.onPositionChanged,
+  }) : assert((filePath == null) != (documentBytes == null));
+
+  final String? filePath;
+  final Uint8List? documentBytes;
+  final String sourceName;
+  final int initialPageNumber;
+  final LiteratureReadingPositionChanged onPositionChanged;
+
+  bool get isSynthetic => documentBytes != null;
+
+  @override
+  State<_ProPdfReader> createState() => _ProPdfReaderState();
+}
+
+final class _ProPdfReaderState extends State<_ProPdfReader> {
   static const _cacheLimitBytes = 24 * 1024 * 1024;
 
   final PdfViewerController _viewerController = PdfViewerController();
   final TextEditingController _searchController = TextEditingController();
-  late final Uint8List _documentBytes;
+  final TextEditingController _pageController = TextEditingController();
   PdfTextSearcher? _searcher;
   PdfDocument? _document;
   int _pageNumber = 1;
+  double? _zoom;
   bool _loadSucceeded = false;
+  bool _positionRestored = false;
+  String? _pageJumpError;
 
   @override
   void initState() {
     super.initState();
-    _documentBytes = buildSyntheticLiteraturePdf();
+    _pageNumber = widget.initialPageNumber < 1 ? 1 : widget.initialPageNumber;
+    _pageController.text = '$_pageNumber';
+    _viewerController.addListener(_onViewerTransformChanged);
   }
 
   @override
   void dispose() {
+    _viewerController.removeListener(_onViewerTransformChanged);
     _searcher?.dispose();
     _searchController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -50,12 +110,37 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
     setState(() {
       _document = document;
       _searcher = searcher;
-      _pageNumber = controller.pageNumber ?? 1;
     });
+    unawaited(_restoreReadingPosition(document, controller));
+  }
+
+  Future<void> _restoreReadingPosition(
+    PdfDocument document,
+    PdfViewerController controller,
+  ) async {
+    final target = widget.initialPageNumber.clamp(1, document.pages.length);
+    if (target != 1) {
+      await controller.goToPage(pageNumber: target, duration: Duration.zero);
+    }
+    if (!mounted) return;
+    setState(() {
+      _positionRestored = true;
+      _pageNumber = target;
+      _pageController.text = '$target';
+      _zoom = controller.currentZoom;
+    });
+    widget.onPositionChanged(target, document.pages.length);
   }
 
   void _onSearchChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onViewerTransformChanged() {
+    if (!mounted || !_viewerController.isReady) return;
+    final zoom = _viewerController.currentZoom;
+    if (_zoom == zoom) return;
+    setState(() => _zoom = zoom);
   }
 
   void _startSearch() {
@@ -65,6 +150,20 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
       _searchController.text.trim(),
       searchImmediately: true,
     );
+  }
+
+  Future<void> _jumpToPage() async {
+    final document = _document;
+    final page = int.tryParse(_pageController.text.trim());
+    if (document == null ||
+        page == null ||
+        page < 1 ||
+        page > document.pages.length) {
+      setState(() => _pageJumpError = '页码应为 1–${document?.pages.length ?? 1}');
+      return;
+    }
+    setState(() => _pageJumpError = null);
+    await _viewerController.goToPage(pageNumber: page);
   }
 
   void _paintSearchMatches(ui.Canvas canvas, Rect pageRect, PdfPage page) {
@@ -82,6 +181,7 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
         : searcher.matches.isEmpty
         ? '0 matches'
         : '${(searcher.currentIndex ?? 0) + 1}/${searcher.matches.length} matches';
+    final zoomLabel = _zoom == null ? '缩放准备中' : '${(_zoom! * 100).round()}%';
 
     return Column(
       key: const Key('pro-pdf-reader'),
@@ -92,14 +192,20 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            const Chip(label: Text('SYNTHETIC PDF')),
+            Chip(
+              label: Text(widget.isSynthetic ? 'SYNTHETIC PDF' : 'LOCAL PDF'),
+            ),
             const Chip(label: Text('本地渲染')),
-            const Chip(label: Text('文本选择 / 复制')),
+            const Chip(label: Text('滚动 / 缩放 / 选择 / 复制')),
             Chip(label: Text('缓存上限 ${_cacheLimitBytes ~/ (1024 * 1024)} MiB')),
           ],
         ),
         const SizedBox(height: 8),
-        const Text('当前只打开运行时生成的两页合成 PDF；未读取、上传或修改真实文献。'),
+        Text(
+          widget.isSynthetic
+              ? '运行时生成的合成 PDF；未读取、上传或修改真实文献。'
+              : '只读打开所选本地 PDF；不上传、不改写、不自动重命名。',
+        ),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -111,7 +217,7 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
                 decoration: const InputDecoration(
                   isDense: true,
                   labelText: '搜索 PDF 文本',
-                  hintText: '例如 PickLogic',
+                  hintText: '输入关键词',
                 ),
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _startSearch(),
@@ -141,21 +247,67 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
           ],
         ),
         const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(matchLabel, key: const Key('pdf-search-status')),
+            const SizedBox(width: 8),
+            IconButton(
+              key: const Key('pdf-zoom-out'),
+              tooltip: '缩小',
+              onPressed: _viewerController.isReady
+                  ? () => _viewerController.zoomDown()
+                  : null,
+              icon: const Icon(Icons.zoom_out),
+            ),
+            Text(zoomLabel, key: const Key('pdf-zoom-status')),
+            IconButton(
+              key: const Key('pdf-zoom-in'),
+              tooltip: '放大',
+              onPressed: _viewerController.isReady
+                  ? () => _viewerController.zoomUp()
+                  : null,
+              icon: const Icon(Icons.zoom_in),
+            ),
+            SizedBox(
+              width: 92,
+              child: TextField(
+                key: const Key('pdf-page-jump-field'),
+                controller: _pageController,
+                enabled: document != null,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: '跳至页',
+                ),
+                onSubmitted: (_) => _jumpToPage(),
+              ),
+            ),
+            IconButton(
+              key: const Key('pdf-page-jump-action'),
+              tooltip: '跳转',
+              onPressed: document == null ? null : _jumpToPage,
+              icon: const Icon(Icons.arrow_forward),
+            ),
             Text(
               document == null
                   ? (_loadSucceeded ? '正在准备页面' : '正在加载 PDF')
                   : '第 $_pageNumber / ${document.pages.length} 页',
               key: const Key('pdf-page-status'),
             ),
+            if (_pageJumpError != null)
+              Text(
+                _pageJumpError!,
+                key: const Key('pdf-page-jump-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
           ],
         ),
         const SizedBox(height: 8),
         SizedBox(
-          height: 430,
+          height: 520,
           child: Row(
             children: [
               SizedBox(
@@ -237,38 +389,65 @@ final class _ProSyntheticPdfReaderState extends State<ProSyntheticPdfReader> {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: PdfViewer.data(
-                    _documentBytes,
-                    sourceName: 'picklogic-synthetic-literature-v1.pdf',
-                    controller: _viewerController,
-                    params: PdfViewerParams(
-                      limitRenderingCache: true,
-                      maxImageBytesCachedOnMemory: _cacheLimitBytes,
-                      horizontalCacheExtent: 0.5,
-                      verticalCacheExtent: 0.5,
-                      pagePaintCallbacks: [_paintSearchMatches],
-                      onDocumentChanged: (value) {
-                        if (mounted) setState(() => _document = value);
-                      },
-                      onViewerReady: _onViewerReady,
-                      onPageChanged: (value) {
-                        if (mounted && value != null) {
-                          setState(() => _pageNumber = value);
-                        }
-                      },
-                      onDocumentLoadFinished: (_, succeeded) {
-                        if (mounted) {
-                          setState(() => _loadSucceeded = succeeded);
-                        }
-                      },
-                    ),
-                  ),
+                  child: _buildViewer(),
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildViewer() {
+    final params = PdfViewerParams(
+      limitRenderingCache: true,
+      maxImageBytesCachedOnMemory: _cacheLimitBytes,
+      horizontalCacheExtent: 0.5,
+      verticalCacheExtent: 0.5,
+      pagePaintCallbacks: [_paintSearchMatches],
+      onDocumentChanged: (value) {
+        if (mounted) setState(() => _document = value);
+      },
+      onViewerReady: _onViewerReady,
+      onPageChanged: (value) {
+        final document = _document;
+        if (!mounted || value == null) return;
+        setState(() {
+          _pageNumber = value;
+          _pageController.text = '$value';
+        });
+        if (_positionRestored && document != null) {
+          widget.onPositionChanged(value, document.pages.length);
+        }
+      },
+      onDocumentLoadFinished: (_, succeeded) {
+        if (mounted) setState(() => _loadSucceeded = succeeded);
+      },
+      errorBannerBuilder: (context, error, stackTrace, documentRef) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            '无法只读打开此 PDF。请确认文件仍存在、未损坏且未受不支持的密码保护。',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      ),
+    );
+    final bytes = widget.documentBytes;
+    if (bytes != null) {
+      return PdfViewer.data(
+        bytes,
+        sourceName: widget.sourceName,
+        controller: _viewerController,
+        params: params,
+      );
+    }
+    return PdfViewer.file(
+      widget.filePath!,
+      controller: _viewerController,
+      params: params,
     );
   }
 }

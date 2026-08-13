@@ -15,6 +15,8 @@ void main() {
           return switch (methodCall.method) {
             'getPlatformVersion' => '42',
             'pickDirectory' => 'synthetic-root',
+            'pickPdfFile' => r'X:\synthetic\paper.pdf',
+            'getApplicationSupportDirectory' => r'X:\synthetic\app-support',
             'openItem' || 'revealItem' => true,
             'getPathAttributes' => <String, Object>{
               'hidden': true,
@@ -48,8 +50,16 @@ void main() {
     expect(storage.totalBytes, 1000);
   });
 
-  test('delegates folder, open, and reveal actions', () async {
+  test('delegates pickers, app support, open, and reveal actions', () async {
     expect(await platform.pickDirectory(title: 'Pick'), 'synthetic-root');
+    expect(
+      await platform.pickPdfFile(title: 'Pick PDF'),
+      r'X:\synthetic\paper.pdf',
+    );
+    expect(
+      await platform.getApplicationSupportDirectory(),
+      r'X:\synthetic\app-support',
+    );
     expect(await platform.openItem('synthetic'), isTrue);
     expect(await platform.revealItem('synthetic'), isTrue);
   });

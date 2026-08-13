@@ -66,6 +66,7 @@ final class PdfMetadataProbe {
     this.subject,
     this.keywords = const <String>[],
     this.doiCandidates = const <String>[],
+    this.year,
     this.limitations = const <String>[],
   });
 
@@ -79,6 +80,7 @@ final class PdfMetadataProbe {
   final String? subject;
   final List<String> keywords;
   final List<String> doiCandidates;
+  final int? year;
   final List<String> limitations;
 }
 
@@ -184,6 +186,7 @@ final class BoundedPdfMetadataReader {
       doiCandidates: List<String>.unmodifiable(
         const DoiExtractor().candidates(boundedText),
       ),
+      year: _publicationYear(boundedText),
       limitations: List<String>.unmodifiable(limitations),
     );
   }
@@ -309,5 +312,16 @@ final class BoundedPdfMetadataReader {
         .map(_cleanText)
         .where((item) => item.isNotEmpty)
         .toList(growable: false);
+  }
+
+  int? _publicationYear(String text) {
+    final date =
+        _metadataValue(text, 'CreationDate', 'dc:date') ??
+        _metadataValue(text, 'ModDate', 'xmp:ModifyDate');
+    if (date == null) return null;
+    final pdfDateMatch = RegExp(r'^D:((?:18|19|20|21)\d{2})').firstMatch(date);
+    if (pdfDateMatch != null) return int.parse(pdfDateMatch.group(1)!);
+    final match = RegExp(r'(?<!\d)(?:18|19|20|21)\d{2}(?!\d)').firstMatch(date);
+    return match == null ? null : int.parse(match.group(0)!);
   }
 }

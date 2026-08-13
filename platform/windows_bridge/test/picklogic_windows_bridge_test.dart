@@ -14,6 +14,14 @@ class MockPicklogicWindowsBridgePlatform
   Future<String?> pickDirectory({String? title}) async => 'synthetic-root';
 
   @override
+  Future<String?> pickPdfFile({String? title}) async =>
+      r'X:\synthetic\paper.pdf';
+
+  @override
+  Future<String> getApplicationSupportDirectory() async =>
+      r'X:\synthetic\app-support';
+
+  @override
   Future<bool> openItem(String path) async => true;
 
   @override
@@ -60,6 +68,11 @@ void main() {
   test('delegates read-only Windows shell and storage calls', () async {
     const bridge = PicklogicWindowsBridge();
     expect(await bridge.pickDirectory(), 'synthetic-root');
+    expect(await bridge.pickPdfFile(), r'X:\synthetic\paper.pdf');
+    expect(
+      await bridge.getApplicationSupportDirectory(),
+      r'X:\synthetic\app-support',
+    );
     expect((await bridge.getPathAttributes('synthetic'))!.readOnly, isTrue);
     expect((await bridge.getSystemDriveSummary()).availableBytes, 40);
     expect(await bridge.openItem('synthetic'), isTrue);

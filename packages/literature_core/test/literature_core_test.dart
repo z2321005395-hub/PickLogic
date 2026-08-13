@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
@@ -104,7 +105,8 @@ void main() {
     final bytes = List<int>.filled(4096, 0x20);
     final header = latin1.encode(
       r'%PDF-1.7 /Title (Bounded \(synthetic\) metadata) '
-      r'/Author (Ada Lovelace; Alan Turing) /Keywords (local; private)',
+      r'/Author (Ada Lovelace; Alan Turing) /Keywords (local; private) '
+      r'/CreationDate (D:20260812090000Z)',
     );
     bytes.setRange(0, header.length, header);
     final trailer = latin1.encode(
@@ -127,6 +129,7 @@ void main() {
     expect(probe.keywords, ['local', 'private']);
     expect(probe.subject, 'Synthetic study');
     expect(probe.doiCandidates, ['10.5555/picklogic.synthetic']);
+    expect(probe.year, 2026);
     expect(probe.bytesRead, 512);
     expect(probe.wasTruncated, isTrue);
     expect(source.requests, isNotEmpty);
@@ -163,6 +166,79 @@ void main() {
         source.requests.any((request) => request.length == bytes.length),
         isFalse,
       );
+    },
+  );
+
+  test('library entry preserves metadata and exact reading page in JSON', () {
+    final entry =
+        LiteratureLibraryEntry.fromProbe(
+          localPath: r'X:\synthetic\fixture.pdf',
+          fileName: 'fixture.pdf',
+          probe: const PdfMetadataProbe(
+            hasPdfHeader: true,
+            totalBytes: 1024,
+            bytesRead: 512,
+            wasTruncated: true,
+            readWindows: [],
+            title: 'Synthetic fixture',
+            authors: ['Example Author'],
+            doiCandidates: ['10.5555/synthetic.fixture'],
+            year: 2026,
+          ),
+          addedAt: DateTime.utc(2026, 8, 13, 9),
+        ).recordPosition(
+          currentPage: 7,
+          totalPages: 20,
+          openedAt: DateTime.utc(2026, 8, 13, 10),
+        );
+
+    final restored = LiteratureLibraryEntry.fromJson(entry.toJson());
+
+    expect(restored.id, entry.id);
+    expect(restored.record.title, 'Synthetic fixture');
+    expect(restored.record.authors, ['Example Author']);
+    expect(restored.record.doi, '10.5555/synthetic.fixture');
+    expect(restored.record.year, 2026);
+    expect(restored.currentPage, 7);
+    expect(restored.totalPages, 20);
+    expect(restored.record.readingProgress, 0.35);
+    expect(restored.localPath, r'X:\synthetic\fixture.pdf');
+  });
+
+  test(
+    'JSON library store round-trips only app-owned synthetic state',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'picklogic-literature-synthetic-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final store = JsonFileLiteratureLibraryStore(
+        '${root.path}${Platform.pathSeparator}catalog.json',
+      );
+      final entry = LiteratureLibraryEntry(
+        record: const LiteratureRecord(
+          id: 'lit-synthetic',
+          localFileId: 'local-lit-synthetic',
+          title: 'Synthetic persisted paper',
+          authors: ['Test Author'],
+          readingProgress: 0.5,
+          metadataConfidence: 0.75,
+        ),
+        localPath: r'X:\synthetic\persisted.pdf',
+        fileName: 'persisted.pdf',
+        addedAt: DateTime.utc(2026, 8, 13),
+        currentPage: 5,
+        totalPages: 10,
+      );
+
+      expect(await store.load(), isEmpty);
+      await store.save([entry]);
+      final restored = await store.load();
+
+      expect(restored, hasLength(1));
+      expect(restored.single.fileName, 'persisted.pdf');
+      expect(restored.single.currentPage, 5);
+      expect(restored.single.record.readingProgress, 0.5);
     },
   );
 }

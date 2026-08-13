@@ -81,6 +81,15 @@ bool RevealPath(const std::wstring& path) {
   return SUCCEEDED(opened);
 }
 
+bool HasPdfExtension(const std::wstring& path) {
+  constexpr wchar_t extension[] = L".pdf";
+  constexpr int extension_length = 4;
+  if (path.size() < extension_length) return false;
+  return CompareStringOrdinal(path.data() + path.size() - extension_length,
+                              extension_length, extension, extension_length,
+                              TRUE) == CSTR_EQUAL;
+}
+
 }  // namespace
 
 // static
@@ -172,6 +181,94 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     const std::string utf8_path = WideToUtf8(path);
     CoTaskMemFree(path);
     result->Success(flutter::EncodableValue(utf8_path));
+    return;
+  }
+
+  if (method == "pickPdfFile") {
+    IFileOpenDialog* dialog = nullptr;
+    HRESULT status = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
+                                      CLSCTX_INPROC_SERVER,
+                                      IID_PPV_ARGS(&dialog));
+    if (FAILED(status) || dialog == nullptr) {
+      result->Error("dialog_unavailable",
+                    "Windows could not open the PDF picker.");
+      return;
+    }
+    const COMDLG_FILTERSPEC filters[] = {
+        {L"PDF documents (*.pdf)", L"*.pdf"},
+    };
+    status = dialog->SetFileTypes(1, filters);
+    if (SUCCEEDED(status)) status = dialog->SetFileTypeIndex(1);
+    if (SUCCEEDED(status)) status = dialog->SetDefaultExtension(L"pdf");
+    DWORD options = 0;
+    if (SUCCEEDED(status)) status = dialog->GetOptions(&options);
+    if (SUCCEEDED(status)) {
+      status = dialog->SetOptions(options | FOS_FORCEFILESYSTEM |
+                                  FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST |
+                                  FOS_STRICTFILETYPES | FOS_NOCHANGEDIR);
+    }
+    if (FAILED(status)) {
+      dialog->Release();
+      result->Error("dialog_unavailable",
+                    "Windows could not configure the PDF picker.");
+      return;
+    }
+    if (const auto title = StringArgument(method_call, "title")) {
+      const std::wstring wide_title = Utf8ToWide(*title);
+      if (!wide_title.empty()) dialog->SetTitle(wide_title.c_str());
+    }
+    status = dialog->Show(parent);
+    if (status == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+      dialog->Release();
+      result->Success(flutter::EncodableValue());
+      return;
+    }
+    if (FAILED(status)) {
+      dialog->Release();
+      result->Error("dialog_failed", "Windows PDF selection failed.");
+      return;
+    }
+    IShellItem* item = nullptr;
+    status = dialog->GetResult(&item);
+    dialog->Release();
+    if (FAILED(status) || item == nullptr) {
+      result->Error("dialog_failed", "Windows returned no selected PDF.");
+      return;
+    }
+    PWSTR path = nullptr;
+    status = item->GetDisplayName(SIGDN_FILESYSPATH, &path);
+    item->Release();
+    if (FAILED(status) || path == nullptr) {
+      result->Error("dialog_failed", "The selected PDF has no filesystem path.");
+      return;
+    }
+    const std::wstring selected_path(path);
+    const std::string utf8_path = WideToUtf8(selected_path);
+    CoTaskMemFree(path);
+    const DWORD attributes = GetFileAttributesW(selected_path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES ||
+        (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
+        !HasPdfExtension(selected_path)) {
+      result->Error("invalid_pdf", "The selected item is not a local PDF file.");
+      return;
+    }
+    result->Success(flutter::EncodableValue(utf8_path));
+    return;
+  }
+
+  if (method == "getApplicationSupportDirectory") {
+    PWSTR local_app_data = nullptr;
+    const HRESULT status = SHGetKnownFolderPath(
+        FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &local_app_data);
+    if (FAILED(status) || local_app_data == nullptr) {
+      result->Error("app_support_unavailable",
+                    "Windows could not locate Local AppData.");
+      return;
+    }
+    std::wstring support_path(local_app_data);
+    CoTaskMemFree(local_app_data);
+    support_path += L"\\PickLogic";
+    result->Success(flutter::EncodableValue(WideToUtf8(support_path)));
     return;
   }
 
