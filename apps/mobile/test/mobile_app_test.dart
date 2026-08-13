@@ -15,7 +15,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.pumpAndSettle();
-    expect(find.text('Developer Safe Mode: ON'), findsOneWidget);
+    expect(find.text('开发者安全模式：已开启，真实文件只读'), findsOneWidget);
     for (final label in ['文件', '截图', '照片', '存储']) {
       expect(find.text(label), findsOneWidget);
     }
