@@ -44,12 +44,8 @@ void main() {
       find.byKey(const ValueKey('pane-1-root-drive:synthetic')),
       findsOneWidget,
     );
-    expect(
-      tester
-          .widget<OutlinedButton>(find.byKey(const Key('move-to-target')))
-          .onPressed,
-      isNull,
-    );
+    expect(find.byKey(const Key('safe-file-actions')), findsOneWidget);
+    expect(find.byKey(const Key('move-to-target')), findsNothing);
     expect(find.textContaining('Left pane'), findsNothing);
     expect(find.textContaining('Developer Safe Mode'), findsNothing);
   });
@@ -137,7 +133,12 @@ void main() {
           .widget<InkWell>(find.byKey(const ValueKey('pane-1-entry-figure')))
           .onTap!();
       await tester.pump();
+      await tester.tap(find.byKey(const Key('safe-file-actions')));
+      await tester.pumpAndSettle();
       expect(find.text('移动到左栏'), findsOneWidget);
+      expect(find.text('安全模式下不可用'), findsNWidgets(2));
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('active-pane-search')),
         'figure',
@@ -162,6 +163,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('pane-1-entry-figure')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('safe-file-actions')));
+      await tester.pumpAndSettle();
       expect(find.text('移动到右栏'), findsOneWidget);
     },
   );

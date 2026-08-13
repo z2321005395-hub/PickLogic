@@ -596,11 +596,11 @@ final class _TopBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: PickLogicTokens.spaceSm),
-            OutlinedButton.icon(
+            IconButton.filledTonal(
               key: const Key('search-index'),
               onPressed: onIndexSearch,
+              tooltip: strings.searchIndex,
               icon: const Icon(Icons.manage_search),
-              label: Text(strings.searchIndex),
             ),
             const SizedBox(width: PickLogicTokens.spaceMd),
             IconButton.filledTonal(
@@ -623,19 +623,6 @@ final class _TopBar extends StatelessWidget {
               icon: const Icon(Icons.lightbulb_outline),
             ),
             const SizedBox(width: PickLogicTokens.spaceSm),
-            OutlinedButton.icon(
-              onPressed: null,
-              icon: const Icon(Icons.create_new_folder_outlined),
-              label: Text(strings.newFolder),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceSm),
-            OutlinedButton.icon(
-              key: const Key('move-to-target'),
-              onPressed: null,
-              icon: const Icon(Icons.drive_file_move_outline),
-              label: Text(strings.moveToTarget(activePane)),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceSm),
             IconButton(
               key: const Key('toggle-language'),
               onPressed: () => onLocaleChanged(
@@ -645,6 +632,31 @@ final class _TopBar extends StatelessWidget {
               ),
               tooltip: strings.switchLanguage,
               icon: const Icon(Icons.language),
+            ),
+            const SizedBox(width: PickLogicTokens.spaceXs),
+            PopupMenuButton<String>(
+              key: const Key('safe-file-actions'),
+              tooltip: strings.moreActions,
+              icon: const Icon(Icons.more_horiz),
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: ListTile(
+                    leading: const Icon(Icons.create_new_folder_outlined),
+                    title: Text(strings.newFolder),
+                    subtitle: Text(strings.safeModeReadOnly),
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  key: const Key('move-to-target'),
+                  enabled: false,
+                  child: ListTile(
+                    leading: const Icon(Icons.drive_file_move_outline),
+                    title: Text(strings.moveToTarget(activePane)),
+                    subtitle: Text(strings.safeModeReadOnly),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1240,6 +1252,9 @@ final class _ExplorerStrings {
   String get research => chinese ? '研究' : 'Research';
   String get systemInsight => chinese ? '系统洞察' : 'System Insight';
   String get addFolder => chinese ? '选择文件夹' : 'Choose folder';
+  String get moreActions => chinese ? '更多文件操作' : 'More file actions';
+  String get safeModeReadOnly =>
+      chinese ? '安全模式下不可用' : 'Unavailable in Safe Mode';
   String get searchIndex => chinese ? '在索引中搜索' : 'Search index';
   String get newFolder => chinese ? '新建文件夹' : 'New folder';
   String get preview => chinese ? '预览' : 'Preview';
