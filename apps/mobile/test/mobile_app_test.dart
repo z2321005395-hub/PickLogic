@@ -10,16 +10,17 @@ import 'package:picklogic_mobile/src/mobile_repository.dart';
 import 'package:picklogic_mobile/src/screenshot_grouping.dart';
 
 void main() {
-  testWidgets('mobile has four primary destinations and safe mode', (
+  testWidgets('mobile has three focused primary destinations and safe mode', (
     tester,
   ) async {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.pumpAndSettle();
     expect(find.text('开发者安全模式：已开启，真实文件只读'), findsOneWidget);
-    for (final label in ['文件', '截图', '照片', '存储']) {
+    for (final label in ['分类', '最近', '整理']) {
       expect(find.text(label), findsWidgets);
     }
-    expect(find.byKey(const Key('language-switch')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-settings')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-refresh')), findsOneWidget);
   });
 
   testWidgets('visible language switch updates navigation and permission CTA', (
@@ -32,15 +33,19 @@ void main() {
     await tester.pumpWidget(PickLogicMobileApp(repository: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('language-switch')));
+    await tester.tap(find.byKey(const Key('mobile-settings')));
     await tester.pumpAndSettle();
-    for (final label in ['Files', 'Screenshots', 'Photos', 'Storage']) {
+    await tester.tap(find.text('语言'));
+    await tester.pumpAndSettle();
+    for (final label in ['Categories', 'Recent', 'Organize']) {
       expect(find.text(label), findsWidgets);
     }
     expect(find.text('PickLogic'), findsOneWidget);
     expect(find.text('拾理'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('nav-screenshots')));
+    await tester.tap(find.byKey(const Key('nav-organize')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('organize-screenshots')));
     await tester.pumpAndSettle();
     expect(find.text('Choose media permissions'), findsOneWidget);
     expect(find.text('Choose shared folder'), findsOneWidget);
@@ -51,10 +56,14 @@ void main() {
   ) async {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('language-switch')));
+    await tester.tap(find.byKey(const Key('mobile-settings')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('语言'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('nav-screenshots')));
+    await tester.tap(find.byKey(const Key('nav-organize')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('organize-screenshots')));
     await tester.pumpAndSettle();
     expect(
       find.textContaining('All 4 screenshots are browsable by date'),
@@ -73,11 +82,15 @@ void main() {
     await tester.tap(find.byKey(const Key('screenshot-mark-later')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('nav-photos')));
+    await tester.tap(find.byIcon(Icons.arrow_back).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('organize-photos')));
     await tester.pumpAndSettle();
     expect(find.text('Search photo name or type'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('nav-storage')));
+    await tester.tap(find.byIcon(Icons.arrow_back).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('organize-storage')));
     await tester.pumpAndSettle();
     expect(find.text('Storage Insight'), findsOneWidget);
     await tester.scrollUntilVisible(
@@ -90,7 +103,7 @@ void main() {
 
   testWidgets('screenshot route uses review-safe language', (tester) async {
     await tester.pumpWidget(const PickLogicMobileApp());
-    await tester.tap(find.byKey(const Key('nav-screenshots')));
+    await _openOrganize(tester, const Key('organize-screenshots'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('screenshot-real-count')), findsOneWidget);
     expect(find.textContaining('全部 4 张截图均可按日期浏览'), findsOneWidget);
@@ -105,7 +118,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const PickLogicMobileApp());
-    await tester.tap(find.byKey(const Key('nav-screenshots')));
+    await _openOrganize(tester, const Key('organize-screenshots'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('screenshot-month-2026-07')));
@@ -143,10 +156,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('files-documents')), findsOneWidget);
+    await tester.drag(
+      find.byType(ListView).first,
+      const Offset(0, -320),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('files-documents')));
     await tester.pumpAndSettle();
     expect(find.text('Document_1.txt'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -520));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('files-downloads')));
     await tester.pumpAndSettle();
@@ -161,7 +181,17 @@ void main() {
 
       expect(find.byKey(const Key('mobile-home-search')), findsOneWidget);
       expect(find.text('文件类型'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('智能集合'),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('智能集合'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('应用与来源'),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('应用与来源'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.byKey(const Key('phone-storage-entry')),
@@ -179,7 +209,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const PickLogicMobileApp());
-    await tester.tap(find.byKey(const Key('nav-screenshots')));
+    await _openOrganize(tester, const Key('organize-screenshots'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('screenshot-filter-month')), findsOneWidget);
@@ -192,7 +222,7 @@ void main() {
 
   testWidgets('photos support loaded metadata search', (tester) async {
     await tester.pumpWidget(const PickLogicMobileApp());
-    await tester.tap(find.byKey(const Key('nav-photos')));
+    await _openOrganize(tester, const Key('organize-photos'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -223,7 +253,7 @@ void main() {
     await tester.pumpWidget(PickLogicMobileApp(repository: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('nav-photos')));
+    await _openOrganize(tester, const Key('organize-photos'));
     await tester.pumpAndSettle();
     expect(repository.photoOffsets, <int>[0]);
     expect(find.text('已加载 120 / 145'), findsOneWidget);
@@ -248,7 +278,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const PickLogicMobileApp());
-    await tester.tap(find.byKey(const Key('nav-storage')));
+    await _openOrganize(tester, const Key('organize-storage'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('明确限制'),
@@ -291,7 +321,7 @@ void main() {
     await tester.pumpWidget(PickLogicMobileApp(repository: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('nav-screenshots')));
+    await _openOrganize(tester, const Key('organize-screenshots'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('选择媒体权限'));
     await tester.pumpAndSettle();
@@ -300,6 +330,13 @@ void main() {
     expect(find.textContaining('未授予媒体权限'), findsNothing);
     expect(find.text('尚未获得媒体只读权限。'), findsOneWidget);
   });
+}
+
+Future<void> _openOrganize(WidgetTester tester, Key destination) async {
+  await tester.tap(find.byKey(const Key('nav-organize')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(destination));
+  await tester.pumpAndSettle();
 }
 
 final class _RetryMobileRepository implements MobileRepository {
