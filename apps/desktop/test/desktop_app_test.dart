@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_desktop/src/app.dart';
@@ -9,6 +10,7 @@ import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
 import 'package:picklogic_desktop/src/pro_workspace.dart';
 import 'package:picklogic_duplicate_engine/picklogic_duplicate_engine.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
+import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 void main() {
@@ -178,7 +180,8 @@ void main() {
       ),
     ]);
     await tester.pumpWidget(
-      MaterialApp(
+      _localizedTestApp(
+        locale: const Locale('zh'),
         home: ProWorkspaceRoute(
           section: 'literature',
           libraryStore: store,
@@ -203,7 +206,7 @@ void main() {
       find.byKey(const Key('literature-manager-lite-view')),
       findsOneWidget,
     );
-    expect(find.text('Literature Manager Lite'), findsOneWidget);
+    expect(find.text('轻量文献管理'), findsOneWidget);
     expect(find.text('paper.pdf'), findsWidgets);
     expect(
       find.text('Local-first synthetic literature workflow'),
@@ -246,17 +249,17 @@ void main() {
     expect(find.text('第 8 / 10 页'), findsOneWidget);
     expect(store.entries.single.currentPage, 8);
     await tester.scrollUntilVisible(
-      find.textContaining('Preview only'),
+      find.textContaining('仅预览'),
       300,
       scrollable: literatureScrollable,
     );
-    expect(find.textContaining('Preview only'), findsOneWidget);
+    expect(find.textContaining('仅预览'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Translation · Coming next'),
+      find.text('翻译 · 即将推出'),
       300,
       scrollable: literatureScrollable,
     );
-    expect(find.text('Translation · Coming next'), findsOneWidget);
+    expect(find.text('翻译 · 即将推出'), findsOneWidget);
   });
 
   testWidgets(
@@ -273,7 +276,8 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(
+        _localizedTestApp(
+          locale: const Locale('zh'),
           home: ProWorkspaceRoute(
             key: const Key('add-literature-route'),
             section: 'literature',
@@ -323,6 +327,74 @@ void main() {
       );
     },
   );
+
+  testWidgets('Pro literature strings follow the Desktop 中/EN locale', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 650));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final store = _MemoryLiteratureStore([]);
+
+    Widget build(Locale locale) => _localizedTestApp(
+      locale: locale,
+      home: ProWorkspaceRoute(section: 'literature', libraryStore: store),
+    );
+
+    await tester.pumpWidget(build(const Locale('zh')));
+    await tester.pumpAndSettle();
+    expect(find.text('轻量文献管理'), findsOneWidget);
+    expect(find.text('添加文献'), findsOneWidget);
+    expect(find.text('文献列表'), findsOneWidget);
+    expect(find.text('翻译 · 即将推出'), findsOneWidget);
+    expect(find.textContaining('不会扫描目录'), findsOneWidget);
+
+    await tester.pumpWidget(build(const Locale('en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Literature Manager Lite'), findsOneWidget);
+    expect(find.text('Add literature'), findsOneWidget);
+    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Translation · Coming next'), findsOneWidget);
+    expect(find.textContaining('no directory will be scanned'), findsOneWidget);
+    expect(find.text('添加文献'), findsNothing);
+  });
+
+  testWidgets('Pro PDF reader controls follow the Desktop 中/EN locale', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Widget build(Locale locale) => _localizedTestApp(
+      locale: locale,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ProLocalPdfReader(
+            path: r'X:\synthetic\reader.pdf',
+            fileName: 'reader.pdf',
+            initialPageNumber: 1,
+            onPositionChanged: (_, _) {},
+            viewerBuilder: (_) =>
+                const SizedBox(key: Key('synthetic-viewer-test-double')),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(const Locale('zh')));
+    await tester.pump();
+    expect(find.text('本地渲染'), findsOneWidget);
+    expect(find.text('搜索 PDF 文本'), findsOneWidget);
+    expect(find.text('跳至页'), findsOneWidget);
+    expect(find.textContaining('不上传、不改写'), findsOneWidget);
+
+    await tester.pumpWidget(build(const Locale('en')));
+    await tester.pump();
+    expect(find.text('Local rendering'), findsOneWidget);
+    expect(find.text('Search PDF text'), findsOneWidget);
+    expect(find.text('Go to page'), findsOneWidget);
+    expect(find.textContaining('no upload, rewrite'), findsOneWidget);
+    expect(find.text('本地渲染'), findsNothing);
+  });
 
   testWidgets('Pro research route renders all virtual buckets', (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 650));
@@ -504,6 +576,19 @@ FileRecord _record({
   hashState: HashState.notRequested,
   ocrState: OcrState.notRequested,
 );
+
+Widget _localizedTestApp({required Locale locale, required Widget home}) =>
+    MaterialApp(
+      locale: locale,
+      supportedLocales: PickLogicLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        PickLogicLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: home,
+    );
 
 final class _MemoryLiteratureStore implements LiteratureLibraryStore {
   _MemoryLiteratureStore(List<LiteratureLibraryEntry> entries)

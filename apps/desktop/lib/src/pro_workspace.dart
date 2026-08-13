@@ -22,6 +22,16 @@ typedef LiteraturePdfReaderBuilder =
       LiteratureReadingPositionChanged onPositionChanged,
     );
 
+enum _LiteratureStatus {
+  catalogUnavailable,
+  pdfOnly,
+  duplicate,
+  invalidPdf,
+  added,
+  addFailed,
+  positionSaveFailed,
+}
+
 final class ProWorkspaceRoute extends StatelessWidget {
   const ProWorkspaceRoute({
     super.key,
@@ -121,7 +131,7 @@ final class _LiteratureManagerLiteViewState
   Future<void> _saveTail = Future<void>.value();
   List<LiteratureLibraryEntry> _entries = const <LiteratureLibraryEntry>[];
   String? _selectedId;
-  String? _status;
+  _LiteratureStatus? _status;
   bool _loading = true;
   bool _adding = false;
   bool _catalogAvailable = true;
@@ -158,7 +168,7 @@ final class _LiteratureManagerLiteViewState
       setState(() {
         _loading = false;
         _catalogAvailable = false;
-        _status = '文献目录不可用；为避免覆盖现有状态，添加功能已暂停。';
+        _status = _LiteratureStatus.catalogUnavailable;
       });
     }
   }
@@ -170,12 +180,15 @@ final class _LiteratureManagerLiteViewState
       _status = null;
     });
     try {
+      final strings = _LiteratureStrings.of(context);
       final path =
           await (widget.pdfPicker?.call() ??
-              const PicklogicWindowsBridge().pickPdfFile(title: '添加本地 PDF 文献'));
+              const PicklogicWindowsBridge().pickPdfFile(
+                title: strings.pdfPickerTitle,
+              ));
       if (path == null) return;
       if (!path.toLowerCase().endsWith('.pdf')) {
-        setState(() => _status = '仅支持本地 PDF 文件。');
+        setState(() => _status = _LiteratureStatus.pdfOnly);
         return;
       }
       final normalizedPath = path.toLowerCase();
@@ -185,7 +198,7 @@ final class _LiteratureManagerLiteViewState
       if (existing != null) {
         setState(() {
           _selectedId = existing.id;
-          _status = '该 PDF 已在文献列表中。';
+          _status = _LiteratureStatus.duplicate;
         });
         return;
       }
@@ -194,7 +207,7 @@ final class _LiteratureManagerLiteViewState
           widget.pdfSourceBuilder?.call(path) ?? FilePdfByteSource(path);
       final probe = await const BoundedPdfMetadataReader().read(source);
       if (!probe.hasPdfHeader) {
-        setState(() => _status = '所选文件未通过 PDF 头部验证，未添加。');
+        setState(() => _status = _LiteratureStatus.invalidPdf);
         return;
       }
       final entry = LiteratureLibraryEntry.fromProbe(
@@ -212,11 +225,11 @@ final class _LiteratureManagerLiteViewState
       setState(() {
         _entries = updated;
         _selectedId = entry.id;
-        _status = '文献已添加；PDF 原文件保持只读且位置不变。';
+        _status = _LiteratureStatus.added;
       });
     } on Object {
       if (mounted) {
-        setState(() => _status = '无法添加此 PDF；目录状态与原文件均未更改。');
+        setState(() => _status = _LiteratureStatus.addFailed);
       }
     } finally {
       if (mounted) setState(() => _adding = false);
@@ -256,7 +269,9 @@ final class _LiteratureManagerLiteViewState
     try {
       await _enqueueSave(snapshot);
     } on Object {
-      if (mounted) setState(() => _status = '阅读位置暂未保存；PDF 未被修改。');
+      if (mounted) {
+        setState(() => _status = _LiteratureStatus.positionSaveFailed);
+      }
     }
   }
 
@@ -265,6 +280,7 @@ final class _LiteratureManagerLiteViewState
 
   @override
   Widget build(BuildContext context) {
+    final strings = _LiteratureStrings.of(context);
     final selected = _selectedEntry;
     final renamePreview = selected == null
         ? null
@@ -281,9 +297,9 @@ final class _LiteratureManagerLiteViewState
       children: [
         _ProHeader(
           icon: Icons.menu_book_outlined,
-          title: 'Literature Manager Lite',
-          subtitle: '本地目录 · 有界元数据 · PDF 不上传、不改写',
-          badge: 'LOCAL READ-ONLY',
+          title: strings.managerTitle,
+          subtitle: strings.managerSubtitle,
+          badge: strings.localReadOnly,
           trailing: FilledButton.icon(
             key: const Key('literature-add-action'),
             onPressed: _loading || _adding || !_catalogAvailable
@@ -295,24 +311,21 @@ final class _LiteratureManagerLiteViewState
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.add),
-            label: const Text('添加文献'),
+            label: Text(strings.addLiterature),
           ),
         ),
         if (_status != null) ...[
           const SizedBox(height: 12),
-          Text(_status!, key: const Key('literature-status')),
+          Text(strings.status(_status!), key: const Key('literature-status')),
         ],
         const SizedBox(height: 16),
         if (_loading)
           const Center(child: CircularProgressIndicator())
         else if (_entries.isEmpty)
-          const _ProCard(
-            title: '文献列表',
-            child: Text('暂无文献。点击“添加文献”选择一个本地 PDF；不会扫描目录。'),
-          )
+          _ProCard(title: strings.library, child: Text(strings.emptyLibrary))
         else
           _ProCard(
-            title: '文献列表 · Persistent',
+            title: strings.persistentLibrary,
             child: ListView.separated(
               key: const Key('literature-library-list'),
               shrinkWrap: true,
@@ -329,9 +342,9 @@ final class _LiteratureManagerLiteViewState
                   title: Text(record.title),
                   subtitle: Text(
                     '${entry.fileName}\n'
-                    '${record.authors.isEmpty ? 'Author unknown' : record.authors.join('; ')} · '
-                    '${record.year?.toString() ?? 'Year unknown'} · '
-                    '${record.doi ?? 'DOI not found'}',
+                    '${record.authors.isEmpty ? strings.authorUnknown : record.authors.join('; ')} · '
+                    '${record.year?.toString() ?? strings.yearUnknown} · '
+                    '${record.doi ?? strings.doiNotFound}',
                   ),
                   isThreeLine: true,
                   trailing: Text('${(record.readingProgress * 100).round()}%'),
@@ -343,31 +356,34 @@ final class _LiteratureManagerLiteViewState
         if (selected != null) ...[
           const SizedBox(height: 12),
           _ProCard(
-            title: '文献元数据',
+            title: strings.literatureMetadata,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _LabelValue(label: 'Filename', value: selected.fileName),
-                _LabelValue(label: 'Title', value: selected.record.title),
+                _LabelValue(label: strings.fileName, value: selected.fileName),
+                _LabelValue(label: strings.title, value: selected.record.title),
                 _LabelValue(
-                  label: 'Author',
+                  label: strings.author,
                   value: selected.record.authors.isEmpty
-                      ? '未发现'
+                      ? strings.notFound
                       : selected.record.authors.join('; '),
                 ),
-                _LabelValue(label: 'DOI', value: selected.record.doi ?? '未发现'),
                 _LabelValue(
-                  label: 'Year',
-                  value: selected.record.year?.toString() ?? '未发现',
+                  label: 'DOI',
+                  value: selected.record.doi ?? strings.notFound,
+                ),
+                _LabelValue(
+                  label: strings.year,
+                  value: selected.record.year?.toString() ?? strings.notFound,
                 ),
                 const SizedBox(height: 8),
-                const Text('元数据来自 PDF 首尾有界窗口；压缩或加密字段可能无法识别。'),
+                Text(strings.metadataLimit),
               ],
             ),
           ),
           const SizedBox(height: 12),
           _ProCard(
-            title: 'PDF 阅读区域 · Local',
+            title: strings.pdfReaderLocal,
             child:
                 widget.literaturePdfReaderBuilder?.call(
                   context,
@@ -387,7 +403,7 @@ final class _LiteratureManagerLiteViewState
           ),
           const SizedBox(height: 12),
           _ProCard(
-            title: '阅读进度 · Persistent',
+            title: strings.persistentReadingProgress,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -400,38 +416,41 @@ final class _LiteratureManagerLiteViewState
                 const SizedBox(height: 8),
                 Text(
                   selected.totalPages == null
-                      ? '页码将在 PDF 打开后保存。'
-                      : '第 ${selected.currentPage} / ${selected.totalPages} 页',
+                      ? strings.pagePending
+                      : strings.pagePosition(
+                          selected.currentPage,
+                          selected.totalPages!,
+                        ),
                   key: const Key('literature-page-position'),
                 ),
-                const Text('进度仅写入 PickLogic 私有目录，不写入 PDF。'),
+                Text(strings.progressPrivacy),
               ],
             ),
           ),
           const SizedBox(height: 12),
           _ProCard(
-            title: '自动命名 Preview',
+            title: strings.renamePreview,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _LabelValue(label: 'Current', value: selected.fileName),
+                _LabelValue(label: strings.current, value: selected.fileName),
                 _LabelValue(
-                  label: 'Preview',
+                  label: strings.preview,
                   value: renamePreview!.proposedFileName,
                 ),
                 const SizedBox(height: 8),
-                const Text('Preview only · 未创建 OperationPlan · 未执行重命名'),
+                Text(strings.previewOnly),
               ],
             ),
           ),
         ],
         const SizedBox(height: 12),
-        const _ProCard(
-          title: 'Translation · Coming next',
-          child: Text('翻译尚未启用；未来只处理用户明确选择的文本，默认关闭。'),
+        _ProCard(
+          title: strings.translationComingNext,
+          child: Text(strings.translationDescription),
         ),
         const SizedBox(height: 12),
-        const Text('列表仅保存本地引用和阅读状态；不会扫描文献目录、上传 PDF 或改动原文件。'),
+        Text(strings.libraryPrivacy),
       ],
     );
   }
@@ -727,6 +746,96 @@ IconData _bucketIcon(ResearchBucket bucket) => switch (bucket) {
   ResearchBucket.presentations => Icons.slideshow_outlined,
   ResearchBucket.manuscripts => Icons.article_outlined,
 };
+
+final class _LiteratureStrings {
+  const _LiteratureStrings(this.isChinese);
+
+  factory _LiteratureStrings.of(BuildContext context) => _LiteratureStrings(
+    PickLogicLocalizations.of(context).locale.languageCode == 'zh',
+  );
+
+  final bool isChinese;
+
+  String get managerTitle => isChinese ? '轻量文献管理' : 'Literature Manager Lite';
+  String get managerSubtitle => isChinese
+      ? '本地目录 · 有界元数据 · PDF 不上传、不改写'
+      : 'Local catalog · bounded metadata · PDFs are never uploaded or modified';
+  String get localReadOnly => isChinese ? '本地只读' : 'LOCAL READ-ONLY';
+  String get addLiterature => isChinese ? '添加文献' : 'Add literature';
+  String get pdfPickerTitle => isChinese ? '添加本地 PDF 文献' : 'Add a local PDF';
+  String get library => isChinese ? '文献列表' : 'Library';
+  String get emptyLibrary => isChinese
+      ? '暂无文献。点击“添加文献”选择一个本地 PDF；不会扫描目录。'
+      : 'No literature yet. Choose Add literature to select one local PDF; no directory will be scanned.';
+  String get persistentLibrary =>
+      isChinese ? '文献列表 · 持久保存' : 'Library · Persistent';
+  String get authorUnknown => isChinese ? '作者未知' : 'Author unknown';
+  String get yearUnknown => isChinese ? '年份未知' : 'Year unknown';
+  String get doiNotFound => isChinese ? '未发现 DOI' : 'DOI not found';
+  String get literatureMetadata => isChinese ? '文献元数据' : 'Literature metadata';
+  String get fileName => isChinese ? '文件名' : 'Filename';
+  String get title => isChinese ? '标题' : 'Title';
+  String get author => isChinese ? '作者' : 'Author';
+  String get year => isChinese ? '年份' : 'Year';
+  String get notFound => isChinese ? '未发现' : 'Not found';
+  String get metadataLimit => isChinese
+      ? '元数据来自 PDF 首尾有界窗口；压缩或加密字段可能无法识别。'
+      : 'Metadata comes from bounded PDF head and tail windows; compressed or encrypted fields may not be detected.';
+  String get pdfReaderLocal =>
+      isChinese ? 'PDF 阅读区域 · 本地' : 'PDF reader · Local';
+  String get persistentReadingProgress =>
+      isChinese ? '阅读进度 · 持久保存' : 'Reading progress · Persistent';
+  String get pagePending => isChinese
+      ? '页码将在 PDF 打开后保存。'
+      : 'The page position will be saved after the PDF opens.';
+  String pagePosition(int currentPage, int totalPages) => isChinese
+      ? '第 $currentPage / $totalPages 页'
+      : 'Page $currentPage of $totalPages';
+  String get progressPrivacy => isChinese
+      ? '进度仅写入 PickLogic 私有目录，不写入 PDF。'
+      : 'Progress is written only to PickLogic private storage, never to the PDF.';
+  String get renamePreview => isChinese ? '自动命名预览' : 'Rename preview';
+  String get current => isChinese ? '当前文件名' : 'Current';
+  String get preview => isChinese ? '预览名称' : 'Preview';
+  String get previewOnly => isChinese
+      ? '仅预览 · 未创建 OperationPlan · 未执行重命名'
+      : 'Preview only · no OperationPlan created · no rename executed';
+  String get translationComingNext =>
+      isChinese ? '翻译 · 即将推出' : 'Translation · Coming next';
+  String get translationDescription => isChinese
+      ? '翻译尚未启用；未来只处理用户明确选择的文本，默认关闭。'
+      : 'Translation is not enabled yet. It will remain off by default and process only explicitly selected text.';
+  String get libraryPrivacy => isChinese
+      ? '列表仅保存本地引用和阅读状态；不会扫描文献目录、上传 PDF 或改动原文件。'
+      : 'The library stores only local references and reading state; it never scans literature folders, uploads PDFs, or changes source files.';
+
+  String status(_LiteratureStatus status) => switch (status) {
+    _LiteratureStatus.catalogUnavailable =>
+      isChinese
+          ? '文献目录不可用；为避免覆盖现有状态，添加功能已暂停。'
+          : 'The literature catalog is unavailable. Adding is paused to avoid overwriting existing state.',
+    _LiteratureStatus.pdfOnly =>
+      isChinese ? '仅支持本地 PDF 文件。' : 'Only local PDF files are supported.',
+    _LiteratureStatus.duplicate =>
+      isChinese ? '该 PDF 已在文献列表中。' : 'This PDF is already in the library.',
+    _LiteratureStatus.invalidPdf =>
+      isChinese
+          ? '所选文件未通过 PDF 头部验证，未添加。'
+          : 'The selected file failed PDF header validation and was not added.',
+    _LiteratureStatus.added =>
+      isChinese
+          ? '文献已添加；PDF 原文件保持只读且位置不变。'
+          : 'Literature added. The source PDF remains read-only in its original location.',
+    _LiteratureStatus.addFailed =>
+      isChinese
+          ? '无法添加此 PDF；目录状态与原文件均未更改。'
+          : 'This PDF could not be added. The catalog and source file were not changed.',
+    _LiteratureStatus.positionSaveFailed =>
+      isChinese
+          ? '阅读位置暂未保存；PDF 未被修改。'
+          : 'The reading position was not saved. The PDF was not modified.',
+  };
+}
 
 String _routeTitle(String section) => switch (section) {
   'literature' => '文献 · Literature',

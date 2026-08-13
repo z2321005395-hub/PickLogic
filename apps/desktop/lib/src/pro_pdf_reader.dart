@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 typedef LiteratureReadingPositionChanged =
     void Function(int currentPage, int totalPages);
@@ -17,12 +18,14 @@ final class ProLocalPdfReader extends StatelessWidget {
     required this.fileName,
     required this.initialPageNumber,
     required this.onPositionChanged,
+    this.viewerBuilder,
   });
 
   final String path;
   final String fileName;
   final int initialPageNumber;
   final LiteratureReadingPositionChanged onPositionChanged;
+  final WidgetBuilder? viewerBuilder;
 
   @override
   Widget build(BuildContext context) => _ProPdfReader(
@@ -30,6 +33,7 @@ final class ProLocalPdfReader extends StatelessWidget {
     sourceName: fileName,
     initialPageNumber: initialPageNumber,
     onPositionChanged: onPositionChanged,
+    viewerBuilder: viewerBuilder,
   );
 }
 
@@ -55,6 +59,7 @@ final class _ProPdfReader extends StatefulWidget {
     required this.sourceName,
     required this.initialPageNumber,
     required this.onPositionChanged,
+    this.viewerBuilder,
   }) : assert((filePath == null) != (documentBytes == null));
 
   final String? filePath;
@@ -62,6 +67,7 @@ final class _ProPdfReader extends StatefulWidget {
   final String sourceName;
   final int initialPageNumber;
   final LiteratureReadingPositionChanged onPositionChanged;
+  final WidgetBuilder? viewerBuilder;
 
   bool get isSynthetic => documentBytes != null;
 
@@ -81,7 +87,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   double? _zoom;
   bool _loadSucceeded = false;
   bool _positionRestored = false;
-  String? _pageJumpError;
+  bool _pageJumpInvalid = false;
 
   @override
   void initState() {
@@ -159,10 +165,10 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         page == null ||
         page < 1 ||
         page > document.pages.length) {
-      setState(() => _pageJumpError = '页码应为 1–${document?.pages.length ?? 1}');
+      setState(() => _pageJumpInvalid = true);
       return;
     }
-    setState(() => _pageJumpError = null);
+    setState(() => _pageJumpInvalid = false);
     await _viewerController.goToPage(pageNumber: page);
   }
 
@@ -172,16 +178,25 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = _PdfReaderStrings.of(context);
     final document = _document;
     final searcher = _searcher;
     final matchLabel = searcher == null
-        ? '搜索器准备中'
+        ? strings.searchPreparing
         : searcher.isSearching
-        ? '正在搜索 ${searcher.searchingPageNumber ?? 0}/${searcher.totalPageCount ?? 0}'
+        ? strings.searching(
+            searcher.searchingPageNumber ?? 0,
+            searcher.totalPageCount ?? 0,
+          )
         : searcher.matches.isEmpty
-        ? '0 matches'
-        : '${(searcher.currentIndex ?? 0) + 1}/${searcher.matches.length} matches';
-    final zoomLabel = _zoom == null ? '缩放准备中' : '${(_zoom! * 100).round()}%';
+        ? strings.noMatches
+        : strings.matches(
+            (searcher.currentIndex ?? 0) + 1,
+            searcher.matches.length,
+          );
+    final zoomLabel = _zoom == null
+        ? strings.zoomPreparing
+        : '${(_zoom! * 100).round()}%';
 
     return Column(
       key: const Key('pro-pdf-reader'),
@@ -193,18 +208,24 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Chip(
-              label: Text(widget.isSynthetic ? 'SYNTHETIC PDF' : 'LOCAL PDF'),
+              label: Text(
+                widget.isSynthetic ? strings.syntheticPdf : strings.localPdf,
+              ),
             ),
-            const Chip(label: Text('本地渲染')),
-            const Chip(label: Text('滚动 / 缩放 / 选择 / 复制')),
-            Chip(label: Text('缓存上限 ${_cacheLimitBytes ~/ (1024 * 1024)} MiB')),
+            Chip(label: Text(strings.localRendering)),
+            Chip(label: Text(strings.capabilities)),
+            Chip(
+              label: Text(
+                strings.cacheLimit(_cacheLimitBytes ~/ (1024 * 1024)),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         Text(
           widget.isSynthetic
-              ? '运行时生成的合成 PDF；未读取、上传或修改真实文献。'
-              : '只读打开所选本地 PDF；不上传、不改写、不自动重命名。',
+              ? strings.syntheticDescription
+              : strings.localDescription,
         ),
         const SizedBox(height: 12),
         Row(
@@ -214,10 +235,10 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 key: const Key('pdf-search-field'),
                 controller: _searchController,
                 enabled: searcher != null,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
-                  labelText: '搜索 PDF 文本',
-                  hintText: '输入关键词',
+                  labelText: strings.searchPdfText,
+                  hintText: strings.searchHint,
                 ),
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _startSearch(),
@@ -226,19 +247,19 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             const SizedBox(width: 8),
             IconButton(
               key: const Key('pdf-search-action'),
-              tooltip: '搜索',
+              tooltip: strings.search,
               onPressed: searcher == null ? null : _startSearch,
               icon: const Icon(Icons.search),
             ),
             IconButton(
-              tooltip: '上一个匹配',
+              tooltip: strings.previousMatch,
               onPressed: searcher?.hasMatches == true
                   ? () => searcher!.goToPrevMatch()
                   : null,
               icon: const Icon(Icons.keyboard_arrow_up),
             ),
             IconButton(
-              tooltip: '下一个匹配',
+              tooltip: strings.nextMatch,
               onPressed: searcher?.hasMatches == true
                   ? () => searcher!.goToNextMatch()
                   : null,
@@ -256,7 +277,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             const SizedBox(width: 8),
             IconButton(
               key: const Key('pdf-zoom-out'),
-              tooltip: '缩小',
+              tooltip: strings.zoomOut,
               onPressed: _viewerController.isReady
                   ? () => _viewerController.zoomDown()
                   : null,
@@ -265,7 +286,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             Text(zoomLabel, key: const Key('pdf-zoom-status')),
             IconButton(
               key: const Key('pdf-zoom-in'),
-              tooltip: '放大',
+              tooltip: strings.zoomIn,
               onPressed: _viewerController.isReady
                   ? () => _viewerController.zoomUp()
                   : null,
@@ -278,28 +299,30 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 controller: _pageController,
                 enabled: document != null,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
-                  labelText: '跳至页',
+                  labelText: strings.jumpToPage,
                 ),
                 onSubmitted: (_) => _jumpToPage(),
               ),
             ),
             IconButton(
               key: const Key('pdf-page-jump-action'),
-              tooltip: '跳转',
+              tooltip: strings.jump,
               onPressed: document == null ? null : _jumpToPage,
               icon: const Icon(Icons.arrow_forward),
             ),
             Text(
               document == null
-                  ? (_loadSucceeded ? '正在准备页面' : '正在加载 PDF')
-                  : '第 $_pageNumber / ${document.pages.length} 页',
+                  ? (_loadSucceeded
+                        ? strings.preparingPages
+                        : strings.loadingPdf)
+                  : strings.pagePosition(_pageNumber, document.pages.length),
               key: const Key('pdf-page-status'),
             ),
-            if (_pageJumpError != null)
+            if (_pageJumpInvalid)
               Text(
-                _pageJumpError!,
+                strings.pageRange(document?.pages.length ?? 1),
                 key: const Key('pdf-page-jump-error'),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
@@ -400,6 +423,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   }
 
   Widget _buildViewer() {
+    final viewerBuilder = widget.viewerBuilder;
+    if (viewerBuilder != null) return viewerBuilder(context);
+    final strings = _PdfReaderStrings.of(context);
     final params = PdfViewerParams(
       limitRenderingCache: true,
       maxImageBytesCachedOnMemory: _cacheLimitBytes,
@@ -428,7 +454,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            '无法只读打开此 PDF。请确认文件仍存在、未损坏且未受不支持的密码保护。',
+            strings.openError,
             textAlign: TextAlign.center,
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
@@ -450,6 +476,57 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       params: params,
     );
   }
+}
+
+final class _PdfReaderStrings {
+  const _PdfReaderStrings(this.isChinese);
+
+  factory _PdfReaderStrings.of(BuildContext context) => _PdfReaderStrings(
+    PickLogicLocalizations.of(context).locale.languageCode == 'zh',
+  );
+
+  final bool isChinese;
+
+  String get searchPreparing => isChinese ? '搜索器准备中' : 'Search is preparing';
+  String searching(int page, int totalPages) =>
+      isChinese ? '正在搜索 $page/$totalPages' : 'Searching $page/$totalPages';
+  String get noMatches => isChinese ? '0 个匹配' : '0 matches';
+  String matches(int current, int total) =>
+      isChinese ? '$current/$total 个匹配' : '$current/$total matches';
+  String get zoomPreparing => isChinese ? '缩放准备中' : 'Zoom is preparing';
+  String get syntheticPdf => isChinese ? '合成 PDF' : 'SYNTHETIC PDF';
+  String get localPdf => isChinese ? '本地 PDF' : 'LOCAL PDF';
+  String get localRendering => isChinese ? '本地渲染' : 'Local rendering';
+  String get capabilities =>
+      isChinese ? '滚动 / 缩放 / 选择 / 复制' : 'Scroll / zoom / select / copy';
+  String cacheLimit(int mebibytes) =>
+      isChinese ? '缓存上限 $mebibytes MiB' : 'Cache limit $mebibytes MiB';
+  String get syntheticDescription => isChinese
+      ? '运行时生成的合成 PDF；未读取、上传或修改真实文献。'
+      : 'Runtime-generated synthetic PDF; no real literature was read, uploaded, or modified.';
+  String get localDescription => isChinese
+      ? '只读打开所选本地 PDF；不上传、不改写、不自动重命名。'
+      : 'Opens the selected local PDF read-only; no upload, rewrite, or automatic rename.';
+  String get searchPdfText => isChinese ? '搜索 PDF 文本' : 'Search PDF text';
+  String get searchHint => isChinese ? '输入关键词' : 'Enter keywords';
+  String get search => isChinese ? '搜索' : 'Search';
+  String get previousMatch => isChinese ? '上一个匹配' : 'Previous match';
+  String get nextMatch => isChinese ? '下一个匹配' : 'Next match';
+  String get zoomOut => isChinese ? '缩小' : 'Zoom out';
+  String get zoomIn => isChinese ? '放大' : 'Zoom in';
+  String get jumpToPage => isChinese ? '跳至页' : 'Go to page';
+  String get jump => isChinese ? '跳转' : 'Go';
+  String get preparingPages => isChinese ? '正在准备页面' : 'Preparing pages';
+  String get loadingPdf => isChinese ? '正在加载 PDF' : 'Loading PDF';
+  String pagePosition(int currentPage, int totalPages) => isChinese
+      ? '第 $currentPage / $totalPages 页'
+      : 'Page $currentPage of $totalPages';
+  String pageRange(int totalPages) => isChinese
+      ? '页码应为 1–$totalPages'
+      : 'Page must be between 1 and $totalPages';
+  String get openError => isChinese
+      ? '无法只读打开此 PDF。请确认文件仍存在、未损坏且未受不支持的密码保护。'
+      : 'This PDF could not be opened read-only. Confirm that it still exists, is not damaged, and is not protected by an unsupported password.';
 }
 
 /// Builds a deterministic two-page PDF fixture without touching the file system.
