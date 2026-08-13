@@ -528,9 +528,13 @@ FileRecord _recordFromAndroid(AndroidMediaEntry entry, AndroidMediaKind kind) {
       AndroidMediaKind.downloads => VirtualCategory.downloads,
       AndroidMediaKind.documents => _categoryForExtension(extension),
     },
-    tags: entry.relativePath == null
-        ? const <String>[]
-        : const <String>['platform-metadata'],
+    tags: <String>[
+      'platform-metadata',
+      if (entry.relativePath?.trim() case final path? when path.isNotEmpty)
+        'relative-path:$path',
+      if (entry.sourceHint?.trim() case final hint? when hint.isNotEmpty)
+        'source-hint:$hint',
+    ],
     hashState: HashState.notRequested,
     ocrState: OcrState.notRequested,
   );
