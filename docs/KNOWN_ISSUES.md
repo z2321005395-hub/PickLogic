@@ -9,5 +9,5 @@
 - OCR is an interface/queue boundary only; first launch never starts bulk OCR.
 - Mobile metadata and per-collection checkpoints persist in app-private SQLite and resume when PickLogic next runs. Android OS-scheduled WorkManager wakeups are not implemented.
 - MediaStore deletion reconciliation and periodic full-snapshot generations are not implemented; v0.1 incrementally adds or updates visible records.
-- Windows Build Tools 2022 17.14.37 is installed and recognized, but local compilation remains blocked until Developer Mode is effectively enabled for plugin symlinks. Hosted Windows CI is green.
+- Flutter/MSBuild currently corrupts the canonical Chinese repository path during a Windows custom build step. Local Windows builds use a separate ASCII-path detached worktree; hosted Windows CI remains green.
 - The final open-source license, copyright owner, package signing, Public conversion, and release publication are pending maintainer decisions.

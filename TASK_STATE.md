@@ -107,15 +107,16 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - Current durable-index gate: 94 files formatted unchanged; root analysis clean; Mobile 19/19 and Android bridge 10/10 tests passed; 11 quick + 6 remaining modules passed; 97 external + 5 Flutter SDK licenses passed; privacy findings 0; Windows SQLite and PDFium caches matched pinned hashes.
 - PR #24 CI `31646213015` and post-merge push/PR runs `31647445953` / `31647449631` passed quality, Android, and Windows jobs. The PR's x86_64 APK matched its manifest, was v2-signed, and passed isolated TTDT API 36 cold-start, app-private SQLite create/reopen, UI wording, zero-media-grant, and zero-fatal-log checks.
 - Current `flutter doctor -v` recognizes Build Tools 17.14.37 and Windows SDK 10.0.26100. The exact install is 3,099,022,241 bytes with a 42,732,999-byte package cache; total system-disk change including shared SDK files was about 5.41 GiB and no reboot was requested.
-- Local synthetic Desktop tests passed 7/7 and Windows bridge tests passed 6/6. The first Standard build then failed closed before compilation because Flutter still cannot create plugin symlinks; a synthetic-only symlink probe independently returned `Administrator privilege required`.
+- Local synthetic Desktop tests passed 7/7 and Windows bridge tests passed 6/6. The first Standard build failed closed before compilation because Flutter could not create plugin symlinks before the requested reboot.
+- After reboot, `AllowDevelopmentWithoutDevLicense=1` was present and Flutter generated all plugin symlinks. The Chinese repository path then exposed an MSBuild custom-step encoding failure, so validation continued from a new read-only-equivalent detached ASCII-path worktree without moving or renaming the repository.
+- Local Windows Standard and Pro Release builds passed with pinned SQLite/PDFium hashes and all 16 PDFium notices. Preserved runtime sizes are 39,315,958 B / 40,167,926 B; portable ZIPs are 17,020,581 B / 17,370,327 B, both within budget.
+- Standard and Pro each completed a real first-window inspection against synthetic fixtures: both displayed `Developer Safe Mode: ON`; Standard exposed only base navigation, while Pro additionally exposed Literature, Research, and System Insight. Pro's packaged synthetic PDF smoke exited 0. No scan or file-operation control was used.
 
 ## Blockers
 
-- Windows Developer Mode was reported enabled but is not effective: the expected registry value is absent, Flutter rejects plugin symlink generation, and a synthetic-only symlink probe fails without elevation. The user must re-enable it in Settings and accept the confirmation, then restart if required.
-- Visual Studio Build Tools is installed and verified; local Windows compilation is now blocked only by the ineffective Developer Mode setting.
-- Windows Computer Use could capture the running Pro process/window but input activation was blocked twice by `GetCursorPos` access denial; automation stopped without elevation. The packaged engine self-check replaces UI automation for native parse/text/render evidence, while maintainer interaction remains part of first-use validation.
+- The canonical repository's Chinese path currently corrupts one Flutter/MSBuild custom-step path. Local Windows validation therefore uses an ASCII-only detached worktree; the repository itself was not moved or renamed.
 - Final license/copyright owner, Public conversion, real-directory scan, device media permission, first maintainer trial, release signing, and release publication remain gated.
 
 ## Next action
 
-Ask the user to re-enable Developer Mode at Settings > System > Advanced > For developers, accept the administrator confirmation, and restart Windows if the setting does not persist. Then retry local Standard/Pro builds using synthetic data only. Separately obtain explicit approval for a Windows reference-directory scan, nubia Debug APK/media permission, license/copyright, first trial, signing, Public conversion, and publication.
+Obtain explicit approval for a Windows reference-directory read-only scan and nubia Debug APK/media permission before Phase 2 reference-data validation. Separately obtain maintainer decisions for the final license/copyright, first trial, signing, Public conversion, and publication.
