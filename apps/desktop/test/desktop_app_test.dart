@@ -213,24 +213,13 @@ void main() {
       findsWidgets,
     );
     expect(find.textContaining('Lin Researcher'), findsWidgets);
+    expect(find.text('10.5555/picklogic.synthetic'), findsNothing);
+    await tester.tap(find.byKey(const Key('literature-metadata-action')));
+    await tester.pumpAndSettle();
     expect(find.text('10.5555/picklogic.synthetic'), findsOneWidget);
-    final literatureScrollable = find
-        .descendant(
-          of: find.byKey(const Key('literature-manager-lite-view')),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('test-pdf-reader')),
-      300,
-      scrollable: literatureScrollable,
-    );
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('test-pdf-reader')), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('literature-progress-value')),
-      240,
-      scrollable: literatureScrollable,
-    );
     expect(
       tester
           .widget<Text>(find.byKey(const Key('literature-progress-value')))
@@ -248,17 +237,11 @@ void main() {
     );
     expect(find.text('第 8 / 10 页'), findsOneWidget);
     expect(store.entries.single.currentPage, 8);
-    await tester.scrollUntilVisible(
-      find.textContaining('仅预览'),
-      300,
-      scrollable: literatureScrollable,
-    );
+    await tester.tap(find.byKey(const Key('literature-rename-preview-action')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('仅预览'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('翻译 · 即将推出'),
-      300,
-      scrollable: literatureScrollable,
-    );
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
     expect(find.text('翻译 · 即将推出'), findsOneWidget);
   });
 
@@ -367,15 +350,13 @@ void main() {
     Widget build(Locale locale) => _localizedTestApp(
       locale: locale,
       home: Scaffold(
-        body: SingleChildScrollView(
-          child: ProLocalPdfReader(
-            path: r'X:\synthetic\reader.pdf',
-            fileName: 'reader.pdf',
-            initialPageNumber: 1,
-            onPositionChanged: (_, _) {},
-            viewerBuilder: (_) =>
-                const SizedBox(key: Key('synthetic-viewer-test-double')),
-          ),
+        body: ProLocalPdfReader(
+          path: r'X:\synthetic\reader.pdf',
+          fileName: 'reader.pdf',
+          initialPageNumber: 1,
+          onPositionChanged: (_, _) {},
+          viewerBuilder: (_) =>
+              const SizedBox(key: Key('synthetic-viewer-test-double')),
         ),
       ),
     );
@@ -427,10 +408,14 @@ void main() {
       find.byKey(const Key('system-insight-read-only-view')),
       findsOneWidget,
     );
-    expect(find.text('System Insight · Read-only'), findsOneWidget);
-    expect(find.text('NO SYSTEM CHANGES'), findsOneWidget);
-    expect(find.textContaining('未读取真实系统目录'), findsOneWidget);
-    expect(find.textContaining('platformRestriction'), findsWidgets);
+    expect(find.text('系统洞察 · 只读'), findsOneWidget);
+    expect(find.text('不修改系统'), findsOneWidget);
+    expect(find.textContaining('未读取真实系统目录'), findsWidgets);
+    expect(find.text('查看洞察'), findsNWidgets(3));
+    expect(
+      find.byKey(const Key('system-insight-dialog-service')),
+      findsNothing,
+    );
   });
 
   test('Standard synthetic search requires and ranks every term', () async {

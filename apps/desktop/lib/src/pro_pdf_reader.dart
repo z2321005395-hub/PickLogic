@@ -200,141 +200,137 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
     return Column(
       key: const Key('pro-pdf-reader'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Chip(
-              label: Text(
-                widget.isSynthetic ? strings.syntheticPdf : strings.localPdf,
-              ),
-            ),
-            Chip(label: Text(strings.localRendering)),
-            Chip(label: Text(strings.capabilities)),
-            Chip(
-              label: Text(
-                strings.cacheLimit(_cacheLimitBytes ~/ (1024 * 1024)),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
         Text(
           widget.isSynthetic
               ? strings.syntheticDescription
               : strings.localDescription,
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const Key('pdf-search-field'),
-                controller: _searchController,
-                enabled: searcher != null,
-                decoration: InputDecoration(
-                  isDense: true,
-                  labelText: strings.searchPdfText,
-                  hintText: strings.searchHint,
-                ),
-                textInputAction: TextInputAction.search,
-                onSubmitted: (_) => _startSearch(),
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              key: const Key('pdf-search-action'),
-              tooltip: strings.search,
-              onPressed: searcher == null ? null : _startSearch,
-              icon: const Icon(Icons.search),
-            ),
-            IconButton(
-              tooltip: strings.previousMatch,
-              onPressed: searcher?.hasMatches == true
-                  ? () => searcher!.goToPrevMatch()
-                  : null,
-              icon: const Icon(Icons.keyboard_arrow_up),
-            ),
-            IconButton(
-              tooltip: strings.nextMatch,
-              onPressed: searcher?.hasMatches == true
-                  ? () => searcher!.goToNextMatch()
-                  : null,
-              icon: const Icon(Icons.keyboard_arrow_down),
-            ),
-          ],
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 6),
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(matchLabel, key: const Key('pdf-search-status')),
-            const SizedBox(width: 8),
-            IconButton(
-              key: const Key('pdf-zoom-out'),
-              tooltip: strings.zoomOut,
-              onPressed: _viewerController.isReady
-                  ? () => _viewerController.zoomDown()
-                  : null,
-              icon: const Icon(Icons.zoom_out),
-            ),
-            Text(zoomLabel, key: const Key('pdf-zoom-status')),
-            IconButton(
-              key: const Key('pdf-zoom-in'),
-              tooltip: strings.zoomIn,
-              onPressed: _viewerController.isReady
-                  ? () => _viewerController.zoomUp()
-                  : null,
-              icon: const Icon(Icons.zoom_in),
-            ),
-            SizedBox(
-              width: 92,
-              child: TextField(
-                key: const Key('pdf-page-jump-field'),
-                controller: _pageController,
-                enabled: document != null,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  isDense: true,
-                  labelText: strings.jumpToPage,
+        Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  strings.localRendering,
+                  style: Theme.of(context).textTheme.labelLarge,
                 ),
-                onSubmitted: (_) => _jumpToPage(),
-              ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 220,
+                  child: TextField(
+                    key: const Key('pdf-search-field'),
+                    controller: _searchController,
+                    enabled: searcher != null,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      labelText: strings.searchPdfText,
+                      hintText: strings.searchHint,
+                      prefixIcon: const Icon(Icons.search),
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _startSearch(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-search-action'),
+                  tooltip: strings.search,
+                  onPressed: searcher == null ? null : _startSearch,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                Text(matchLabel, key: const Key('pdf-search-status')),
+                IconButton(
+                  tooltip: strings.previousMatch,
+                  onPressed: searcher?.hasMatches == true
+                      ? () => searcher!.goToPrevMatch()
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_up),
+                ),
+                IconButton(
+                  tooltip: strings.nextMatch,
+                  onPressed: searcher?.hasMatches == true
+                      ? () => searcher!.goToNextMatch()
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_down),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  key: const Key('pdf-zoom-out'),
+                  tooltip: strings.zoomOut,
+                  onPressed: _viewerController.isReady
+                      ? () => _viewerController.zoomDown()
+                      : null,
+                  icon: const Icon(Icons.zoom_out),
+                ),
+                Text(zoomLabel, key: const Key('pdf-zoom-status')),
+                IconButton(
+                  key: const Key('pdf-zoom-in'),
+                  tooltip: strings.zoomIn,
+                  onPressed: _viewerController.isReady
+                      ? () => _viewerController.zoomUp()
+                      : null,
+                  icon: const Icon(Icons.zoom_in),
+                ),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 86,
+                  child: TextField(
+                    key: const Key('pdf-page-jump-field'),
+                    controller: _pageController,
+                    enabled: document != null,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      labelText: strings.jumpToPage,
+                    ),
+                    onSubmitted: (_) => _jumpToPage(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-page-jump-action'),
+                  tooltip: strings.jump,
+                  onPressed: document == null ? null : _jumpToPage,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                Text(
+                  document == null
+                      ? (_loadSucceeded
+                            ? strings.preparingPages
+                            : strings.loadingPdf)
+                      : strings.pagePosition(
+                          _pageNumber,
+                          document.pages.length,
+                        ),
+                  key: const Key('pdf-page-status'),
+                ),
+                if (_pageJumpInvalid)
+                  Text(
+                    strings.pageRange(document?.pages.length ?? 1),
+                    key: const Key('pdf-page-jump-error'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+              ],
             ),
-            IconButton(
-              key: const Key('pdf-page-jump-action'),
-              tooltip: strings.jump,
-              onPressed: document == null ? null : _jumpToPage,
-              icon: const Icon(Icons.arrow_forward),
-            ),
-            Text(
-              document == null
-                  ? (_loadSucceeded
-                        ? strings.preparingPages
-                        : strings.loadingPdf)
-                  : strings.pagePosition(_pageNumber, document.pages.length),
-              key: const Key('pdf-page-status'),
-            ),
-            if (_pageJumpInvalid)
-              Text(
-                strings.pageRange(document?.pages.length ?? 1),
-                key: const Key('pdf-page-jump-error'),
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-          ],
+          ),
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 520,
+        const SizedBox(height: 6),
+        Expanded(
           child: Row(
             children: [
               SizedBox(
-                width: 92,
+                width: 76,
                 child: document == null
                     ? const Center(child: CircularProgressIndicator())
                     : ListView.builder(
@@ -350,7 +346,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                               onTap: () =>
                                   _viewerController.goToPage(pageNumber: page),
                               child: Container(
-                                height: 112,
+                                height: 96,
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
                                   border: Border.all(
@@ -392,10 +388,10 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                                           ),
                                           child: Text(
                                             '$page',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 11,
-                                            ),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(color: Colors.white),
                                           ),
                                         ),
                                       ),
@@ -408,7 +404,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                         },
                       ),
               ),
-              const SizedBox(width: 10),
+              const VerticalDivider(width: 10),
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
@@ -456,7 +452,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           child: Text(
             strings.openError,
             textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
           ),
         ),
       ),

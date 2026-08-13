@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_research_core/picklogic_research_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
@@ -52,7 +51,7 @@ final class ProWorkspaceRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(_routeTitle(section))),
+    appBar: AppBar(title: Text(_routeTitle(context, section))),
     body: Column(
       children: [
         const Align(alignment: Alignment.centerLeft, child: SafeModeBanner()),
@@ -278,180 +277,352 @@ final class _LiteratureManagerLiteViewState
   LiteratureLibraryEntry? get _selectedEntry =>
       _entries.where((entry) => entry.id == _selectedId).firstOrNull;
 
+  Future<void> _showMetadata(
+    LiteratureLibraryEntry entry,
+    _LiteratureStrings strings,
+  ) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: const Key('literature-metadata-dialog'),
+      title: Text(strings.literatureMetadata),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _LabelValue(label: strings.fileName, value: entry.fileName),
+            _LabelValue(label: strings.title, value: entry.record.title),
+            _LabelValue(
+              label: strings.author,
+              value: entry.record.authors.isEmpty
+                  ? strings.notFound
+                  : entry.record.authors.join('; '),
+            ),
+            _LabelValue(
+              label: 'DOI',
+              value: entry.record.doi ?? strings.notFound,
+            ),
+            _LabelValue(
+              label: strings.year,
+              value: entry.record.year?.toString() ?? strings.notFound,
+            ),
+            const SizedBox(height: 8),
+            Text(strings.metadataLimit),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(strings.close),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _showRenamePreview(
+    LiteratureLibraryEntry entry,
+    _LiteratureStrings strings,
+  ) {
+    final preview = const LiteratureNaming().previewRename(
+      record: entry.record,
+      originalFileName: entry.fileName,
+    );
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('literature-rename-preview-dialog'),
+        title: Text(strings.renamePreview),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _LabelValue(label: strings.current, value: entry.fileName),
+              _LabelValue(
+                label: strings.preview,
+                value: preview.proposedFileName,
+              ),
+              const SizedBox(height: 8),
+              Text(strings.previewOnly),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(strings.close),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = _LiteratureStrings.of(context);
     final selected = _selectedEntry;
-    final renamePreview = selected == null
-        ? null
-        : const LiteratureNaming().previewRename(
-            record: selected.record,
-            originalFileName: selected.fileName,
-          );
-    final progressPercent = selected == null
-        ? 0
-        : (selected.record.readingProgress * 100).round();
-    return ListView(
+    return Padding(
       key: const Key('literature-manager-lite-view'),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ProHeader(
+            icon: Icons.menu_book_outlined,
+            title: strings.managerTitle,
+            subtitle: strings.managerSubtitle,
+            badge: strings.localReadOnly,
+            trailing: FilledButton.icon(
+              key: const Key('literature-add-action'),
+              onPressed: _loading || _adding || !_catalogAvailable
+                  ? null
+                  : _addLiterature,
+              icon: _adding
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add),
+              label: Text(strings.addLiterature),
+            ),
+          ),
+          if (_status != null) ...[
+            const SizedBox(height: 8),
+            Material(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Text(
+                  strings.status(_status!),
+                  key: const Key('literature-status'),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_entries.isEmpty)
+            Expanded(
+              child: _EmptyWorkspace(
+                icon: Icons.picture_as_pdf_outlined,
+                title: strings.library,
+                message: strings.emptyLibrary,
+              ),
+            )
+          else
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final library = _buildLibraryList(strings);
+                  final reader = selected == null
+                      ? _EmptyWorkspace(
+                          icon: Icons.menu_book_outlined,
+                          title: strings.selectLiterature,
+                          message: strings.selectLiteratureHint,
+                        )
+                      : _buildReaderPane(selected, strings);
+                  if (constraints.maxWidth < 820) {
+                    return Column(
+                      children: [
+                        SizedBox(height: 210, child: library),
+                        const SizedBox(height: 10),
+                        Expanded(child: reader),
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(width: 310, child: library),
+                      const SizedBox(width: 12),
+                      Expanded(child: reader),
+                    ],
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text(strings.translationComingNext),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  strings.libraryPrivacy,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLibraryList(_LiteratureStrings strings) => Card(
+    margin: EdgeInsets.zero,
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ProHeader(
-          icon: Icons.menu_book_outlined,
-          title: strings.managerTitle,
-          subtitle: strings.managerSubtitle,
-          badge: strings.localReadOnly,
-          trailing: FilledButton.icon(
-            key: const Key('literature-add-action'),
-            onPressed: _loading || _adding || !_catalogAvailable
-                ? null
-                : _addLiterature,
-            icon: _adding
-                ? const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.add),
-            label: Text(strings.addLiterature),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          child: Text(
+            strings.persistentLibrary,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
-        if (_status != null) ...[
-          const SizedBox(height: 12),
-          Text(strings.status(_status!), key: const Key('literature-status')),
-        ],
-        const SizedBox(height: 16),
-        if (_loading)
-          const Center(child: CircularProgressIndicator())
-        else if (_entries.isEmpty)
-          _ProCard(title: strings.library, child: Text(strings.emptyLibrary))
-        else
-          _ProCard(
-            title: strings.persistentLibrary,
-            child: ListView.separated(
-              key: const Key('literature-library-list'),
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _entries.length,
-              separatorBuilder: (_, _) => const Divider(),
-              itemBuilder: (context, index) {
-                final entry = _entries[index];
-                final record = entry.record;
-                return ListTile(
-                  key: Key('literature-entry-${entry.id}'),
-                  selected: entry.id == _selectedId,
-                  leading: const Icon(Icons.picture_as_pdf_outlined),
-                  title: Text(record.title),
-                  subtitle: Text(
-                    '${entry.fileName}\n'
-                    '${record.authors.isEmpty ? strings.authorUnknown : record.authors.join('; ')} · '
-                    '${record.year?.toString() ?? strings.yearUnknown} · '
-                    '${record.doi ?? strings.doiNotFound}',
-                  ),
-                  isThreeLine: true,
-                  trailing: Text('${(record.readingProgress * 100).round()}%'),
-                  onTap: () => setState(() => _selectedId = entry.id),
-                );
-              },
-            ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            key: const Key('literature-library-list'),
+            itemCount: _entries.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final entry = _entries[index];
+              final record = entry.record;
+              return ListTile(
+                key: Key('literature-entry-${entry.id}'),
+                selected: entry.id == _selectedId,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: Text(
+                  record.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '${record.authors.isEmpty ? strings.authorUnknown : record.authors.first} · '
+                  '${record.year?.toString() ?? strings.yearUnknown}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Text('${(record.readingProgress * 100).round()}%'),
+                onTap: () => setState(() => _selectedId = entry.id),
+              );
+            },
           ),
-        if (selected != null) ...[
-          const SizedBox(height: 12),
-          _ProCard(
-            title: strings.literatureMetadata,
-            child: Column(
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildReaderPane(
+    LiteratureLibraryEntry selected,
+    _LiteratureStrings strings,
+  ) {
+    final progressPercent = (selected.record.readingProgress * 100).round();
+    final reader =
+        widget.literaturePdfReaderBuilder?.call(
+          context,
+          selected,
+          (currentPage, totalPages) =>
+              _recordPosition(selected.id, currentPage, totalPages),
+        ) ??
+        widget.pdfReaderBuilder?.call(context) ??
+        ProLocalPdfReader(
+          key: ValueKey<String>(selected.id),
+          path: selected.localPath,
+          fileName: selected.fileName,
+          initialPageNumber: selected.currentPage,
+          onPositionChanged: (currentPage, totalPages) =>
+              _recordPosition(selected.id, currentPage, totalPages),
+        );
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _LabelValue(label: strings.fileName, value: selected.fileName),
-                _LabelValue(label: strings.title, value: selected.record.title),
-                _LabelValue(
-                  label: strings.author,
-                  value: selected.record.authors.isEmpty
-                      ? strings.notFound
-                      : selected.record.authors.join('; '),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selected.record.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selected.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
-                _LabelValue(
-                  label: 'DOI',
-                  value: selected.record.doi ?? strings.notFound,
+                const SizedBox(width: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('literature-metadata-action'),
+                      onPressed: () => _showMetadata(selected, strings),
+                      icon: const Icon(Icons.info_outline),
+                      label: Text(strings.metadataAction),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('literature-rename-preview-action'),
+                      onPressed: () => _showRenamePreview(selected, strings),
+                      icon: const Icon(Icons.drive_file_rename_outline),
+                      label: Text(strings.previewAction),
+                    ),
+                  ],
                 ),
-                _LabelValue(
-                  label: strings.year,
-                  value: selected.record.year?.toString() ?? strings.notFound,
-                ),
-                const SizedBox(height: 8),
-                Text(strings.metadataLimit),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          _ProCard(
-            title: strings.pdfReaderLocal,
-            child:
-                widget.literaturePdfReaderBuilder?.call(
-                  context,
-                  selected,
-                  (currentPage, totalPages) =>
-                      _recordPosition(selected.id, currentPage, totalPages),
-                ) ??
-                widget.pdfReaderBuilder?.call(context) ??
-                ProLocalPdfReader(
-                  key: ValueKey<String>(selected.id),
-                  path: selected.localPath,
-                  fileName: selected.fileName,
-                  initialPageNumber: selected.currentPage,
-                  onPositionChanged: (currentPage, totalPages) =>
-                      _recordPosition(selected.id, currentPage, totalPages),
-                ),
-          ),
-          const SizedBox(height: 12),
-          _ProCard(
-            title: strings.persistentReadingProgress,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 8),
+            Row(
               children: [
-                Text(
-                  '$progressPercent%',
-                  key: const Key('literature-progress-value'),
-                  style: Theme.of(context).textTheme.headlineSmall,
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: selected.record.readingProgress,
+                  ),
                 ),
-                LinearProgressIndicator(value: selected.record.readingProgress),
-                const SizedBox(height: 8),
+                const SizedBox(width: 10),
                 Text(
                   selected.totalPages == null
-                      ? strings.pagePending
+                      ? '$progressPercent%'
                       : strings.pagePosition(
                           selected.currentPage,
                           selected.totalPages!,
                         ),
                   key: const Key('literature-page-position'),
                 ),
-                Text(strings.progressPrivacy),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _ProCard(
-            title: strings.renamePreview,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _LabelValue(label: strings.current, value: selected.fileName),
-                _LabelValue(
-                  label: strings.preview,
-                  value: renamePreview!.proposedFileName,
+                Text(
+                  '$progressPercent%',
+                  key: const Key('literature-progress-value'),
                 ),
-                const SizedBox(height: 8),
-                Text(strings.previewOnly),
               ],
             ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        _ProCard(
-          title: strings.translationComingNext,
-          child: Text(strings.translationDescription),
+            const SizedBox(height: 10),
+            Expanded(child: reader),
+          ],
         ),
-        const SizedBox(height: 12),
-        Text(strings.libraryPrivacy),
-      ],
+      ),
     );
   }
 
@@ -464,6 +635,7 @@ final class ResearchBucketsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = _ResearchStrings.of(context);
     final workspace =
         ResearchWorkspace(
             id: 'synthetic-project',
@@ -493,34 +665,49 @@ final class ResearchBucketsView extends StatelessWidget {
               note: 'Synthetic figure',
             ),
           );
-    return ListView(
+    return Padding(
       key: const Key('research-buckets-view'),
-      padding: const EdgeInsets.all(24),
-      children: [
-        const _ProHeader(
-          icon: Icons.science_outlined,
-          title: 'Research buckets',
-          subtitle: 'Synthetic microscopy project · 虚拟关联，不移动文件',
-          badge: 'VIRTUAL LINKS',
-        ),
-        const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) => GridView.count(
-            crossAxisCount: constraints.maxWidth >= 900 ? 4 : 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.65,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              for (final summary in workspace.bucketSummaries)
-                _BucketCard(summary: summary),
-            ],
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ProHeader(
+            icon: Icons.science_outlined,
+            title: strings.title,
+            subtitle: strings.subtitle,
+            badge: strings.virtualLinks,
           ),
-        ),
-        const SizedBox(height: 12),
-        const Text('Buckets 只保存文件 ID 的虚拟关联；原位置、文件名和内容均保持不变。'),
-      ],
+          const SizedBox(height: 12),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                key: const Key('research-bucket-grid'),
+                child: GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: constraints.maxWidth >= 1000
+                      ? 4
+                      : constraints.maxWidth >= 620
+                      ? 2
+                      : 1,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: constraints.maxWidth >= 620 ? 2.2 : 3.2,
+                  children: [
+                    for (final summary in workspace.bucketSummaries)
+                      _BucketCard(summary: summary, strings: strings),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            strings.readOnlyNote,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -561,27 +748,38 @@ final class SystemInsightReadOnlyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final explainer = const SystemObservationExplainer();
-    return ListView(
+    final strings = _SystemStrings.of(context);
+    return Padding(
       key: const Key('system-insight-read-only-view'),
-      padding: const EdgeInsets.all(24),
-      children: [
-        const _ProHeader(
-          icon: Icons.monitor_heart_outlined,
-          title: 'System Insight · Read-only',
-          subtitle: '合成观测 · 未读取真实系统目录 · 事实、推断、限制与未知项分开呈现',
-          badge: 'NO SYSTEM CHANGES',
-        ),
-        const SizedBox(height: 16),
-        for (final observation in _observations) ...[
-          _SystemObservationCard(
-            observation: observation,
-            insight: explainer.explain(observation),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ProHeader(
+            icon: Icons.monitor_heart_outlined,
+            title: strings.title,
+            subtitle: strings.subtitle,
+            badge: strings.noChanges,
           ),
           const SizedBox(height: 12),
+          Expanded(
+            child: ListView.separated(
+              key: const Key('system-observation-list'),
+              itemCount: _observations.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) => _SystemObservationCard(
+                observation: _observations[index],
+                strings: strings,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            strings.readOnlyNote,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
-        const Text('未读取真实系统目录；未修改注册表、服务、启动项、计划任务、卸载器或系统文件。'),
-      ],
+      ),
     );
   }
 }
@@ -602,44 +800,84 @@ final class _ProHeader extends StatelessWidget {
   final Widget? trailing;
 
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(icon, size: 34, color: Theme.of(context).colorScheme.primary),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final identity = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 30, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 2),
+                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Chip(label: Text(badge)),
+        ],
+      );
+      if (trailing == null) return identity;
+      if (constraints.maxWidth < 700) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: Theme.of(context).textTheme.headlineSmall),
-            Text(subtitle),
+            identity,
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerRight, child: trailing!),
           ],
-        ),
-      ),
-      const SizedBox(width: 12),
-      Chip(label: Text(badge)),
-      if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-    ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: identity),
+          const SizedBox(width: 10),
+          trailing!,
+        ],
+      );
+    },
   );
 }
 
-final class _ProCard extends StatelessWidget {
-  const _ProCard({required this.title, required this.child});
+final class _EmptyWorkspace extends StatelessWidget {
+  const _EmptyWorkspace({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
 
+  final IconData icon;
   final String title;
-  final Widget child;
+  final String message;
 
   @override
   Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 14),
-          child,
-        ],
+    margin: EdgeInsets.zero,
+    child: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 36,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 6),
+              Text(message, textAlign: TextAlign.center),
+            ],
+          ),
+        ),
       ),
     ),
   );
@@ -665,9 +903,10 @@ final class _LabelValue extends StatelessWidget {
 }
 
 final class _BucketCard extends StatelessWidget {
-  const _BucketCard({required this.summary});
+  const _BucketCard({required this.summary, required this.strings});
 
   final ResearchBucketSummary summary;
+  final _ResearchStrings strings;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -680,10 +919,10 @@ final class _BucketCard extends StatelessWidget {
         children: [
           Icon(_bucketIcon(summary.bucket)),
           Text(
-            _bucketLabel(summary.bucket),
+            strings.bucketLabel(summary.bucket),
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          Text('${summary.count} linked item(s)'),
+          Text(strings.linkedItems(summary.count)),
         ],
       ),
     ),
@@ -693,48 +932,63 @@ final class _BucketCard extends StatelessWidget {
 final class _SystemObservationCard extends StatelessWidget {
   const _SystemObservationCard({
     required this.observation,
-    required this.insight,
+    required this.strings,
   });
 
   final SystemObservation observation;
-  final InsightRecord insight;
+  final _SystemStrings strings;
 
-  @override
-  Widget build(BuildContext context) => _ProCard(
-    title: observation.label,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _LabelValue(label: 'Risk', value: insight.riskLevel.name.toUpperCase()),
-        _LabelValue(
-          label: 'Confidence',
-          value: '${(insight.confidence * 100).round()}%',
+  Future<void> _showInsight(BuildContext context) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: Key('system-insight-dialog-${observation.kind.name}'),
+      title: Text(strings.observationLabel(observation.kind)),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _LabelValue(
+              label: strings.category,
+              value: strings.categoryValue(observation.kind),
+            ),
+            _LabelValue(
+              label: strings.status,
+              value: strings.statusValue(observation),
+            ),
+            const SizedBox(height: 8),
+            Text(strings.insightDetail(observation.kind)),
+            const SizedBox(height: 8),
+            Text(strings.syntheticRestriction),
+          ],
         ),
-        Text(insight.summary),
-        const SizedBox(height: 10),
-        for (final evidence in insight.evidence)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.fact_check_outlined, size: 18),
-            title: Text(evidence.statement),
-            subtitle: Text('${evidence.kind.name} · ${evidence.source}'),
-          ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(strings.close),
+        ),
       ],
     ),
   );
-}
 
-String _bucketLabel(ResearchBucket bucket) => switch (bucket) {
-  ResearchBucket.literature => 'Literature',
-  ResearchBucket.rawData => 'Raw data',
-  ResearchBucket.processedData => 'Processed data',
-  ResearchBucket.figures => 'Figures',
-  ResearchBucket.scripts => 'Scripts',
-  ResearchBucket.notes => 'Notes',
-  ResearchBucket.presentations => 'Presentations',
-  ResearchBucket.manuscripts => 'Manuscripts',
-};
+  @override
+  Widget build(BuildContext context) => Card(
+    margin: EdgeInsets.zero,
+    child: ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: Icon(_systemIcon(observation.kind)),
+      title: Text(strings.observationLabel(observation.kind)),
+      subtitle: Text(strings.observationSummary(observation.kind)),
+      trailing: OutlinedButton(
+        key: Key('system-insight-action-${observation.kind.name}'),
+        onPressed: () => _showInsight(context),
+        child: Text(strings.viewInsight),
+      ),
+    ),
+  );
+}
 
 IconData _bucketIcon(ResearchBucket bucket) => switch (bucket) {
   ResearchBucket.literature => Icons.menu_book_outlined,
@@ -773,6 +1027,13 @@ final class _LiteratureStrings {
   String get yearUnknown => isChinese ? '年份未知' : 'Year unknown';
   String get doiNotFound => isChinese ? '未发现 DOI' : 'DOI not found';
   String get literatureMetadata => isChinese ? '文献元数据' : 'Literature metadata';
+  String get metadataAction => isChinese ? '元数据' : 'Metadata';
+  String get previewAction => isChinese ? '重命名预览' : 'Rename preview';
+  String get selectLiterature => isChinese ? '选择一篇文献' : 'Select literature';
+  String get selectLiteratureHint => isChinese
+      ? '从左侧列表选择 PDF 后即可继续阅读。'
+      : 'Choose a PDF from the library to continue reading.';
+  String get close => isChinese ? '关闭' : 'Close';
   String get fileName => isChinese ? '文件名' : 'Filename';
   String get title => isChinese ? '标题' : 'Title';
   String get author => isChinese ? '作者' : 'Author';
@@ -837,9 +1098,138 @@ final class _LiteratureStrings {
   };
 }
 
-String _routeTitle(String section) => switch (section) {
-  'literature' => '文献 · Literature',
-  'research' => '研究 · Research',
-  'system' => '系统洞察 · System Insight',
-  _ => 'PickLogic Pro',
+final class _ResearchStrings {
+  const _ResearchStrings(this.isChinese);
+
+  factory _ResearchStrings.of(BuildContext context) => _ResearchStrings(
+    PickLogicLocalizations.of(context).locale.languageCode == 'zh',
+  );
+
+  final bool isChinese;
+
+  String get title => isChinese ? '研究工作区' : 'Research workspace';
+  String get subtitle => isChinese
+      ? '合成项目骨架 · 仅虚拟关联，不移动文件'
+      : 'Synthetic project skeleton · virtual links only, no file moves';
+  String get virtualLinks => isChinese ? '虚拟关联' : 'VIRTUAL LINKS';
+  String get readOnlyNote => isChinese
+      ? '此页面只保存文件标识的虚拟关联；原位置、文件名和内容均保持不变。'
+      : 'This page stores only virtual file-ID links; locations, names, and contents remain unchanged.';
+
+  String bucketLabel(ResearchBucket bucket) => switch (bucket) {
+    ResearchBucket.literature => isChinese ? '文献' : 'Literature',
+    ResearchBucket.rawData => isChinese ? '原始数据' : 'Raw data',
+    ResearchBucket.processedData => isChinese ? '处理后数据' : 'Processed data',
+    ResearchBucket.figures => isChinese ? '图像' : 'Figures',
+    ResearchBucket.scripts => isChinese ? '脚本' : 'Scripts',
+    ResearchBucket.notes => isChinese ? '笔记' : 'Notes',
+    ResearchBucket.presentations => isChinese ? '演示文稿' : 'Presentations',
+    ResearchBucket.manuscripts => isChinese ? '稿件' : 'Manuscripts',
+  };
+
+  String linkedItems(int count) =>
+      isChinese ? '$count 个关联项目' : '$count linked item(s)';
+}
+
+final class _SystemStrings {
+  const _SystemStrings(this.isChinese);
+
+  factory _SystemStrings.of(BuildContext context) => _SystemStrings(
+    PickLogicLocalizations.of(context).locale.languageCode == 'zh',
+  );
+
+  final bool isChinese;
+
+  String get title => isChinese ? '系统洞察 · 只读' : 'System Insight · Read-only';
+  String get subtitle => isChinese
+      ? '仅展示合成观测 · 未读取真实系统目录'
+      : 'Synthetic observations only · no real system directory was read';
+  String get noChanges => isChinese ? '不修改系统' : 'NO SYSTEM CHANGES';
+  String get readOnlyNote => isChinese
+      ? '未读取真实系统目录，也未修改注册表、服务、启动项、计划任务、卸载器或系统文件。'
+      : 'No real system directory was read, and no registry, service, startup, scheduled-task, uninstaller, or system-file change was made.';
+  String get viewInsight => isChinese ? '查看洞察' : 'View insight';
+  String get category => isChinese ? '类别' : 'Category';
+  String get status => isChinese ? '状态' : 'Status';
+  String get close => isChinese ? '关闭' : 'Close';
+  String get syntheticRestriction => isChinese
+      ? '限制：此处仅为合成只读示例，不能据此删除或更改系统项目。'
+      : 'Limitation: this is a synthetic read-only example and cannot justify deleting or changing system items.';
+
+  String observationLabel(SystemObservationKind kind) => switch (kind) {
+    SystemObservationKind.softwareCache =>
+      isChinese ? '合成应用缓存' : 'Synthetic application cache',
+    SystemObservationKind.service =>
+      isChinese ? '合成系统服务' : 'Synthetic system service',
+    SystemObservationKind.unknown =>
+      isChinese ? '合成未知组件' : 'Synthetic unknown component',
+    _ => isChinese ? '合成系统项目' : 'Synthetic system item',
+  };
+
+  String observationSummary(SystemObservationKind kind) => switch (kind) {
+    SystemObservationKind.softwareCache =>
+      isChinese
+          ? '可识别的应用缓存示例；仅建议审阅。'
+          : 'Recognized application-cache example; review only.',
+    SystemObservationKind.service =>
+      isChinese
+          ? '受保护的系统服务示例；不可直接更改。'
+          : 'Protected system-service example; no direct changes.',
+    SystemObservationKind.unknown =>
+      isChinese
+          ? '证据不足的未知项目示例；保持不变。'
+          : 'Unknown-item example with insufficient evidence; leave unchanged.',
+    _ => isChinese ? '只读系统观测示例。' : 'Read-only system observation example.',
+  };
+
+  String categoryValue(SystemObservationKind kind) => switch (kind) {
+    SystemObservationKind.softwareCache =>
+      isChinese ? '软件缓存' : 'Software cache',
+    SystemObservationKind.service => isChinese ? '系统服务' : 'System service',
+    SystemObservationKind.unknown => isChinese ? '未知' : 'Unknown',
+    _ => isChinese ? '系统项目' : 'System item',
+  };
+
+  String statusValue(SystemObservation observation) => observation.isWindowsCore
+      ? (isChinese ? '受保护' : 'Protected')
+      : observation.kind == SystemObservationKind.unknown
+      ? (isChinese ? '未知' : 'Unknown')
+      : (isChinese ? '仅审阅' : 'Review only');
+
+  String insightDetail(SystemObservationKind kind) => switch (kind) {
+    SystemObservationKind.softwareCache =>
+      isChinese
+          ? '事实：合成夹具将其标记为应用缓存。建议：仅在所属应用的官方设置中审阅。'
+          : 'Fact: the synthetic fixture marks this as application cache. Recommendation: review it only through the owning application settings.',
+    SystemObservationKind.service =>
+      isChinese
+          ? '事实：合成夹具将其标记为核心系统服务。建议：保持不变。'
+          : 'Fact: the synthetic fixture marks this as a core system service. Recommendation: leave it unchanged.',
+    SystemObservationKind.unknown =>
+      isChinese
+          ? '事实：当前证据无法识别此合成项目。建议：保持不变并补充证据。'
+          : 'Fact: available evidence cannot identify this synthetic item. Recommendation: leave it unchanged and gather more evidence.',
+    _ =>
+      isChinese
+          ? '这是一个合成的只读系统观测。'
+          : 'This is a synthetic read-only system observation.',
+  };
+}
+
+IconData _systemIcon(SystemObservationKind kind) => switch (kind) {
+  SystemObservationKind.softwareCache => Icons.cached_outlined,
+  SystemObservationKind.service => Icons.settings_suggest_outlined,
+  SystemObservationKind.unknown => Icons.help_outline,
+  _ => Icons.monitor_heart_outlined,
 };
+
+String _routeTitle(BuildContext context, String section) {
+  final isChinese =
+      PickLogicLocalizations.of(context).locale.languageCode == 'zh';
+  return switch (section) {
+    'literature' => isChinese ? '文献' : 'Literature',
+    'research' => isChinese ? '研究' : 'Research',
+    'system' => isChinese ? '系统洞察' : 'System Insight',
+    _ => 'PickLogic Pro',
+  };
+}
