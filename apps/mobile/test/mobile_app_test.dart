@@ -156,10 +156,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('files-documents')), findsOneWidget);
-    await tester.drag(
-      find.byType(ListView).first,
-      const Offset(0, -320),
-    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -320));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('files-documents')));
     await tester.pumpAndSettle();
