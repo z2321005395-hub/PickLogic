@@ -160,3 +160,19 @@ Collect the maintainer's hands-on feedback from the new Standard dual-pane shell
 ## Next action
 
 Merge the green Private integration PR into `develop`, then stop feature work and collect maintainer hands-on feedback from Standard, Pro, and the Z70 user-test package.
+
+## Usability recovery and UI rebuild
+
+- Goal: restore coherent, immediately usable Desktop Standard, Desktop Pro, and Android workflows while preserving the working shared core, PDFium, SQLite, platform bridges, MediaStore paging, and Safe Mode.
+- Desktop: added a localized home, drive/common-folder entry points, list/grid/dual-pane browsing, real image thumbnails, bounded image/PDF/text/ZIP/folder preview, and one vertically unified Preview + Insight context pane. Office files use an explicit unavailable fallback plus system Open; no renderer was bundled.
+- Pro: added native multi-PDF selection and drag/drop through one bounded import path, app-private SQLite persistence with one-time JSON migration, manual catalog-metadata correction, and explicit partial/failure feedback. Reading, zoom, page jump, search, selection, and persisted position continue to use the existing PDFium reader.
+- Mobile: rebuilt the category, recent, and organize navigation around real MediaStore counts and bounded thumbnails. On nubia NX736J, the read-only user-test app displayed aggregate counts, then showed all 4,254 accessible screenshots as date-browsable and advanced from 120/4,254 to 240/4,254 without a fatal, missing-plugin, or overflow log match.
+- Safety: Windows and Android source files remained read-only. Screenshot review marks remain app-local; no delete, move, rename, or system mutation was enabled. No private file/media name, content, screenshot, path, or device serial entered Git.
+- Verification commands: targeted Dart/Flutter analyses and module tests; then one `tools\\picklogic.cmd full` gate from an ASCII detached worktree. Result: 103 files formatted unchanged, analysis clean, 11 quick + 6 remaining modules passed, 105 external + 5 Flutter SDK license entries accepted, and privacy findings 0.
+- Build verification: Standard and Pro Release windows stayed running with a visible `PickLogic` window; packaged Pro synthetic PDF smoke exited successfully. The arm64-only Debug APK installed and launched as `io.picklogic.mobile.usertest`, with media grants present and the app focused.
+- Artifacts: Standard 41,345,241 B installed / 17,870,471 B ZIP; Pro 41,378,009 B installed / 17,885,390 B ZIP; Android arm64 Debug 80,741,851 B. SHA-256 values are retained with the ignored local artifacts, not published as a Release.
+- Build tooling: `tools/build_windows.ps1` now reports exported artifacts on Windows PowerShell 5.1 without requiring unavailable `System.IO.Path.GetRelativePath`.
+
+## Next action
+
+Push the scoped Private PR, wait for its single CI gate, merge to `develop`, and stop feature work for maintainer hands-on testing. Do not make the repository or artifacts Public.

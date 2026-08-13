@@ -72,7 +72,9 @@ if ($ExportArtifact) {
     Compress-Archive -Path (Join-Path $releaseDirectory '*') -DestinationPath $artifact -CompressionLevel Optimal
     $file = Get-Item -LiteralPath $artifact
     $hash = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash
-    $relative = [System.IO.Path]::GetRelativePath($repoRoot, $artifact)
+    # Windows PowerShell 5.1 uses a .NET runtime without Path.GetRelativePath.
+    # Artifacts are guaranteed to be created below the repository root.
+    $relative = $artifact.Substring($repoRoot.Length).TrimStart('\')
     $summary += " artifact=$relative package_bytes=$($file.Length) sha256=$hash"
 }
 
