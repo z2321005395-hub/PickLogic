@@ -111,6 +111,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 - After reboot, `AllowDevelopmentWithoutDevLicense=1` was present and Flutter generated all plugin symlinks. The Chinese repository path then exposed an MSBuild custom-step encoding failure, so validation continued from a new read-only-equivalent detached ASCII-path worktree without moving or renaming the repository.
 - Local Windows Standard and Pro Release builds passed with pinned SQLite/PDFium hashes and all 16 PDFium notices. Preserved runtime sizes are 39,315,958 B / 40,167,926 B; portable ZIPs are 17,020,581 B / 17,370,327 B, both within budget.
 - Standard and Pro each completed a real first-window inspection against synthetic fixtures: both displayed `Developer Safe Mode: ON`; Standard exposed only base navigation, while Pro additionally exposed Literature, Research, and System Insight. Pro's packaged synthetic PDF smoke exited 0. No scan or file-operation control was used.
+- CI push/PR runs `31654697055` / `31654699150` passed quality, dependency/license and privacy audits, Android packages, Windows Standard/Pro packages, and the Pro packaged PDF smoke for commit `1aaec97`.
 
 ## Blockers
 
