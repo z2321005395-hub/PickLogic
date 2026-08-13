@@ -8,6 +8,9 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Added
 
+- Desktop image, PDF, bounded-text, folder, and metadata preview in one Preview/Insight context panel.
+- Android compact file-type, smart-collection, app/source, screenshot-filter, and read-only storage-facet navigation.
+
 - PickLogic / 拾理 project identity and product principles.
 - Shared data/interface contract and three-target monorepo architecture.
 - Developer Safe Mode, privacy, dependency-budget, brand-audit, and roadmap policies.
@@ -25,5 +28,10 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 - Pro synthetic PDF reader with bounded rendering, search/highlight, text selection/copy, pinned PDFium, complete notices, and packaged native smoke.
 - Explicit bounded/retryable Mobile platform initialization failures, with hosted Android bridge-registration verification.
 - Opt-in CI-built Android x86_64 validation artifacts with pinned SQLite prefetch and TTDT emulator bridge smoke evidence.
+
+### Changed
+
+- Unified Desktop navigation and contextual details across Standard and Pro without duplicating the shell.
+- Simplified the Mobile Files home around type, source, time, smart collection, and phone-storage entry points.
 
 No release has been published.

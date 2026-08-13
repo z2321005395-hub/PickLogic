@@ -161,6 +161,8 @@ final class _MobileShellState extends State<MobileShell> {
     }
   }
 
+  final _filesKey = GlobalKey<_FilesPageState>();
+
   @override
   Widget build(BuildContext context) {
     final strings = PickLogicLocalizations.of(context);
@@ -172,9 +174,11 @@ final class _MobileShellState extends State<MobileShell> {
         final canReadMedia = bootstrap?.permissions.canReadImages ?? false;
         final pages = <Widget>[
           _FilesPage(
+            key: _filesKey,
             repository: widget.repository,
             active: _index == 0,
             onChooseTree: _chooseDocumentTree,
+            onSearch: _startSearch,
           ),
           _ScreenshotsPage(
             repository: widget.repository,
@@ -230,23 +234,33 @@ final class _MobileShellState extends State<MobileShell> {
               ? _BootstrapFailure(onRetry: _retryBootstrap)
               : IndexedStack(index: _index, children: pages),
           bottomNavigationBar: NavigationBar(
+            key: const Key('mobile-primary-navigation'),
             selectedIndex: _index,
             onDestinationSelected: (value) => setState(() => _index = value),
             destinations: [
               NavigationDestination(
-                icon: const Icon(Icons.folder_outlined),
+                icon: const Icon(Icons.folder_outlined, key: Key('nav-files')),
                 label: strings.text('files'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.screenshot_outlined),
+                icon: const Icon(
+                  Icons.screenshot_outlined,
+                  key: Key('nav-screenshots'),
+                ),
                 label: strings.text('screenshots'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.photo_library_outlined),
+                icon: const Icon(
+                  Icons.photo_library_outlined,
+                  key: Key('nav-photos'),
+                ),
                 label: strings.text('photos'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.storage_outlined),
+                icon: const Icon(
+                  Icons.storage_outlined,
+                  key: Key('nav-storage'),
+                ),
                 label: strings.text('storage'),
               ),
             ],
@@ -304,14 +318,17 @@ final class _BootstrapFailure extends StatelessWidget {
 
 final class _FilesPage extends StatefulWidget {
   const _FilesPage({
+    super.key,
     required this.repository,
     required this.active,
     required this.onChooseTree,
+    required this.onSearch,
   });
 
   final MobileRepository repository;
   final bool active;
   final VoidCallback onChooseTree;
+  final VoidCallback onSearch;
 
   @override
   State<_FilesPage> createState() => _FilesPageState();
@@ -319,6 +336,7 @@ final class _FilesPage extends StatefulWidget {
 
 final class _FilesPageState extends State<_FilesPage> {
   AndroidMediaKind _kind = AndroidMediaKind.documents;
+  bool _collectionOpen = false;
   final ScrollController _scrollController = ScrollController();
   PagedMediaController<FileRecord>? _pager;
 
@@ -379,9 +397,11 @@ final class _FilesPageState extends State<_FilesPage> {
     }
   }
 
-  void _selectCollection(AndroidMediaKind kind) {
-    if (_kind == kind) return;
-    _kind = kind;
+  void selectCollection(AndroidMediaKind kind) {
+    setState(() {
+      _kind = kind;
+      _collectionOpen = true;
+    });
     _resetPager(kind);
   }
 
@@ -390,73 +410,438 @@ final class _FilesPageState extends State<_FilesPage> {
     final strings = MobileLocalizations.of(context);
     final pager = _pager;
     final records = pager?.items ?? const <FileRecord>[];
+    final sources = _sourceFacets(records);
+    if (_collectionOpen) {
+      return _MobileCollectionView(
+        strings: strings,
+        kind: _kind,
+        pager: pager,
+        records: records,
+        controller: _scrollController,
+        repository: widget.repository,
+        onBack: () => setState(() => _collectionOpen = false),
+        onLoadMore: pager == null ? null : () => _loadNext(pager),
+      );
+    }
     return ListView(
       controller: _scrollController,
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          strings.text('filesTitle'),
-          style: Theme.of(context).textTheme.titleLarge,
+        TextField(
+          key: const Key('mobile-home-search'),
+          readOnly: true,
+          onTap: widget.onSearch,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: strings.text('homeSearchHint'),
+            border: InputBorder.none,
+            filled: true,
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(strings.text('filesDescription')),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
+        _MobileSectionTitle(strings.text('fileTypes')),
+        const SizedBox(height: 8),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 6,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 4,
+          childAspectRatio: 0.62,
           children: [
-            ChoiceChip(
+            _TypeShortcut(
               key: const Key('files-recent-media'),
-              label: Text(strings.text('recentMedia')),
+              icon: Icons.image_outlined,
+              label: strings.text('images'),
               selected: _kind == AndroidMediaKind.images,
-              onSelected: (_) => _selectCollection(AndroidMediaKind.images),
+              onTap: () => selectCollection(AndroidMediaKind.images),
             ),
-            ChoiceChip(
+            _TypeShortcut(
+              icon: Icons.audio_file_outlined,
+              label: strings.text('audio'),
+              selected: _kind == AndroidMediaKind.audio,
+              onTap: () => selectCollection(AndroidMediaKind.audio),
+            ),
+            _TypeShortcut(
+              icon: Icons.video_file_outlined,
+              label: strings.text('videos'),
+              selected: _kind == AndroidMediaKind.videos,
+              onTap: () => selectCollection(AndroidMediaKind.videos),
+            ),
+            _TypeShortcut(
+              icon: Icons.apps_outlined,
+              label: strings.text('apps'),
+              selected: false,
+              onTap: () => _showComingNext(context, strings),
+            ),
+            _TypeShortcut(
+              icon: Icons.archive_outlined,
+              label: strings.text('archives'),
+              selected: false,
+              onTap: () => selectCollection(AndroidMediaKind.documents),
+            ),
+            _TypeShortcut(
               key: const Key('files-documents'),
-              label: Text(strings.text('documents')),
+              icon: Icons.description_outlined,
+              label: strings.text('documents'),
               selected: _kind == AndroidMediaKind.documents,
-              onSelected: (_) => _selectCollection(AndroidMediaKind.documents),
-            ),
-            ChoiceChip(
-              key: const Key('files-downloads'),
-              label: Text(strings.text('downloads')),
-              selected: _kind == AndroidMediaKind.downloads,
-              onSelected: (_) => _selectCollection(AndroidMediaKind.downloads),
+              onTap: () => selectCollection(AndroidMediaKind.documents),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (pager == null || (pager.isLoading && records.isEmpty))
-          const LinearProgressIndicator()
-        else if (pager.error != null && records.isEmpty)
-          Text(strings.text('collectionUnavailable'))
-        else if (records.isEmpty)
-          Text(strings.text('emptyCollection'))
-        else ...[
-          _PagedProgress(pager: pager),
-          for (final record in records)
-            Card(
-              child: ListTile(
-                leading: Icon(_iconFor(record.category)),
-                title: Text(record.displayName),
-                subtitle: Text(
-                  '${_categoryLabel(strings, record.category)} · '
-                  '${_formatBytes(record.sizeBytes)} · '
-                  '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
-                ),
-                onTap: () => _showMediaItem(context, record, widget.repository),
-              ),
+        const SizedBox(height: 14),
+        _MobileSectionTitle(strings.text('smartCollections')),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _SmartCollectionChip(
+              icon: Icons.screenshot_outlined,
+              label: strings.text('screenshotsTitle'),
+              onTap: () => selectCollection(AndroidMediaKind.screenshots),
             ),
-          _LoadMoreFooter(pager: pager, onLoadMore: () => _loadNext(pager)),
-        ],
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: widget.onChooseTree,
-          icon: const Icon(Icons.create_new_folder_outlined),
-          label: Text(strings.text('chooseSafReadOnly')),
+            _SmartCollectionChip(
+              key: const Key('files-downloads'),
+              icon: Icons.download_outlined,
+              label: strings.text('downloads'),
+              onTap: () => selectCollection(AndroidMediaKind.downloads),
+            ),
+            _SmartCollectionChip(
+              icon: Icons.schedule_outlined,
+              label: strings.text('recent'),
+              onTap: () => selectCollection(AndroidMediaKind.images),
+            ),
+            _SmartCollectionChip(
+              icon: Icons.file_copy_outlined,
+              label: strings.text('duplicates'),
+              onTap: () => _showComingNext(context, strings),
+            ),
+            _SmartCollectionChip(
+              icon: Icons.data_usage_outlined,
+              label: strings.text('largeFiles'),
+              onTap: () => _showComingNext(context, strings),
+            ),
+            _SmartCollectionChip(
+              icon: Icons.favorite_border,
+              label: strings.text('favorites'),
+              onTap: () => _showComingNext(context, strings),
+            ),
+          ],
         ),
+        const SizedBox(height: 14),
+        _MobileSectionTitle(strings.text('appsSources')),
+        const SizedBox(height: 6),
+        if (sources.isEmpty)
+          Text(strings.text('sourcesEmpty'))
+        else
+          SizedBox(
+            height: 74,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: sources.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final source = sources[index];
+                return ActionChip(
+                  avatar: const Icon(Icons.source_outlined, size: 18),
+                  label: Text('${source.label} · ${source.count}'),
+                  onPressed: () => _showSourceSheet(
+                    context,
+                    strings,
+                    source,
+                    records,
+                    widget.repository,
+                  ),
+                );
+              },
+            ),
+          ),
+        const SizedBox(height: 8),
+        ListTile(
+          key: const Key('phone-storage-entry'),
+          leading: const Icon(Icons.phone_android_outlined),
+          title: Text(strings.text('phoneStorage')),
+          subtitle: Text(strings.text('phoneStorageDetail')),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: widget.onChooseTree,
+        ),
+        const SizedBox(height: 12),
       ],
     );
   }
+}
+
+final class _MobileCollectionView extends StatelessWidget {
+  const _MobileCollectionView({
+    required this.strings,
+    required this.kind,
+    required this.pager,
+    required this.records,
+    required this.controller,
+    required this.repository,
+    required this.onBack,
+    required this.onLoadMore,
+  });
+
+  final MobileLocalizations strings;
+  final AndroidMediaKind kind;
+  final PagedMediaController<FileRecord>? pager;
+  final List<FileRecord> records;
+  final ScrollController controller;
+  final MobileRepository repository;
+  final VoidCallback onBack;
+  final VoidCallback? onLoadMore;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    key: const Key('mobile-collection-view'),
+    controller: controller,
+    padding: const EdgeInsets.all(12),
+    children: [
+      Row(
+        children: [
+          IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back)),
+          const SizedBox(width: 4),
+          Text(
+            _kindLabel(strings, kind),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ],
+      ),
+      if (pager == null || (pager!.isLoading && records.isEmpty))
+        const LinearProgressIndicator()
+      else if (pager!.error != null && records.isEmpty)
+        Text(strings.text('collectionUnavailable'))
+      else if (records.isEmpty)
+        Text(strings.text('emptyCollection'))
+      else ...[
+        _PagedProgress(pager: pager!),
+        for (final record in records)
+          ListTile(
+            leading: Icon(_iconFor(record.category)),
+            title: Text(record.displayName),
+            subtitle: Text(
+              '${_categoryLabel(strings, record.category)} · '
+              '${_formatBytes(record.sizeBytes)} · '
+              '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
+            ),
+            onTap: () => _showMediaItem(context, record, repository),
+          ),
+        _LoadMoreFooter(pager: pager!, onLoadMore: onLoadMore!),
+      ],
+    ],
+  );
+}
+
+String _kindLabel(MobileLocalizations strings, AndroidMediaKind kind) =>
+    switch (kind) {
+      AndroidMediaKind.images ||
+      AndroidMediaKind.photos => strings.text('images'),
+      AndroidMediaKind.videos => strings.text('videos'),
+      AndroidMediaKind.audio => strings.text('audio'),
+      AndroidMediaKind.screenshots => strings.text('screenshotsTitle'),
+      AndroidMediaKind.downloads => strings.text('downloads'),
+      AndroidMediaKind.documents => strings.text('documents'),
+    };
+
+final class _MobileSectionTitle extends StatelessWidget {
+  const _MobileSectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    label,
+    style: Theme.of(
+      context,
+    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+  );
+}
+
+final class _TypeShortcut extends StatelessWidget {
+  const _TypeShortcut({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    borderRadius: BorderRadius.circular(PickLogicTokens.radiusSmall),
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: selected
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(PickLogicTokens.radiusMedium),
+            ),
+            child: SizedBox.square(
+              dimension: 46,
+              child: Icon(
+                icon,
+                color: selected
+                    ? Theme.of(context).colorScheme.onPrimaryContainer
+                    : Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+final class _SmartCollectionChip extends StatelessWidget {
+  const _SmartCollectionChip({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ActionChip(
+    avatar: Icon(icon, size: 18),
+    label: Text(label),
+    onPressed: onTap,
+  );
+}
+
+final class _SourceFacet {
+  const _SourceFacet({required this.label, required this.count});
+
+  final String label;
+  final int count;
+}
+
+List<_SourceFacet> _sourceFacets(List<FileRecord> records) {
+  final counts = <String, int>{};
+  for (final record in records) {
+    final source = _sourceLabelForRecord(record);
+    if (source == null) continue;
+    counts.update(source, (value) => value + 1, ifAbsent: () => 1);
+  }
+  final facets =
+      counts.entries
+          .map((entry) => _SourceFacet(label: entry.key, count: entry.value))
+          .toList(growable: false)
+        ..sort((left, right) => right.count.compareTo(left.count));
+  return facets;
+}
+
+String? _sourceLabelForRecord(FileRecord record) {
+  final hint = record.tags
+      .where((tag) => tag.startsWith('source-hint:'))
+      .map((tag) => tag.substring('source-hint:'.length).trim())
+      .where((value) => value.isNotEmpty)
+      .firstOrNull;
+  final path = record.tags
+      .where((tag) => tag.startsWith('relative-path:'))
+      .map((tag) => tag.substring('relative-path:'.length))
+      .firstOrNull;
+  final raw = '${hint ?? ''} ${path ?? ''}'.toLowerCase();
+  if (raw.contains('wechat') || raw.contains('micromsg')) return '微信';
+  if (raw.contains('tencent/qq') || raw.contains('mobileqq')) return 'QQ';
+  if (raw.contains('browser') ||
+      raw.contains('chrome') ||
+      raw.contains('edge')) {
+    return 'Browser';
+  }
+  if (raw.contains('camera') || raw.contains('dcim')) return 'Camera';
+  if (raw.contains('screenshot')) return 'Screenshots';
+  if (raw.contains('download')) return 'Downloads';
+  if (raw.contains('bluetooth')) return 'Bluetooth';
+  if (raw.contains('cuuca') || raw.contains('nubia')) return '互传';
+  return hint;
+}
+
+String? _recordLocation(FileRecord record) {
+  final path = record.tags
+      .where((tag) => tag.startsWith('relative-path:'))
+      .map((tag) => tag.substring('relative-path:'.length))
+      .where((value) => value.isNotEmpty)
+      .firstOrNull;
+  return path ?? _sourceLabelForRecord(record);
+}
+
+void _showComingNext(BuildContext context, MobileLocalizations strings) {
+  ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(strings.text('comingNext'))));
+}
+
+void _showSourceSheet(
+  BuildContext context,
+  MobileLocalizations strings,
+  _SourceFacet source,
+  List<FileRecord> records,
+  MobileRepository repository,
+) {
+  final visible = records
+      .where((record) => _sourceLabelForRecord(record) == source.label)
+      .toList(growable: false);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) => FractionallySizedBox(
+      heightFactor: 0.75,
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.source_outlined),
+            title: Text(source.label),
+            subtitle: Text(
+              '${strings.text('sourceInferred')} · '
+              '${strings.format('itemCount', {'count': source.count})}',
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+                final record = visible[index];
+                return ListTile(
+                  leading: Icon(_iconFor(record.category)),
+                  title: Text(record.displayName),
+                  subtitle: Text(
+                    '${_categoryLabel(strings, record.category)} · ${_formatBytes(record.sizeBytes)}',
+                  ),
+                  onTap: () => _showMediaItem(context, record, repository),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 final class _ScreenshotsPage extends StatefulWidget {
@@ -604,12 +989,24 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
       for (final entry in entries)
         _monthKey(entry.record.createdAt ?? entry.record.modifiedAt),
     }.toList(growable: false);
+    final now = DateTime.now();
     final visible = entries
         .where(
-          (entry) =>
-              _month == null ||
+          (entry) => switch (_month) {
+            null => true,
+            'current' => () {
+              final date = (entry.record.createdAt ?? entry.record.modifiedAt)
+                  .toLocal();
+              return date.year == now.year && date.month == now.month;
+            }(),
+            'consecutive' => entry.group.records.length > 1,
+            'review' =>
+              (_review[entry.record.id] ?? ScreenshotReviewState.unreviewed) ==
+                  ScreenshotReviewState.deleteReview,
+            final month =>
               _monthKey(entry.record.createdAt ?? entry.record.modifiedAt) ==
-                  _month,
+                  month,
+          },
         )
         .toList(growable: false);
     final keepCount = _review.values
@@ -657,6 +1054,33 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                           label: Text(strings.text('allMonths')),
                           selected: _month == null,
                           onSelected: (_) => _selectMonth(null),
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          key: const Key('screenshot-filter-month'),
+                          label: Text(strings.text('currentMonth')),
+                          selected: _month == 'current',
+                          onSelected: (_) => _selectMonth(
+                            _month == 'current' ? null : 'current',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          key: const Key('screenshot-filter-consecutive'),
+                          label: Text(strings.text('consecutiveOnly')),
+                          selected: _month == 'consecutive',
+                          onSelected: (_) => _selectMonth(
+                            _month == 'consecutive' ? null : 'consecutive',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilterChip(
+                          key: const Key('screenshot-filter-review'),
+                          label: Text(strings.text('reviewPending')),
+                          selected: _month == 'review',
+                          onSelected: (_) => _selectMonth(
+                            _month == 'review' ? null : 'review',
+                          ),
                         ),
                         for (final month in months) ...[
                           const SizedBox(width: 8),
@@ -811,6 +1235,7 @@ final class _PhotosPageState extends State<_PhotosPage> {
   final ScrollController _scrollController = ScrollController();
   PagedMediaController<FileRecord>? _pager;
   String _query = '';
+  String _filter = 'all';
 
   @override
   void initState() {
@@ -909,12 +1334,18 @@ final class _PhotosPageState extends State<_PhotosPage> {
       return Center(child: Text(strings.text('photosError')));
     }
     final records = pager.items
-        .where(
-          (record) =>
-              _query.isEmpty ||
-              record.displayName.toLowerCase().contains(_query) ||
-              record.mimeType.toLowerCase().contains(_query),
-        )
+        .where((record) {
+          final source = _sourceLabelForRecord(record);
+          final matchesFilter = switch (_filter) {
+            'camera' => source == 'Camera',
+            'saved' => source != 'Camera',
+            _ => true,
+          };
+          return matchesFilter &&
+              (_query.isEmpty ||
+                  record.displayName.toLowerCase().contains(_query) ||
+                  record.mimeType.toLowerCase().contains(_query));
+        })
         .toList(growable: false);
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -926,6 +1357,27 @@ final class _PhotosPageState extends State<_PhotosPage> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           Text(strings.text('photosDescription')),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: [
+              ButtonSegment(
+                value: 'all',
+                label: Text(strings.text('allPhotos')),
+              ),
+              ButtonSegment(
+                value: 'camera',
+                label: Text(strings.text('cameraPhotos')),
+              ),
+              ButtonSegment(
+                value: 'saved',
+                label: Text(strings.text('savedPhotos')),
+              ),
+            ],
+            selected: {_filter},
+            onSelectionChanged: (value) =>
+                setState(() => _filter = value.first),
+            showSelectedIcon: false,
+          ),
           const SizedBox(height: 8),
           TextField(
             key: const Key('photos-search-field'),
@@ -1222,6 +1674,14 @@ final class _StoragePageState extends State<_StoragePage> {
         : storage.canInspectSharedMedia
         ? strings.text('authorizedCollections')
         : strings.text('notAuthorized');
+    final typeRows = <({String label, AndroidMediaKind kind})>[
+      (label: strings.text('images'), kind: AndroidMediaKind.images),
+      (label: strings.text('videos'), kind: AndroidMediaKind.videos),
+      (label: strings.text('audio'), kind: AndroidMediaKind.audio),
+      (label: strings.text('documents'), kind: AndroidMediaKind.documents),
+      (label: strings.text('archives'), kind: AndroidMediaKind.documents),
+      (label: 'APK', kind: AndroidMediaKind.documents),
+    ];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1230,6 +1690,40 @@ final class _StoragePageState extends State<_StoragePage> {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 12),
+        _MobileSectionTitle(strings.text('byType')),
+        const SizedBox(height: 4),
+        for (final row in typeRows)
+          FutureBuilder<int>(
+            future: widget.repository.countMedia(row.kind),
+            builder: (context, snapshot) => ListTile(
+              dense: true,
+              leading: Icon(_kindIcon(row.kind)),
+              title: Text(row.label),
+              trailing: Text(snapshot.data?.toString() ?? '—'),
+              subtitle: Text(strings.text('observedDirectly')),
+            ),
+          ),
+        const SizedBox(height: 12),
+        _MobileSectionTitle(strings.text('bySource')),
+        ListTile(
+          leading: const Icon(Icons.camera_alt_outlined),
+          title: const Text('Camera / Screenshots'),
+          subtitle: Text(strings.text('inferred')),
+        ),
+        ListTile(
+          leading: const Icon(Icons.download_outlined),
+          title: const Text('Downloads'),
+          subtitle: Text(strings.text('observedDirectly')),
+        ),
+        const SizedBox(height: 12),
+        _MobileSectionTitle(strings.text('byApp')),
+        ListTile(
+          leading: const Icon(Icons.apps_outlined),
+          title: Text(strings.text('systemReported')),
+          subtitle: Text(strings.text('limitPrivate')),
+        ),
+        const SizedBox(height: 12),
+        _MobileSectionTitle(strings.text('otherUnexplained')),
         _StorageTile(
           strings.text('volumeUsed'),
           fraction.clamp(0, 1),
@@ -1493,6 +1987,22 @@ final class _MobileInsightPanel extends StatelessWidget {
           label: strings.text('source'),
           value: _sourceKindLabel(strings, record.sourceKind),
         ),
+        _InsightDetail(
+          label: strings.text('location'),
+          value: _recordLocation(record) ?? strings.text('unknownSource'),
+        ),
+        _InsightDetail(
+          label: strings.text('screenshotFlag'),
+          value: strings.text(
+            record.category == VirtualCategory.screenshots ? 'yes' : 'no',
+          ),
+        ),
+        _InsightDetail(
+          label: strings.text('duplicateState'),
+          value: record.hashState == HashState.complete
+              ? strings.text('reviewRisk')
+              : strings.text('notCalculated'),
+        ),
         const SizedBox(height: 8),
         Text(strings.text('metadataEvidence')),
       ],
@@ -1527,6 +2037,15 @@ IconData _iconFor(VirtualCategory category) => switch (category) {
   VirtualCategory.audio => Icons.audio_file_outlined,
   VirtualCategory.archives => Icons.archive_outlined,
   _ => Icons.description_outlined,
+};
+
+IconData _kindIcon(AndroidMediaKind kind) => switch (kind) {
+  AndroidMediaKind.images || AndroidMediaKind.photos => Icons.image_outlined,
+  AndroidMediaKind.screenshots => Icons.screenshot_outlined,
+  AndroidMediaKind.videos => Icons.video_file_outlined,
+  AndroidMediaKind.audio => Icons.audio_file_outlined,
+  AndroidMediaKind.downloads => Icons.download_outlined,
+  AndroidMediaKind.documents => Icons.description_outlined,
 };
 
 String _formatBytes(int bytes) {

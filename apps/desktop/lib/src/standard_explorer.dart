@@ -4,6 +4,7 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 import 'desktop_repository.dart';
+import 'file_preview.dart';
 import 'pro_workspace.dart';
 
 final class StandardExplorer extends StatefulWidget {
@@ -26,11 +27,20 @@ final class StandardExplorer extends StatefulWidget {
   State<StandardExplorer> createState() => _StandardExplorerState();
 }
 
-enum _DetailMode { hidden, preview, insight }
+enum _DetailMode { hidden, context }
 
 enum _AutoIndexStatus { off, running, complete, failed }
 
-enum _WorkspaceSection { files, search, duplicates, storage }
+enum _WorkspaceSection {
+  home,
+  files,
+  search,
+  duplicates,
+  storage,
+  literature,
+  research,
+  system,
+}
 
 final class _StandardExplorerState extends State<StandardExplorer> {
   final _panes = [_PaneState(), _PaneState()];
@@ -42,7 +52,8 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   String? _rootsError;
   _AutoIndexStatus _autoIndexStatus = _AutoIndexStatus.off;
   _DetailMode _detailMode = _DetailMode.hidden;
-  _WorkspaceSection _section = _WorkspaceSection.files;
+  int _contextTab = 0;
+  _WorkspaceSection _section = _WorkspaceSection.home;
   WindowsStorageSummary? _storageSummary;
   bool _storageLoading = false;
   bool _storageError = false;
@@ -120,6 +131,16 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       pane.error = false;
       pane.loading = false;
       _detailMode = _DetailMode.hidden;
+    });
+  }
+
+  void _selectEntry(int paneIndex, BrowseEntry entry) {
+    setState(() {
+      _activePane = paneIndex;
+      _panes[paneIndex].selected = entry;
+      _searchController.text = _panes[paneIndex].query;
+      _detailMode = _DetailMode.context;
+      _contextTab = 0;
     });
   }
 
@@ -207,7 +228,14 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   }
 
   void _selectSection(int index) {
-    final section = _WorkspaceSection.values[index];
+    final sections = _navigationSections(widget.pro);
+    final section = sections[index];
+    if (section == _WorkspaceSection.literature ||
+        section == _WorkspaceSection.research ||
+        section == _WorkspaceSection.system) {
+      _openProSection(section.name);
+      return;
+    }
     setState(() {
       _section = section;
       _detailMode = _DetailMode.hidden;
@@ -217,7 +245,13 @@ final class _StandardExplorerState extends State<StandardExplorer> {
         _findExactDuplicates();
       case _WorkspaceSection.storage:
         _loadStorageSummary();
-      case _WorkspaceSection.files || _WorkspaceSection.search:
+      case _WorkspaceSection.home ||
+          _WorkspaceSection.files ||
+          _WorkspaceSection.search:
+        break;
+      case _WorkspaceSection.literature ||
+          _WorkspaceSection.research ||
+          _WorkspaceSection.system:
         break;
     }
   }
@@ -353,15 +387,21 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   Widget build(BuildContext context) {
     final strings = _ExplorerStrings.of(context);
     final selected = _panes[_activePane].selected;
+    final navigationSections = _navigationSections(widget.pro);
     return Scaffold(
       body: Row(
         children: [
           NavigationRail(
             key: const Key('primary-navigation'),
-            selectedIndex: _section.index,
+            selectedIndex: navigationSections.indexOf(_section).clamp(0, 4),
             labelType: NavigationRailLabelType.all,
             onDestinationSelected: _selectSection,
             destinations: [
+              NavigationRailDestination(
+                icon: const Icon(Icons.home_outlined),
+                selectedIcon: const Icon(Icons.home),
+                label: Text(strings.homeNav, key: const Key('nav-home')),
+              ),
               NavigationRailDestination(
                 icon: const Icon(Icons.folder_copy_outlined),
                 selectedIcon: const Icon(Icons.folder_copy),
@@ -385,6 +425,23 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                 selectedIcon: const Icon(Icons.storage),
                 label: Text(strings.storage, key: const Key('nav-storage')),
               ),
+              if (widget.pro) ...[
+                NavigationRailDestination(
+                  icon: const Icon(Icons.menu_book_outlined),
+                  selectedIcon: const Icon(Icons.menu_book),
+                  label: Text(strings.literature),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.science_outlined),
+                  selectedIcon: const Icon(Icons.science),
+                  label: Text(strings.research),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.monitor_heart_outlined),
+                  selectedIcon: const Icon(Icons.monitor_heart),
+                  label: Text(strings.systemInsight),
+                ),
+              ],
             ],
           ),
           const VerticalDivider(width: 1),
@@ -401,7 +458,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                     _panes[_activePane].query = value;
                   }),
                   onIndexSearch: _searchIndex,
-                  canShowDetails: selected != null && !selected.isDirectory,
+                  canShowDetails: selected != null,
                   detailMode: _detailMode,
                   onDetailModeChanged: (mode) => setState(() {
                     _detailMode = _detailMode == mode
@@ -410,17 +467,11 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                   }),
                   activePane: _activePane,
                 ),
-                SafeModeBanner(key: const Key('standard-safe-mode')),
-                _IndexBar(
+                _StatusStrip(
                   strings: strings,
                   status: _autoIndexStatus,
                   onChanged: _requestAutoIndex,
                 ),
-                if (widget.pro)
-                  _ProNavigationBar(
-                    strings: strings,
-                    onSelected: _openProSection,
-                  ),
                 Expanded(
                   child: _section == _WorkspaceSection.storage
                       ? _StorageView(
@@ -448,11 +499,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                   _activatePane(0);
                                   _navigate(0, path);
                                 },
-                                onSelect: (entry) => setState(() {
-                                  _activePane = 0;
-                                  _panes[0].selected = entry;
-                                  _searchController.text = _panes[0].query;
-                                }),
+                                onSelect: (entry) => _selectEntry(0, entry),
                                 onOpen: (entry) => _openEntry(0, entry),
                               ),
                             ),
@@ -474,11 +521,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                   _activatePane(1);
                                   _navigate(1, path);
                                 },
-                                onSelect: (entry) => setState(() {
-                                  _activePane = 1;
-                                  _panes[1].selected = entry;
-                                  _searchController.text = _panes[1].query;
-                                }),
+                                onSelect: (entry) => _selectEntry(1, entry),
                                 onOpen: (entry) => _openEntry(1, entry),
                               ),
                             ),
@@ -490,12 +533,12 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                   mode: _detailMode,
                                   entry: selected,
                                   strings: strings,
+                                  selectedTab: _contextTab,
+                                  onTabSelected: (value) =>
+                                      setState(() => _contextTab = value),
                                   onClose: () => setState(
                                     () => _detailMode = _DetailMode.hidden,
                                   ),
-                                  onOpen: selected == null
-                                      ? null
-                                      : () => _openEntry(_activePane, selected),
                                   onReveal: selected == null
                                       ? null
                                       : _revealSelected,
@@ -532,6 +575,19 @@ final class _PaneState {
   bool loading = false;
   bool error = false;
 }
+
+List<_WorkspaceSection> _navigationSections(bool pro) => [
+  _WorkspaceSection.home,
+  _WorkspaceSection.files,
+  _WorkspaceSection.search,
+  _WorkspaceSection.duplicates,
+  _WorkspaceSection.storage,
+  if (pro) ...[
+    _WorkspaceSection.literature,
+    _WorkspaceSection.research,
+    _WorkspaceSection.system,
+  ],
+];
 
 final class _TopBar extends StatelessWidget {
   const _TopBar({
@@ -604,23 +660,13 @@ final class _TopBar extends StatelessWidget {
             ),
             const SizedBox(width: PickLogicTokens.spaceMd),
             IconButton.filledTonal(
-              key: const Key('preview-tool'),
-              onPressed: canShowDetails
-                  ? () => onDetailModeChanged(_DetailMode.preview)
-                  : null,
-              tooltip: strings.preview,
-              isSelected: detailMode == _DetailMode.preview,
-              icon: const Icon(Icons.preview_outlined),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceSm),
-            IconButton.filledTonal(
               key: const Key('insight-tool'),
               onPressed: canShowDetails
-                  ? () => onDetailModeChanged(_DetailMode.insight)
+                  ? () => onDetailModeChanged(_DetailMode.context)
                   : null,
-              tooltip: strings.insight,
-              isSelected: detailMode == _DetailMode.insight,
-              icon: const Icon(Icons.lightbulb_outline),
+              tooltip: strings.contextPanel,
+              isSelected: detailMode == _DetailMode.context,
+              icon: const Icon(Icons.view_sidebar_outlined),
             ),
             const SizedBox(width: PickLogicTokens.spaceSm),
             IconButton(
@@ -665,8 +711,8 @@ final class _TopBar extends StatelessWidget {
   );
 }
 
-final class _IndexBar extends StatelessWidget {
-  const _IndexBar({
+final class _StatusStrip extends StatelessWidget {
+  const _StatusStrip({
     required this.strings,
     required this.status,
     required this.onChanged,
@@ -682,22 +728,32 @@ final class _IndexBar extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: PickLogicTokens.spaceMd,
-        vertical: PickLogicTokens.spaceSm,
+        vertical: PickLogicTokens.spaceXs,
       ),
       child: Row(
         children: [
+          const SafeModeBanner(key: Key('standard-safe-mode')),
+          const SizedBox(width: PickLogicTokens.spaceMd),
+          Icon(
+            status == _AutoIndexStatus.running
+                ? Icons.sync
+                : status == _AutoIndexStatus.complete
+                ? Icons.check_circle_outline
+                : Icons.manage_search_outlined,
+            size: PickLogicTokens.iconSmall,
+          ),
+          const SizedBox(width: PickLogicTokens.spaceSm),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(strings.autoIndexTitle),
-                Text(switch (status) {
-                  _AutoIndexStatus.off => strings.autoIndexOff,
-                  _AutoIndexStatus.running => strings.autoIndexRunning,
-                  _AutoIndexStatus.complete => strings.autoIndexComplete,
-                  _AutoIndexStatus.failed => strings.autoIndexFailed,
-                }, style: Theme.of(context).textTheme.bodySmall),
-              ],
+            child: Text(
+              switch (status) {
+                _AutoIndexStatus.off => strings.autoIndexOff,
+                _AutoIndexStatus.running => strings.autoIndexRunning,
+                _AutoIndexStatus.complete => strings.autoIndexComplete,
+                _AutoIndexStatus.failed => strings.autoIndexFailed,
+              },
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
           Switch(
@@ -708,51 +764,6 @@ final class _IndexBar extends StatelessWidget {
             onChanged: status == _AutoIndexStatus.running ? null : onChanged,
           ),
         ],
-      ),
-    ),
-  );
-}
-
-final class _ProNavigationBar extends StatelessWidget {
-  const _ProNavigationBar({required this.strings, required this.onSelected});
-
-  final _ExplorerStrings strings;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) => Material(
-    color: Theme.of(context).colorScheme.secondaryContainer,
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PickLogicTokens.spaceMd,
-          vertical: PickLogicTokens.spaceXs,
-        ),
-        child: Row(
-          children: [
-            Text(strings.proTools),
-            const SizedBox(width: PickLogicTokens.spaceMd),
-            TextButton.icon(
-              key: const Key('pro-literature'),
-              onPressed: () => onSelected('literature'),
-              icon: const Icon(Icons.menu_book_outlined),
-              label: Text(strings.literature),
-            ),
-            TextButton.icon(
-              key: const Key('pro-research'),
-              onPressed: () => onSelected('research'),
-              icon: const Icon(Icons.science_outlined),
-              label: Text(strings.research),
-            ),
-            TextButton.icon(
-              key: const Key('pro-system'),
-              onPressed: () => onSelected('system'),
-              icon: const Icon(Icons.monitor_heart_outlined),
-              label: Text(strings.systemInsight),
-            ),
-          ],
-        ),
       ),
     ),
   );
@@ -1116,16 +1127,18 @@ final class _DetailPane extends StatelessWidget {
     required this.mode,
     required this.entry,
     required this.strings,
+    required this.selectedTab,
+    required this.onTabSelected,
     required this.onClose,
-    required this.onOpen,
     required this.onReveal,
   });
 
   final _DetailMode mode;
   final BrowseEntry? entry;
   final _ExplorerStrings strings;
+  final int selectedTab;
+  final ValueChanged<int> onTabSelected;
   final VoidCallback onClose;
-  final VoidCallback? onOpen;
   final VoidCallback? onReveal;
 
   @override
@@ -1137,9 +1150,7 @@ final class _DetailPane extends StatelessWidget {
       child: Column(
         children: [
           ListTile(
-            title: Text(
-              mode == _DetailMode.preview ? strings.preview : strings.insight,
-            ),
+            title: Text(strings.contextPanel),
             trailing: IconButton(
               key: const Key('close-detail-pane'),
               onPressed: onClose,
@@ -1148,51 +1159,79 @@ final class _DetailPane extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: SegmentedButton<int>(
+              segments: [
+                ButtonSegment<int>(
+                  value: 0,
+                  icon: const Icon(Icons.preview_outlined),
+                  label: Text(strings.preview),
+                ),
+                ButtonSegment<int>(
+                  value: 1,
+                  icon: const Icon(Icons.lightbulb_outline),
+                  label: Text(strings.insight),
+                ),
+              ],
+              selected: {selectedTab},
+              onSelectionChanged: (selection) => onTabSelected(selection.first),
+              showSelectedIcon: false,
+            ),
+          ),
+          const Divider(height: 1),
           Expanded(
             child: selected == null
                 ? Center(child: Text(strings.noSelection))
+                : selectedTab == 0
+                ? DesktopFilePreview(
+                    key: ValueKey('preview-${selected.id}'),
+                    entry: selected,
+                    chinese: strings.chinese,
+                  )
                 : ListView(
                     padding: const EdgeInsets.all(PickLogicTokens.spaceLg),
-                    children: mode == _DetailMode.preview
-                        ? [
-                            const Icon(Icons.description_outlined, size: 64),
-                            const SizedBox(height: PickLogicTokens.spaceLg),
-                            Text(
-                              selected.name,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: PickLogicTokens.spaceSm),
-                            Text(strings.readOnlyPreview),
-                            const SizedBox(height: PickLogicTokens.spaceLg),
-                            FilledButton.icon(
-                              onPressed: onOpen,
-                              icon: const Icon(Icons.open_in_new),
-                              label: Text(strings.open),
-                            ),
-                            const SizedBox(height: PickLogicTokens.spaceSm),
-                            OutlinedButton.icon(
-                              onPressed: onReveal,
-                              icon: const Icon(Icons.folder_open_outlined),
-                              label: Text(strings.reveal),
-                            ),
-                          ]
-                        : [
-                            _Fact(label: strings.name, value: selected.name),
-                            _Fact(
-                              label: strings.type,
-                              value: strings.category(selected.category),
-                            ),
-                            _Fact(
-                              label: strings.size,
-                              value: strings.bytes(selected.sizeBytes),
-                            ),
-                            _Fact(
-                              label: strings.risk,
-                              value: strings.reviewOnly,
-                            ),
-                            const SizedBox(height: PickLogicTokens.spaceMd),
-                            Text(strings.insightExplanation),
-                          ],
+                    children: [
+                      _Fact(label: strings.name, value: selected.name),
+                      _Fact(
+                        label: strings.type,
+                        value: selected.isDirectory
+                            ? strings.folder
+                            : strings.category(selected.category),
+                      ),
+                      _Fact(label: strings.path, value: selected.path),
+                      _Fact(
+                        label: strings.size,
+                        value: selected.isDirectory
+                            ? strings.unknown
+                            : strings.bytes(selected.sizeBytes),
+                      ),
+                      _Fact(
+                        label: strings.modified,
+                        value: selected.modifiedAt == null
+                            ? strings.unknown
+                            : strings.date(selected.modifiedAt!),
+                      ),
+                      _Fact(
+                        label: strings.source,
+                        value: strings.localMetadata,
+                      ),
+                      _Fact(label: strings.risk, value: strings.reviewOnly),
+                      _Fact(
+                        label: strings.confidence,
+                        value: selected.category == VirtualCategory.unknown
+                            ? '35%'
+                            : '80%',
+                      ),
+                      const SizedBox(height: PickLogicTokens.spaceMd),
+                      Text(strings.insightExplanation),
+                      const SizedBox(height: PickLogicTokens.spaceMd),
+                      OutlinedButton.icon(
+                        onPressed: onReveal,
+                        icon: const Icon(Icons.folder_open_outlined),
+                        label: Text(strings.reveal),
+                      ),
+                    ],
                   ),
           ),
         ],
@@ -1240,6 +1279,7 @@ final class _ExplorerStrings {
   final bool chinese;
 
   String get productName => chinese ? '拾理' : 'PickLogic';
+  String get homeNav => chinese ? '首页' : 'Home';
   String get files => chinese ? '文件' : 'Files';
   String get search => chinese ? '搜索' : 'Search';
   String get duplicates => chinese ? '重复项' : 'Duplicates';
@@ -1259,6 +1299,7 @@ final class _ExplorerStrings {
   String get newFolder => chinese ? '新建文件夹' : 'New folder';
   String get preview => chinese ? '预览' : 'Preview';
   String get insight => chinese ? '知件' : 'Insight';
+  String get contextPanel => chinese ? '预览与知件' : 'Preview and Insight';
   String get home => chinese ? '位置入口' : 'Locations';
   String get up => chinese ? '上一级' : 'Up';
   String get locations => chinese ? '磁盘与常用目录' : 'Drives and common folders';
@@ -1312,13 +1353,26 @@ final class _ExplorerStrings {
   String get open => chinese ? '打开' : 'Open';
   String get reveal => chinese ? '在资源管理器中定位' : 'Reveal in File Explorer';
   String get name => chinese ? '名称' : 'Name';
+  String get path => chinese ? '实际路径' : 'Path';
   String get type => chinese ? '类型' : 'Type';
   String get size => chinese ? '大小' : 'Size';
+  String get modified => chinese ? '修改时间' : 'Modified';
+  String get source => chinese ? '来源' : 'Source';
+  String get confidence => chinese ? '置信度' : 'Confidence';
+  String get localMetadata => chinese ? '本地文件元数据' : 'Local file metadata';
+  String get unknown => chinese ? '无法确认' : 'Unknown';
   String get risk => chinese ? '风险' : 'Risk';
   String get reviewOnly => chinese ? '仅供查看' : 'Review only';
   String get insightExplanation => chinese
-      ? '结论仅依据当前文件的本地元数据。安全模式禁止真实文件移动、重命名和删除。'
-      : 'This explanation uses only local metadata for the current file. Safe Mode blocks real-file move, rename, and delete operations.';
+      ? '事实来自当前文件的本地元数据；分类属于规则推断。无法确认所属软件或系统关系时保持“无法确认”。安全模式禁止真实文件移动、重命名和删除。'
+      : 'Facts come from local metadata; category is a rule inference. Ownership and system relationships remain Unknown when evidence is insufficient. Safe Mode blocks real-file move, rename, and delete operations.';
+
+  String date(DateTime value) {
+    final local = value.toLocal();
+    String two(int part) => part.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
 
   String paneName(int index) => chinese
       ? (index == 0 ? '左栏' : '右栏')

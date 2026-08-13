@@ -144,3 +144,19 @@ Obtain explicit approval for a Windows reference-directory read-only scan and nu
 ## Next action
 
 Collect the maintainer's hands-on feedback from the new Standard dual-pane shell, Pro Literature reader, and Z70 all-screenshots pagination. Do not add more features before that feedback.
+
+## Single-pass UX consolidation delivery
+
+- Goal: converge the working Desktop and Mobile implementations into one coherent, bilingual, read-only user experience without replacing shared indexing, PDFium, MediaStore, persistence, or Safe Mode backends.
+- Desktop: unified Standard/Pro navigation and visual tokens; the dual-pane file workspace now uses one contextual Preview/Insight panel. Images, bounded text, folders, and PDF files preview in place; drives and common folders remain direct browse entry points.
+- Pro: Literature remains a library-and-reader workspace with PDFium rendering; Preview/Insight now follows the same contextual interaction and language system as Standard.
+- Mobile: the home page now separates file types, smart collections, and sources; Screenshots exposes every accessible indexed screenshot in date order with month/consecutive/review filters; Photos and Storage use compact type/source facets; Insight reports bounded platform evidence.
+- Z70 reference: inspected only the local system file manager's visible layout. The user-test package is installed and focused on nubia NX736J; the screenshot page exposed 4,253 accessible MediaStore screenshots, all-month navigation, and the non-destructive deletion-review queue. Fatal and Flutter-overflow log matches were zero.
+- Verification: scoped formatting and analysis passed; quick/remaining modules passed 11/11 and 6/6; Desktop 19/19, Mobile 30/30, and Windows bridge 7/7 tests passed; dependency audit found 0 missing/restricted/unknown licenses; privacy scan found 0 findings.
+- Builds: final Standard and Pro Windows Release ZIPs launched successfully; Pro packaged synthetic PDF smoke exited 0. The final arm64 Debug user-test APK installed and launched under `io.picklogic.mobile.usertest` without replacing the differently signed prior package.
+- Safety: no real Windows or Android file was moved, renamed, modified, or deleted. Screenshot actions remain app-local review marks. No private screenshot, filename, path, device serial, or media content was added to Git.
+- Known limitation: embedded Office shell preview and archive-content listing are not connected; those files use metadata plus the single system Open action. The Android Debug APK exceeds the release-size target; the smaller signed-release-size gate remains separate.
+
+## Next action
+
+Merge the green Private integration PR into `develop`, then stop feature work and collect maintainer hands-on feedback from Standard, Pro, and the Z70 user-test package.

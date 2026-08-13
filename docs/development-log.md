@@ -7,3 +7,4 @@ Git commits and pull requests are the canonical engineering history. This file r
 - Windows Standard, Windows Pro, and Android user-test targets reached local read-only usability.
 - Desktop browsing converged on one shared dual-pane shell; Mobile paginates all accessible MediaStore results.
 - Nubia Z70 system file manager was used locally as an information-architecture reference; no OEM code or assets were copied.
+- Desktop Preview and Insight were consolidated into one context panel; Mobile navigation now exposes type/source/time/storage facets.

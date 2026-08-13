@@ -7,6 +7,7 @@
 - `AGENTS.md` — global operating, safety, dependency, and verification rules.
 - `TASK_STATE.md` — interruption-safe current state, evidence, blockers, and next action.
 - `apps/desktop/` — shared Windows app with Standard and Pro entrypoints.
+- `apps/desktop/lib/src/file_preview.dart` — bounded image, PDFium, text, folder, and fallback preview surfaces.
 - `apps/mobile/` — Android mobile UI and target composition.
 - `apps/mobile/lib/src/mobile_index_persistence.dart` — shared-SQLite Mobile metadata, checkpoint, and persistent-search adapter.
 - `packages/core_models/` — stable locators, records, enums, provider interfaces, and safe-mode policy.
