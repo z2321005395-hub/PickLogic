@@ -153,21 +153,22 @@ void main() {
     expect(find.text('Download_1.pdf'), findsOneWidget);
   });
 
-  testWidgets('mobile home consolidates type, smart, source, and storage entry', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const PickLogicMobileApp());
-    await tester.pumpAndSettle();
+  testWidgets(
+    'mobile home consolidates type, smart, source, and storage entry',
+    (tester) async {
+      await tester.pumpWidget(const PickLogicMobileApp());
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('mobile-home-search')), findsOneWidget);
-    expect(find.text('文件类型'), findsOneWidget);
-    expect(find.text('智能集合'), findsOneWidget);
-    expect(find.text('应用与来源'), findsOneWidget);
-    expect(find.byKey(const Key('phone-storage-entry')), findsOneWidget);
-    for (final label in ['图片', '音频', '视频', '应用', '压缩包', '文档']) {
-      expect(find.text(label), findsWidgets);
-    }
-  });
+      expect(find.byKey(const Key('mobile-home-search')), findsOneWidget);
+      expect(find.text('文件类型'), findsOneWidget);
+      expect(find.text('智能集合'), findsOneWidget);
+      expect(find.text('应用与来源'), findsOneWidget);
+      expect(find.byKey(const Key('phone-storage-entry')), findsOneWidget);
+      for (final label in ['图片', '音频', '视频', '应用', '压缩包', '文档']) {
+        expect(find.text(label), findsWidgets);
+      }
+    },
+  );
 
   testWidgets('screenshot filters expose implemented review dimensions', (
     tester,
