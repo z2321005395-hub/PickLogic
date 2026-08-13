@@ -15,9 +15,7 @@ import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 void main() {
-  testWidgets('Standard starts as a pure-Chinese dual-pane read-only browser', (
-    tester,
-  ) async {
+  testWidgets('Standard starts on a localized category home', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const PickLogicDesktopApp(pro: false));
@@ -29,8 +27,8 @@ void main() {
     expect(find.text('搜索'), findsOneWidget);
     expect(find.text('重复项'), findsOneWidget);
     expect(find.text('存储'), findsOneWidget);
-    expect(find.text('左栏'), findsOneWidget);
-    expect(find.text('右栏'), findsOneWidget);
+    expect(find.byKey(const Key('desktop-home')), findsOneWidget);
+    expect(find.byKey(const Key('home-dual-pane')), findsOneWidget);
     expect(find.text('开发者安全模式：已开启，真实文件只读'), findsOneWidget);
     expect(find.byKey(const Key('detail-pane')), findsNothing);
     expect(
@@ -38,14 +36,7 @@ void main() {
       isFalse,
     );
     expect(find.textContaining('磁盘根仅用于浏览'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('pane-0-root-drive:synthetic')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('pane-1-root-drive:synthetic')),
-      findsOneWidget,
-    );
+    expect(find.text('磁盘与常用目录'), findsOneWidget);
     expect(find.byKey(const Key('safe-file-actions')), findsOneWidget);
     expect(find.byKey(const Key('move-to-target')), findsNothing);
     expect(find.textContaining('Left pane'), findsNothing);
@@ -61,6 +52,9 @@ void main() {
       await tester.pumpWidget(
         PickLogicDesktopApp(pro: false, repository: repository),
       );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('home-dual-pane')));
       await tester.pumpAndSettle();
 
       tester
@@ -114,9 +108,12 @@ void main() {
       expect(find.byKey(const Key('detail-pane')), findsOneWidget);
       expect(find.text('预览与知件'), findsOneWidget);
       expect(find.byType(PdfViewer), findsOneWidget);
-      await tester.tap(find.text('知件'));
-      await tester.pumpAndSettle();
       expect(find.text('实际路径'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('置信度'),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.text('置信度'), findsOneWidget);
       await tester.tap(find.byKey(const Key('close-detail-pane')));
       await tester.pumpAndSettle();
@@ -191,6 +188,9 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const Key('nav-files')));
+      await tester.pumpAndSettle();
+
       tester
           .widget<InkWell>(
             find.byKey(const ValueKey('pane-0-root-drive:synthetic')),
@@ -235,7 +235,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('nav-storage')));
       await tester.pumpAndSettle();
-      expect(repository.storageSummaryRuns, 1);
+      expect(repository.storageSummaryRuns, 2);
       expect(find.byKey(const Key('storage-summary-view')), findsOneWidget);
       expect(find.text('存储概览'), findsOneWidget);
       expect(find.text('S:\\'), findsOneWidget);
@@ -275,6 +275,9 @@ void main() {
       );
       expect(repository.commonIndexRuns, 1);
       expect(find.textContaining('本次常用目录索引已完成'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('nav-files')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('toggle-language')));
       await tester.pumpAndSettle();

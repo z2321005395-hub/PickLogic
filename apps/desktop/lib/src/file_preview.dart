@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:archive/archive_io.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -32,12 +33,15 @@ final class DesktopFilePreview extends StatelessWidget {
       return _TextPreview(entry: entry, chinese: chinese);
     }
     if (_archiveExtensions.contains(extension)) {
+      if (extension == 'zip') {
+        return _ZipPreview(entry: entry, chinese: chinese);
+      }
       return _UnsupportedPreview(
         icon: Icons.archive_outlined,
         title: chinese ? '压缩包目录预览' : 'Archive contents',
         body: chinese
-            ? '当前版本不解压或修改压缩包；只显示文件属性。'
-            : 'This version does not extract or modify archives; file properties remain available.',
+            ? '当前只支持 ZIP 的只读目录列表；不会解压或修改此压缩包。'
+            : 'Only ZIP has a read-only directory listing; this archive is not extracted or modified.',
       );
     }
     if (_officeExtensions.contains(extension)) {
@@ -196,6 +200,94 @@ final class _TextPreview extends StatefulWidget {
   State<_TextPreview> createState() => _TextPreviewState();
 }
 
+final class _ZipPreview extends StatefulWidget {
+  const _ZipPreview({required this.entry, required this.chinese});
+
+  final BrowseEntry entry;
+  final bool chinese;
+
+  @override
+  State<_ZipPreview> createState() => _ZipPreviewState();
+}
+
+final class _ZipPreviewState extends State<_ZipPreview> {
+  static const _maxEntries = 500;
+  late final Future<({List<ArchiveFile> files, int total})> _contents = _read();
+
+  Future<({List<ArchiveFile> files, int total})> _read() async {
+    final input = InputFileStream(widget.entry.path);
+    try {
+      final archive = ZipDecoder().decodeStream(input);
+      return (
+        files: archive.files.take(_maxEntries).toList(growable: false),
+        total: archive.length,
+      );
+    } finally {
+      input.closeSync();
+    }
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) => FutureBuilder<({List<ArchiveFile> files, int total})>(
+    future: _contents,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return _PreviewError(
+          message: widget.chinese
+              ? '无法读取 ZIP 目录；文件可能已损坏或受密码保护。'
+              : 'The ZIP directory is unavailable; it may be damaged or password-protected.',
+        );
+      }
+      final value = snapshot.data;
+      if (value == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.archive_outlined),
+            title: Text(
+              widget.chinese
+                  ? '${value.total} 个内部项目（只读）'
+                  : '${value.total} internal items (read-only)',
+            ),
+            subtitle: Text(
+              widget.chinese
+                  ? '不解压、不执行、不修改；最多显示前 $_maxEntries 项。'
+                  : 'Nothing is extracted, executed, or changed; at most $_maxEntries entries are shown.',
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount: value.files.length,
+              itemBuilder: (context, index) {
+                final file = value.files[index];
+                return ListTile(
+                  dense: true,
+                  leading: Icon(
+                    file.isFile
+                        ? Icons.insert_drive_file_outlined
+                        : Icons.folder_outlined,
+                  ),
+                  title: Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: file.isFile ? Text(_compactBytes(file.size)) : null,
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 final class _TextPreviewState extends State<_TextPreview> {
   static const _limit = 256 * 1024;
   late final Future<({String text, bool truncated})> _text = _read();
@@ -279,11 +371,34 @@ final class _FolderPreview extends StatefulWidget {
 }
 
 final class _FolderPreviewState extends State<_FolderPreview> {
-  late final Future<({int items, int files, int folders})> _summary = _read();
+  late final Future<
+    ({
+      int items,
+      int files,
+      int folders,
+      int bytes,
+      Map<String, int> types,
+      List<({String name, DateTime modified})> recent,
+    })
+  >
+  _summary = _read();
 
-  Future<({int items, int files, int folders})> _read() async {
+  Future<
+    ({
+      int items,
+      int files,
+      int folders,
+      int bytes,
+      Map<String, int> types,
+      List<({String name, DateTime modified})> recent,
+    })
+  >
+  _read() async {
     var files = 0;
     var folders = 0;
+    var bytes = 0;
+    final types = <String, int>{};
+    final recent = <({String name, DateTime modified})>[];
     await for (final child in Directory(
       widget.entry.path,
     ).list(followLinks: false)) {
@@ -294,53 +409,120 @@ final class _FolderPreviewState extends State<_FolderPreview> {
         folders++;
       } else if (child is File) {
         files++;
+        final stat = await child.stat();
+        bytes += stat.size;
+        final extension = _extension(child.path);
+        final type = extension.isEmpty ? '—' : extension.toUpperCase();
+        types.update(type, (value) => value + 1, ifAbsent: () => 1);
+        recent.add((
+          name: child.uri.pathSegments.last,
+          modified: stat.modified,
+        ));
       }
     }
-    return (items: files + folders, files: files, folders: folders);
+    recent.sort((left, right) => right.modified.compareTo(left.modified));
+    return (
+      items: files + folders,
+      files: files,
+      folders: folders,
+      bytes: bytes,
+      types: types,
+      recent: recent.take(5).toList(growable: false),
+    );
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => FutureBuilder<({int items, int files, int folders})>(
-    future: _summary,
-    builder: (context, snapshot) {
-      final value = snapshot.data;
-      if (snapshot.hasError) {
-        return _PreviewError(
-          message: widget.chinese
-              ? '无法读取文件夹摘要。'
-              : 'Folder summary is unavailable.',
-        );
-      }
-      if (value == null) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Icon(Icons.folder_outlined, size: 64),
-          const SizedBox(height: 12),
-          Text(
-            widget.entry.name,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            widget.chinese
-                ? '${value.items} 项 · ${value.folders} 个文件夹 · ${value.files} 个文件'
-                : '${value.items} items · ${value.folders} folders · ${value.files} files',
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.chinese
-                ? '为保持响应速度，摘要最多检查 1000 个直接子项，不递归读取。'
-                : 'For responsiveness, the summary inspects at most 1,000 direct children and does not recurse.',
-          ),
-        ],
+  Widget build(BuildContext context) =>
+      FutureBuilder<
+        ({
+          int items,
+          int files,
+          int folders,
+          int bytes,
+          Map<String, int> types,
+          List<({String name, DateTime modified})> recent,
+        })
+      >(
+        future: _summary,
+        builder: (context, snapshot) {
+          final value = snapshot.data;
+          if (snapshot.hasError) {
+            return _PreviewError(
+              message: widget.chinese
+                  ? '无法读取文件夹摘要。'
+                  : 'Folder summary is unavailable.',
+            );
+          }
+          if (value == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Icon(Icons.folder_outlined, size: 64),
+              const SizedBox(height: 12),
+              Text(
+                widget.entry.name,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.chinese
+                    ? '直接子文件估算大小：${_compactBytes(value.bytes)}'
+                    : 'Estimated direct-file size: ${_compactBytes(value.bytes)}',
+              ),
+              if (value.types.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  widget.chinese ? '类型分布' : 'Type distribution',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final type
+                        in (value.types.entries.toList()
+                              ..sort((a, b) => b.value.compareTo(a.value)))
+                            .take(8))
+                      Chip(label: Text('${type.key} · ${type.value}')),
+                  ],
+                ),
+              ],
+              if (value.recent.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  widget.chinese ? '最近修改' : 'Recently modified',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                for (final item in value.recent)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.schedule_outlined),
+                    title: Text(
+                      item.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(item.modified.toLocal().toString()),
+                  ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                widget.chinese
+                    ? '${value.items} 项 · ${value.folders} 个文件夹 · ${value.files} 个文件'
+                    : '${value.items} items · ${value.folders} folders · ${value.files} files',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.chinese
+                    ? '为保持响应速度，摘要最多检查 1000 个直接子项，不递归读取。'
+                    : 'For responsiveness, the summary inspects at most 1,000 direct children and does not recurse.',
+              ),
+            ],
+          );
+        },
       );
-    },
-  );
 }
 
 final class _UnsupportedPreview extends StatelessWidget {
@@ -386,7 +568,16 @@ final class _PreviewError extends StatelessWidget {
   );
 }
 
-const _imageExtensions = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'};
+const _imageExtensions = {
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+  'bmp',
+  'tif',
+  'tiff',
+};
 const _textExtensions = {
   'txt',
   'md',
@@ -429,3 +620,14 @@ IconData _officeIcon(String extension) => switch (extension) {
   'ppt' || 'pptx' => Icons.slideshow_outlined,
   _ => Icons.description_outlined,
 };
+
+String _compactBytes(int bytes) {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '$bytes B';
+}

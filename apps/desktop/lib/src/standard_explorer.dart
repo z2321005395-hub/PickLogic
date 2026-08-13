@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
@@ -29,6 +31,8 @@ final class StandardExplorer extends StatefulWidget {
 
 enum _DetailMode { hidden, context }
 
+enum _WorkspaceViewMode { list, grid, dual }
+
 enum _AutoIndexStatus { off, running, complete, failed }
 
 enum _WorkspaceSection {
@@ -52,16 +56,18 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   String? _rootsError;
   _AutoIndexStatus _autoIndexStatus = _AutoIndexStatus.off;
   _DetailMode _detailMode = _DetailMode.hidden;
-  int _contextTab = 0;
+  _WorkspaceViewMode _viewMode = _WorkspaceViewMode.dual;
   _WorkspaceSection _section = _WorkspaceSection.home;
   WindowsStorageSummary? _storageSummary;
   bool _storageLoading = false;
   bool _storageError = false;
+  final List<BrowseEntry> _recentEntries = <BrowseEntry>[];
 
   @override
   void initState() {
     super.initState();
     _loadRoots();
+    _loadStorageSummary();
   }
 
   @override
@@ -140,7 +146,9 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       _panes[paneIndex].selected = entry;
       _searchController.text = _panes[paneIndex].query;
       _detailMode = _DetailMode.context;
-      _contextTab = 0;
+      _recentEntries.removeWhere((recent) => recent.id == entry.id);
+      _recentEntries.insert(0, entry);
+      if (_recentEntries.length > 12) _recentEntries.removeLast();
     });
   }
 
@@ -184,6 +192,30 @@ final class _StandardExplorerState extends State<StandardExplorer> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(_ExplorerStrings.of(context).revealFailed)),
     );
+  }
+
+  Future<void> _openSelected() async {
+    final selected = _panes[_activePane].selected;
+    if (selected != null) await _openEntry(_activePane, selected);
+  }
+
+  void _openWorkspace({_WorkspaceViewMode? mode}) {
+    setState(() {
+      _section = _WorkspaceSection.files;
+      if (mode != null) _viewMode = mode;
+    });
+  }
+
+  void _openRoot(WindowsBrowseRoot root) {
+    _openWorkspace();
+    _navigate(_activePane, root.path);
+  }
+
+  void _openCategory(VirtualCategory category) {
+    setState(() {
+      _section = _WorkspaceSection.files;
+      _panes[_activePane].categoryFilter = category;
+    });
   }
 
   Future<void> _searchIndex() async {
@@ -466,6 +498,8 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                         : mode;
                   }),
                   activePane: _activePane,
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
                 ),
                 _StatusStrip(
                   strings: strings,
@@ -473,7 +507,24 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                   onChanged: _requestAutoIndex,
                 ),
                 Expanded(
-                  child: _section == _WorkspaceSection.storage
+                  child: _section == _WorkspaceSection.home
+                      ? _DesktopHome(
+                          strings: strings,
+                          roots: [..._roots, ..._extraRoots],
+                          rootsLoading: _rootsLoading,
+                          storage: _storageSummary,
+                          recent: _recentEntries,
+                          onSearch: _searchIndex,
+                          onOpenRoot: _openRoot,
+                          onOpenCategory: _openCategory,
+                          onOpenRecent: (entry) {
+                            _openWorkspace();
+                            _selectEntry(_activePane, entry);
+                          },
+                          onOpenDualPane: () =>
+                              _openWorkspace(mode: _WorkspaceViewMode.dual),
+                        )
+                      : _section == _WorkspaceSection.storage
                       ? _StorageView(
                           strings: strings,
                           summary: _storageSummary,
@@ -501,30 +552,34 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                 },
                                 onSelect: (entry) => _selectEntry(0, entry),
                                 onOpen: (entry) => _openEntry(0, entry),
+                                viewMode: _viewMode,
                               ),
                             ),
-                            const VerticalDivider(width: 1),
-                            Expanded(
-                              child: _BrowserPane(
-                                index: 1,
-                                active: _activePane == 1,
-                                state: _panes[1],
-                                roots: [..._roots, ..._extraRoots],
-                                rootsLoading: _rootsLoading,
-                                rootsError: _rootsError != null,
-                                strings: strings,
-                                onHome: () {
-                                  _activatePane(1);
-                                  _goHome(1);
-                                },
-                                onNavigate: (path) {
-                                  _activatePane(1);
-                                  _navigate(1, path);
-                                },
-                                onSelect: (entry) => _selectEntry(1, entry),
-                                onOpen: (entry) => _openEntry(1, entry),
+                            if (_viewMode == _WorkspaceViewMode.dual) ...[
+                              const VerticalDivider(width: 1),
+                              Expanded(
+                                child: _BrowserPane(
+                                  index: 1,
+                                  active: _activePane == 1,
+                                  state: _panes[1],
+                                  roots: [..._roots, ..._extraRoots],
+                                  rootsLoading: _rootsLoading,
+                                  rootsError: _rootsError != null,
+                                  strings: strings,
+                                  onHome: () {
+                                    _activatePane(1);
+                                    _goHome(1);
+                                  },
+                                  onNavigate: (path) {
+                                    _activatePane(1);
+                                    _navigate(1, path);
+                                  },
+                                  onSelect: (entry) => _selectEntry(1, entry),
+                                  onOpen: (entry) => _openEntry(1, entry),
+                                  viewMode: _WorkspaceViewMode.list,
+                                ),
                               ),
-                            ),
+                            ],
                             if (_detailMode != _DetailMode.hidden) ...[
                               const VerticalDivider(width: 1),
                               SizedBox(
@@ -533,15 +588,15 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                   mode: _detailMode,
                                   entry: selected,
                                   strings: strings,
-                                  selectedTab: _contextTab,
-                                  onTabSelected: (value) =>
-                                      setState(() => _contextTab = value),
                                   onClose: () => setState(
                                     () => _detailMode = _DetailMode.hidden,
                                   ),
                                   onReveal: selected == null
                                       ? null
                                       : _revealSelected,
+                                  onOpen: selected == null
+                                      ? null
+                                      : _openSelected,
                                 ),
                               ),
                             ],
@@ -574,6 +629,7 @@ final class _PaneState {
   String query = '';
   bool loading = false;
   bool error = false;
+  VirtualCategory? categoryFilter;
 }
 
 List<_WorkspaceSection> _navigationSections(bool pro) => [
@@ -602,6 +658,8 @@ final class _TopBar extends StatelessWidget {
     required this.detailMode,
     required this.onDetailModeChanged,
     required this.activePane,
+    required this.viewMode,
+    required this.onViewModeChanged,
   });
 
   final _ExplorerStrings strings;
@@ -615,6 +673,8 @@ final class _TopBar extends StatelessWidget {
   final _DetailMode detailMode;
   final ValueChanged<_DetailMode> onDetailModeChanged;
   final int activePane;
+  final _WorkspaceViewMode viewMode;
+  final ValueChanged<_WorkspaceViewMode> onViewModeChanged;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -657,6 +717,30 @@ final class _TopBar extends StatelessWidget {
               onPressed: onIndexSearch,
               tooltip: strings.searchIndex,
               icon: const Icon(Icons.manage_search),
+            ),
+            const SizedBox(width: PickLogicTokens.spaceMd),
+            SegmentedButton<_WorkspaceViewMode>(
+              key: const Key('workspace-view-mode'),
+              segments: [
+                ButtonSegment(
+                  value: _WorkspaceViewMode.list,
+                  icon: const Icon(Icons.view_list_outlined),
+                  tooltip: strings.listView,
+                ),
+                ButtonSegment(
+                  value: _WorkspaceViewMode.grid,
+                  icon: const Icon(Icons.grid_view_outlined),
+                  tooltip: strings.gridView,
+                ),
+                ButtonSegment(
+                  value: _WorkspaceViewMode.dual,
+                  icon: const Icon(Icons.vertical_split_outlined),
+                  tooltip: strings.dualPane,
+                ),
+              ],
+              selected: {viewMode},
+              onSelectionChanged: (value) => onViewModeChanged(value.first),
+              showSelectedIcon: false,
             ),
             const SizedBox(width: PickLogicTokens.spaceMd),
             IconButton.filledTonal(
@@ -782,6 +866,7 @@ final class _BrowserPane extends StatelessWidget {
     required this.onNavigate,
     required this.onSelect,
     required this.onOpen,
+    required this.viewMode,
   });
 
   final int index;
@@ -795,6 +880,7 @@ final class _BrowserPane extends StatelessWidget {
   final ValueChanged<String> onNavigate;
   final ValueChanged<BrowseEntry> onSelect;
   final ValueChanged<BrowseEntry> onOpen;
+  final _WorkspaceViewMode viewMode;
 
   @override
   Widget build(BuildContext context) {
@@ -802,9 +888,13 @@ final class _BrowserPane extends StatelessWidget {
     final entries =
         snapshot?.entries
             .where(
-              (entry) => entry.name.toLowerCase().contains(
-                state.query.trim().toLowerCase(),
-              ),
+              (entry) =>
+                  entry.name.toLowerCase().contains(
+                    state.query.trim().toLowerCase(),
+                  ) &&
+                  (state.categoryFilter == null ||
+                      entry.category == state.categoryFilter ||
+                      entry.isDirectory),
             )
             .toList(growable: false) ??
         const <BrowseEntry>[];
@@ -848,6 +938,7 @@ final class _BrowserPane extends StatelessWidget {
                     strings: strings,
                     onSelect: onSelect,
                     onOpen: onOpen,
+                    grid: viewMode == _WorkspaceViewMode.grid,
                   ),
           ),
         ],
@@ -993,6 +1084,7 @@ final class _EntryList extends StatelessWidget {
     required this.strings,
     required this.onSelect,
     required this.onOpen,
+    required this.grid,
   });
 
   final int paneIndex;
@@ -1002,6 +1094,7 @@ final class _EntryList extends StatelessWidget {
   final _ExplorerStrings strings;
   final ValueChanged<BrowseEntry> onSelect;
   final ValueChanged<BrowseEntry> onOpen;
+  final bool grid;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -1014,6 +1107,56 @@ final class _EntryList extends StatelessWidget {
       Expanded(
         child: entries.isEmpty
             ? Center(child: Text(strings.emptyFolder))
+            : grid
+            ? GridView.builder(
+                padding: const EdgeInsets.all(PickLogicTokens.spaceSm),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 180,
+                  mainAxisExtent: 150,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: entries.length,
+                itemBuilder: (context, entryIndex) {
+                  final entry = entries[entryIndex];
+                  return InkWell(
+                    key: ValueKey('pane-$paneIndex-entry-${entry.id}'),
+                    borderRadius: BorderRadius.circular(
+                      PickLogicTokens.radiusMedium,
+                    ),
+                    onTap: () => onSelect(entry),
+                    onDoubleTap: () => onOpen(entry),
+                    child: Card(
+                      color: selected?.id == entry.id
+                          ? Theme.of(context).colorScheme.secondaryContainer
+                          : Theme.of(context).colorScheme.surfaceContainerLow,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Column(
+                          children: [
+                            Expanded(child: _DesktopEntryVisual(entry: entry)),
+                            const SizedBox(height: 6),
+                            Text(
+                              entry.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                            Text(
+                              entry.isDirectory
+                                  ? strings.folder
+                                  : strings.compactMetadata(entry),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              )
             : ListView.separated(
                 padding: const EdgeInsets.all(PickLogicTokens.spaceSm),
                 itemCount: entries.length,
@@ -1027,16 +1170,16 @@ final class _EntryList extends StatelessWidget {
                     onDoubleTap: () => onOpen(entry),
                     child: ListTile(
                       selected: selected?.id == entry.id,
-                      leading: Icon(
-                        entry.isDirectory
-                            ? Icons.folder_outlined
-                            : _fileIcon(entry.category),
+                      leading: SizedBox.square(
+                        dimension: 46,
+                        child: _DesktopEntryVisual(entry: entry),
                       ),
                       title: Text(entry.name, maxLines: 1),
                       subtitle: Text(
                         entry.isDirectory
                             ? strings.folder
-                            : strings.metadataSummary(entry),
+                            : '${strings.metadataSummary(entry)} · '
+                                  '${entry.modifiedAt == null ? strings.unknown : strings.date(entry.modifiedAt!)}',
                       ),
                     ),
                   );
@@ -1044,6 +1187,274 @@ final class _EntryList extends StatelessWidget {
               ),
       ),
     ],
+  );
+}
+
+final class _DesktopEntryVisual extends StatelessWidget {
+  const _DesktopEntryVisual({required this.entry});
+
+  final BrowseEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!entry.isDirectory &&
+        (entry.category == VirtualCategory.images ||
+            entry.category == VirtualCategory.screenshots)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(PickLogicTokens.radiusSmall),
+        child: Image.file(
+          File(entry.path),
+          fit: BoxFit.cover,
+          cacheWidth: 320,
+          errorBuilder: (_, _, _) =>
+              PickLogicIcon(PickLogicVisualIcon.image, size: 42),
+        ),
+      );
+    }
+    return Center(
+      child: PickLogicIcon(
+        _visualIconForEntry(entry),
+        size: entry.isDirectory ? 48 : 42,
+      ),
+    );
+  }
+}
+
+PickLogicVisualIcon _visualIconForEntry(BrowseEntry entry) {
+  if (entry.isDirectory) return PickLogicVisualIcon.folder;
+  return switch (entry.category) {
+    VirtualCategory.pdf ||
+    VirtualCategory.academicPapers => PickLogicVisualIcon.pdf,
+    VirtualCategory.images ||
+    VirtualCategory.screenshots => PickLogicVisualIcon.image,
+    VirtualCategory.videos => PickLogicVisualIcon.video,
+    VirtualCategory.audio => PickLogicVisualIcon.audio,
+    VirtualCategory.archives => PickLogicVisualIcon.archive,
+    VirtualCategory.installers => PickLogicVisualIcon.application,
+    _ => PickLogicVisualIcon.document,
+  };
+}
+
+final class _DesktopHome extends StatelessWidget {
+  const _DesktopHome({
+    required this.strings,
+    required this.roots,
+    required this.rootsLoading,
+    required this.storage,
+    required this.recent,
+    required this.onSearch,
+    required this.onOpenRoot,
+    required this.onOpenCategory,
+    required this.onOpenRecent,
+    required this.onOpenDualPane,
+  });
+
+  final _ExplorerStrings strings;
+  final List<WindowsBrowseRoot> roots;
+  final bool rootsLoading;
+  final WindowsStorageSummary? storage;
+  final List<BrowseEntry> recent;
+  final VoidCallback onSearch;
+  final ValueChanged<WindowsBrowseRoot> onOpenRoot;
+  final ValueChanged<VirtualCategory> onOpenCategory;
+  final ValueChanged<BrowseEntry> onOpenRecent;
+  final VoidCallback onOpenDualPane;
+
+  @override
+  Widget build(BuildContext context) {
+    final categories =
+        <({PickLogicVisualIcon icon, VirtualCategory category, String label})>[
+          (
+            icon: PickLogicVisualIcon.image,
+            category: VirtualCategory.images,
+            label: strings.category(VirtualCategory.images),
+          ),
+          (
+            icon: PickLogicVisualIcon.audio,
+            category: VirtualCategory.audio,
+            label: strings.category(VirtualCategory.audio),
+          ),
+          (
+            icon: PickLogicVisualIcon.video,
+            category: VirtualCategory.videos,
+            label: strings.category(VirtualCategory.videos),
+          ),
+          (
+            icon: PickLogicVisualIcon.pdf,
+            category: VirtualCategory.pdf,
+            label: strings.category(VirtualCategory.pdf),
+          ),
+          (
+            icon: PickLogicVisualIcon.archive,
+            category: VirtualCategory.archives,
+            label: strings.category(VirtualCategory.archives),
+          ),
+          (
+            icon: PickLogicVisualIcon.document,
+            category: VirtualCategory.documents,
+            label: strings.category(VirtualCategory.documents),
+          ),
+        ];
+    final storageUsed = storage == null
+        ? 0
+        : storage!.totalBytes - storage!.availableBytes;
+    return ListView(
+      key: const Key('desktop-home'),
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          strings.homeGreeting,
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final item in categories)
+              SizedBox(
+                width: 150,
+                height: 120,
+                child: Card(
+                  color: Theme.of(context).colorScheme.surfaceContainerLow,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(
+                      PickLogicTokens.radiusMedium,
+                    ),
+                    onTap: () => onOpenCategory(item.category),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          PickLogicIcon(item.icon, size: 48),
+                          const SizedBox(height: 4),
+                          Text(item.label),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            Expanded(
+              child: _HomePanel(
+                title: strings.locations,
+                child: rootsLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final root in roots)
+                            ActionChip(
+                              avatar: PickLogicIcon(
+                                root.kind == WindowsBrowseRootKind.drive
+                                    ? PickLogicVisualIcon.storage
+                                    : PickLogicVisualIcon.folder,
+                                size: 26,
+                              ),
+                              label: Text(strings.rootLabel(root)),
+                              onPressed: () => onOpenRoot(root),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _HomePanel(
+                title: strings.storageSummary,
+                child: storage == null
+                    ? Text(strings.storageUnavailable)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(storage!.root),
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: storage!.totalBytes == 0
+                                ? 0
+                                : storageUsed / storage!.totalBytes,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${strings.bytes(storageUsed)} / '
+                            '${strings.bytes(storage!.totalBytes)}',
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _HomePanel(
+          title: strings.recentFiles,
+          trailing: FilledButton.tonalIcon(
+            key: const Key('home-dual-pane'),
+            onPressed: onOpenDualPane,
+            icon: const Icon(Icons.vertical_split_outlined),
+            label: Text(strings.dualPane),
+          ),
+          child: recent.isEmpty
+              ? Text(strings.noRecentFiles)
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final entry in recent.take(8))
+                      ActionChip(
+                        avatar: PickLogicIcon(
+                          _visualIconForEntry(entry),
+                          size: 26,
+                        ),
+                        label: Text(entry.name),
+                        onPressed: () => onOpenRecent(entry),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+final class _HomePanel extends StatelessWidget {
+  const _HomePanel({required this.title, required this.child, this.trailing});
+
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.surfaceContainerLowest,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    ),
   );
 }
 
@@ -1127,19 +1538,17 @@ final class _DetailPane extends StatelessWidget {
     required this.mode,
     required this.entry,
     required this.strings,
-    required this.selectedTab,
-    required this.onTabSelected,
     required this.onClose,
     required this.onReveal,
+    required this.onOpen,
   });
 
   final _DetailMode mode;
   final BrowseEntry? entry;
   final _ExplorerStrings strings;
-  final int selectedTab;
-  final ValueChanged<int> onTabSelected;
   final VoidCallback onClose;
   final VoidCallback? onReveal;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -1159,77 +1568,121 @@ final class _DetailPane extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: SegmentedButton<int>(
-              segments: [
-                ButtonSegment<int>(
-                  value: 0,
-                  icon: const Icon(Icons.preview_outlined),
-                  label: Text(strings.preview),
-                ),
-                ButtonSegment<int>(
-                  value: 1,
-                  icon: const Icon(Icons.lightbulb_outline),
-                  label: Text(strings.insight),
-                ),
-              ],
-              selected: {selectedTab},
-              onSelectionChanged: (selection) => onTabSelected(selection.first),
-              showSelectedIcon: false,
-            ),
-          ),
-          const Divider(height: 1),
           Expanded(
             child: selected == null
                 ? Center(child: Text(strings.noSelection))
-                : selectedTab == 0
-                ? DesktopFilePreview(
-                    key: ValueKey('preview-${selected.id}'),
-                    entry: selected,
-                    chinese: strings.chinese,
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(PickLogicTokens.spaceLg),
+                : Column(
                     children: [
-                      _Fact(label: strings.name, value: selected.name),
-                      _Fact(
-                        label: strings.type,
-                        value: selected.isDirectory
-                            ? strings.folder
-                            : strings.category(selected.category),
+                      Expanded(
+                        flex: 5,
+                        child: DesktopFilePreview(
+                          key: ValueKey('preview-${selected.id}'),
+                          entry: selected,
+                          chinese: strings.chinese,
+                        ),
                       ),
-                      _Fact(label: strings.path, value: selected.path),
-                      _Fact(
-                        label: strings.size,
-                        value: selected.isDirectory
-                            ? strings.unknown
-                            : strings.bytes(selected.sizeBytes),
+                      const Divider(height: 1),
+                      Expanded(
+                        flex: 4,
+                        child: ListView(
+                          padding: const EdgeInsets.all(
+                            PickLogicTokens.spaceMd,
+                          ),
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.lightbulb_outline, size: 18),
+                                const SizedBox(width: 6),
+                                Text(
+                                  strings.insight,
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            _Fact(label: strings.name, value: selected.name),
+                            _Fact(
+                              label: strings.type,
+                              value: selected.isDirectory
+                                  ? strings.folder
+                                  : strings.category(selected.category),
+                            ),
+                            _Fact(label: strings.path, value: selected.path),
+                            _Fact(
+                              label: strings.size,
+                              value: selected.isDirectory
+                                  ? strings.estimatedInPreview
+                                  : strings.bytes(selected.sizeBytes),
+                            ),
+                            _Fact(
+                              label: strings.modified,
+                              value: selected.modifiedAt == null
+                                  ? strings.unknown
+                                  : strings.date(selected.modifiedAt!),
+                            ),
+                            _Fact(
+                              label: strings.source,
+                              value: strings.localMetadata,
+                            ),
+                            _Fact(
+                              label: strings.hidden,
+                              value: selected.record?.isHidden == true
+                                  ? strings.yes
+                                  : strings.no,
+                            ),
+                            _Fact(
+                              label: strings.systemRelated,
+                              value: selected.record?.isSystem == true
+                                  ? strings.yes
+                                  : strings.noEvidence,
+                            ),
+                            _Fact(
+                              label: strings.duplicates,
+                              value:
+                                  selected.record?.hashState ==
+                                      HashState.complete
+                                  ? strings.hashAvailable
+                                  : strings.notCalculated,
+                            ),
+                            _Fact(
+                              label: strings.risk,
+                              value: selected.record?.isProtected == true
+                                  ? strings.protected
+                                  : strings.reviewOnly,
+                            ),
+                            _Fact(
+                              label: strings.confidence,
+                              value:
+                                  selected.category == VirtualCategory.unknown
+                                  ? '35%'
+                                  : '80%',
+                            ),
+                            const SizedBox(height: 8),
+                            Text(strings.insightExplanation),
+                          ],
+                        ),
                       ),
-                      _Fact(
-                        label: strings.modified,
-                        value: selected.modifiedAt == null
-                            ? strings.unknown
-                            : strings.date(selected.modifiedAt!),
-                      ),
-                      _Fact(
-                        label: strings.source,
-                        value: strings.localMetadata,
-                      ),
-                      _Fact(label: strings.risk, value: strings.reviewOnly),
-                      _Fact(
-                        label: strings.confidence,
-                        value: selected.category == VirtualCategory.unknown
-                            ? '35%'
-                            : '80%',
-                      ),
-                      const SizedBox(height: PickLogicTokens.spaceMd),
-                      Text(strings.insightExplanation),
-                      const SizedBox(height: PickLogicTokens.spaceMd),
-                      OutlinedButton.icon(
-                        onPressed: onReveal,
-                        icon: const Icon(Icons.folder_open_outlined),
-                        label: Text(strings.reveal),
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.icon(
+                                key: const Key('context-open'),
+                                onPressed: onOpen,
+                                icon: const Icon(Icons.open_in_new),
+                                label: Text(strings.open),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton.outlined(
+                              onPressed: onReveal,
+                              tooltip: strings.reveal,
+                              icon: const Icon(Icons.folder_open_outlined),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1258,17 +1711,6 @@ final class _Fact extends StatelessWidget {
     ),
   );
 }
-
-IconData _fileIcon(VirtualCategory category) => switch (category) {
-  VirtualCategory.pdf ||
-  VirtualCategory.academicPapers => Icons.picture_as_pdf_outlined,
-  VirtualCategory.images || VirtualCategory.screenshots => Icons.image_outlined,
-  VirtualCategory.spreadsheets => Icons.table_chart_outlined,
-  VirtualCategory.archives => Icons.archive_outlined,
-  VirtualCategory.videos => Icons.movie_outlined,
-  VirtualCategory.audio => Icons.audio_file_outlined,
-  _ => Icons.insert_drive_file_outlined,
-};
 
 final class _ExplorerStrings {
   const _ExplorerStrings(this.chinese);
@@ -1300,6 +1742,16 @@ final class _ExplorerStrings {
   String get preview => chinese ? '预览' : 'Preview';
   String get insight => chinese ? '知件' : 'Insight';
   String get contextPanel => chinese ? '预览与知件' : 'Preview and Insight';
+  String get listView => chinese ? '列表' : 'List';
+  String get gridView => chinese ? '网格' : 'Grid';
+  String get dualPane => chinese ? '双栏工作区' : 'Dual pane';
+  String get homeGreeting => chinese
+      ? '不用记文件在哪里，只需要知道它是什么。'
+      : 'Find files by what they are, not where they are.';
+  String get recentFiles => chinese ? '最近选择' : 'Recently selected';
+  String get noRecentFiles => chinese
+      ? '选择文件后会显示在这里；不会复制或移动原文件。'
+      : 'Selected files appear here; originals are not copied or moved.';
   String get home => chinese ? '位置入口' : 'Locations';
   String get up => chinese ? '上一级' : 'Up';
   String get locations => chinese ? '磁盘与常用目录' : 'Drives and common folders';
@@ -1363,6 +1815,17 @@ final class _ExplorerStrings {
   String get unknown => chinese ? '无法确认' : 'Unknown';
   String get risk => chinese ? '风险' : 'Risk';
   String get reviewOnly => chinese ? '仅供查看' : 'Review only';
+  String get estimatedInPreview =>
+      chinese ? '见上方有界估算' : 'See bounded estimate above';
+  String get hidden => chinese ? '隐藏属性' : 'Hidden';
+  String get systemRelated => chinese ? '系统相关' : 'System-related';
+  String get yes => chinese ? '是' : 'Yes';
+  String get no => chinese ? '否' : 'No';
+  String get noEvidence => chinese ? '无证据' : 'No evidence';
+  String get hashAvailable =>
+      chinese ? '哈希已计算，需在重复项中核对' : 'Hash available; review in Duplicates';
+  String get notCalculated => chinese ? '尚未计算' : 'Not calculated';
+  String get protected => chinese ? '受保护' : 'Protected';
   String get insightExplanation => chinese
       ? '事实来自当前文件的本地元数据；分类属于规则推断。无法确认所属软件或系统关系时保持“无法确认”。安全模式禁止真实文件移动、重命名和删除。'
       : 'Facts come from local metadata; category is a rule inference. Ownership and system relationships remain Unknown when evidence is insufficient. Safe Mode blocks real-file move, rename, and delete operations.';
@@ -1387,6 +1850,8 @@ final class _ExplorerStrings {
   String metadataSummary(BrowseEntry entry) => chinese
       ? '${category(entry.category)}，${bytes(entry.sizeBytes)}'
       : '${category(entry.category)}, ${bytes(entry.sizeBytes)}';
+  String compactMetadata(BrowseEntry entry) =>
+      entry.isDirectory ? folder : bytes(entry.sizeBytes);
   String searchResults(String query) =>
       chinese ? '索引搜索：$query' : 'Index search: $query';
   String duplicateResults(int count) =>
