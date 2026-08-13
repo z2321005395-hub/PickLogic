@@ -121,3 +121,12 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 ## Next action
 
 Obtain explicit approval for a Windows reference-directory read-only scan and nubia Debug APK/media permission before Phase 2 reference-data validation. Separately obtain maintainer decisions for the final license/copyright, first trial, signing, Public conversion, and publication.
+
+## Fast delivery user-test stage
+
+- Standard now has a clear folder picker, selected-root search isolation, virtual category filters, exact SHA-256 duplicate review, preview/open/reveal, Insight, and explicit read-only Safe Mode controls.
+- Pro now supports local PDF selection, an app-private persistent literature catalog and reading position, metadata/DOI display, continuous PDF reading, zoom, page jump, search, text selection, and rename preview only.
+- Desktop Standard/Pro and Android Mobile now expose visible Chinese/English switching; focused integration tests pass 12/12 Desktop and 22/22 Mobile.
+- Final bilingual Standard/Pro user-test ZIPs were built and launched from the ASCII worktree; Pro packaged PDF smoke exited 0.
+- A bilingual arm64 Android user-test APK was built, installed, and launched on nubia NX736J as the parallel package `io.picklogic.mobile.usertest`, preserving the previous differently signed PickLogic package and its data.
+- No real file or media mutation was enabled. Android media permission remains user-controlled and was still ungranted at the last check.
