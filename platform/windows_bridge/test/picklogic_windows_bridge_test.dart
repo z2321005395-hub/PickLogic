@@ -18,6 +18,12 @@ class MockPicklogicWindowsBridgePlatform
       r'X:\synthetic\paper.pdf';
 
   @override
+  Future<List<String>> pickPdfFiles({String? title}) async => <String>[
+    r'X:\synthetic\paper.pdf',
+    r'X:\synthetic\second.pdf',
+  ];
+
+  @override
   Future<String> getApplicationSupportDirectory() async =>
       r'X:\synthetic\app-support';
 
@@ -78,6 +84,7 @@ void main() {
     const bridge = PicklogicWindowsBridge();
     expect(await bridge.pickDirectory(), 'synthetic-root');
     expect(await bridge.pickPdfFile(), r'X:\synthetic\paper.pdf');
+    expect(await bridge.pickPdfFiles(), hasLength(2));
     expect(
       await bridge.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',

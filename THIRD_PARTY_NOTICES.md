@@ -12,6 +12,9 @@ This file is the redistribution notice index for PickLogic. It is not a replacem
 | `plugin_platform_interface` 2.1.8 | BSD-3-Clause; Copyright 2013 The Flutter Authors | Resolved package license is covered by the dependency audit and generated notices |
 | `pdfrx` 2.4.7 | MIT; Copyright 2018 Takashi Kawasaki | Package license is retained with the resolved dependency notices |
 | PDFium Chromium/7811 | PDFium BSD-style license and bundled third-party terms | Windows packaging verifies the pinned archive/DLL hashes and copies the top-level license plus all 15 bundled notice files beside the application |
+| `flutter_svg` 2.3.0 | BSD-3-Clause; Copyright 2018 Dan Field and contributors | Resolved package license is covered by the dependency audit and generated notices |
+| `desktop_drop` 0.7.1 | Apache-2.0; Copyright Mixin Network | Resolved package license and notice are retained in generated notices |
+| `archive` 4.0.9 | MIT; Copyright Brendan Duncan | Resolved package license is covered by the dependency audit and generated notices |
 
 ## Binary provenance
 

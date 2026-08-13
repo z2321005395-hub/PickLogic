@@ -10,6 +10,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 - Desktop image, PDF, bounded-text, folder, and metadata preview in one Preview/Insight context panel.
 - Android compact file-type, smart-collection, app/source, screenshot-filter, and read-only storage-facet navigation.
+- Shared PickLogic SVG file-type visuals and real bounded image/media thumbnails.
+- Pro multi-PDF picker and drag/drop import, SQLite library persistence, manual metadata correction, and legacy JSON migration.
 
 - PickLogic / 拾理 project identity and product principles.
 - Shared data/interface contract and three-target monorepo architecture.
@@ -33,5 +35,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 - Unified Desktop navigation and contextual details across Standard and Pro without duplicating the shell.
 - Simplified the Mobile Files home around type, source, time, smart collection, and phone-storage entry points.
+- Made every accessible Mobile screenshot browsable in date order through bounded pagination rather than a latest-items cap.
+- Kept unfinished translation and other placeholder actions out of the visible Pro workflow.
+- Made Windows artifact export compatible with Windows PowerShell 5.1.
 
 No release has been published.

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/services.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
@@ -15,6 +15,9 @@ import 'src/screenshot_grouping.dart';
 
 void main() =>
     runApp(PickLogicMobileApp(repository: AndroidMobileRepository()));
+
+final Set<String> _sessionFavoriteIds = <String>{};
+final Set<String> _sessionReviewIds = <String>{};
 
 final class PickLogicMobileApp extends StatefulWidget {
   const PickLogicMobileApp({
@@ -79,6 +82,9 @@ final class MobileShell extends StatefulWidget {
 final class _MobileShellState extends State<MobileShell> {
   int _index = 0;
   late Future<MobileBootstrapState> _bootstrap;
+  final _filesKey = GlobalKey<_FilesPageState>();
+  final _recentKey = GlobalKey<_RecentPageState>();
+  final _organizeKey = GlobalKey<_OrganizePageState>();
 
   @override
   void initState() {
@@ -105,6 +111,64 @@ final class _MobileShellState extends State<MobileShell> {
     setState(() {
       _bootstrap = widget.repository.loadBootstrap();
     });
+  }
+
+  void _refreshVisible() {
+    setState(() => _bootstrap = widget.repository.loadBootstrap());
+    switch (_index) {
+      case 0:
+        _filesKey.currentState?.refresh();
+        return;
+      case 1:
+        _recentKey.currentState?.refresh();
+        return;
+      case 2:
+        _organizeKey.currentState?.refresh();
+        return;
+    }
+  }
+
+  void _showSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final strings = MobileLocalizations.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  strings.text('settings'),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: const Icon(Icons.translate),
+                  title: Text(strings.text('language')),
+                  subtitle: Text(
+                    widget.languageCode == 'zh' ? '简体中文' : 'English',
+                  ),
+                  trailing: Text(widget.languageCode == 'zh' ? 'EN' : '中'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    widget.onToggleLanguage();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.shield_outlined),
+                  title: Text(strings.text('safeModeTitle')),
+                  subtitle: Text(strings.text('safeModeDetail')),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _requestMediaAccess() async {
@@ -161,11 +225,8 @@ final class _MobileShellState extends State<MobileShell> {
     }
   }
 
-  final _filesKey = GlobalKey<_FilesPageState>();
-
   @override
   Widget build(BuildContext context) {
-    final strings = PickLogicLocalizations.of(context);
     final mobileStrings = MobileLocalizations.of(context);
     return FutureBuilder<MobileBootstrapState>(
       future: _bootstrap,
@@ -176,50 +237,54 @@ final class _MobileShellState extends State<MobileShell> {
           _FilesPage(
             key: _filesKey,
             repository: widget.repository,
-            active: _index == 0,
+            active: true,
             onChooseTree: _chooseDocumentTree,
             onSearch: _startSearch,
+            bootstrap: bootstrap,
+            onOpenScreenshots: () {
+              setState(() => _index = 2);
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => _organizeKey.currentState?.openScreenshots(),
+              );
+            },
+            onOpenStorage: () {
+              setState(() => _index = 2);
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => _organizeKey.currentState?.openStorage(),
+              );
+            },
+            onOpenRecent: () => setState(() => _index = 1),
           ),
-          _ScreenshotsPage(
+          _RecentPage(
+            key: _recentKey,
             repository: widget.repository,
             active: _index == 1,
-            canReadMedia: canReadMedia,
-            onRequestAccess: _requestMediaAccess,
-            onChooseTree: _chooseDocumentTree,
           ),
-          _PhotosPage(
+          _OrganizePage(
+            key: _organizeKey,
+            bootstrap: bootstrap,
             repository: widget.repository,
             active: _index == 2,
             canReadMedia: canReadMedia,
             onRequestAccess: _requestMediaAccess,
             onChooseTree: _chooseDocumentTree,
           ),
-          _StoragePage(
-            bootstrap: bootstrap,
-            repository: widget.repository,
-            active: _index == 3,
-          ),
         ];
         return Scaffold(
           appBar: AppBar(
             title: Text(widget.languageCode == 'zh' ? '拾理' : 'PickLogic'),
             actions: [
-              Tooltip(
-                message: mobileStrings.text('switchLanguage'),
-                child: TextButton.icon(
-                  key: const Key('language-switch'),
-                  onPressed: widget.onToggleLanguage,
-                  icon: const Icon(Icons.translate),
-                  label: Text(widget.languageCode == 'zh' ? 'EN' : '中'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
+              IconButton(
+                key: const Key('mobile-refresh'),
+                tooltip: mobileStrings.text('refresh'),
+                icon: const Icon(Icons.refresh),
+                onPressed: _refreshVisible,
               ),
               IconButton(
-                tooltip: strings.text('search'),
-                icon: const Icon(Icons.search),
-                onPressed: _startSearch,
+                key: const Key('mobile-settings'),
+                tooltip: mobileStrings.text('settings'),
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: _showSettings,
               ),
             ],
             bottom: const PreferredSize(
@@ -239,29 +304,25 @@ final class _MobileShellState extends State<MobileShell> {
             onDestinationSelected: (value) => setState(() => _index = value),
             destinations: [
               NavigationDestination(
-                icon: const Icon(Icons.folder_outlined, key: Key('nav-files')),
-                label: strings.text('files'),
+                icon: const Icon(
+                  Icons.category_outlined,
+                  key: Key('nav-files'),
+                ),
+                label: mobileStrings.text('categoryHome'),
               ),
               NavigationDestination(
                 icon: const Icon(
-                  Icons.screenshot_outlined,
-                  key: Key('nav-screenshots'),
+                  Icons.schedule_outlined,
+                  key: Key('nav-recent'),
                 ),
-                label: strings.text('screenshots'),
+                label: mobileStrings.text('recent'),
               ),
               NavigationDestination(
                 icon: const Icon(
-                  Icons.photo_library_outlined,
-                  key: Key('nav-photos'),
+                  Icons.auto_awesome_mosaic_outlined,
+                  key: Key('nav-organize'),
                 ),
-                label: strings.text('photos'),
-              ),
-              NavigationDestination(
-                icon: const Icon(
-                  Icons.storage_outlined,
-                  key: Key('nav-storage'),
-                ),
-                label: strings.text('storage'),
+                label: mobileStrings.text('organize'),
               ),
             ],
           ),
@@ -316,6 +377,278 @@ final class _BootstrapFailure extends StatelessWidget {
   }
 }
 
+final class _RecentPage extends StatefulWidget {
+  const _RecentPage({
+    super.key,
+    required this.repository,
+    required this.active,
+  });
+
+  final MobileRepository repository;
+  final bool active;
+
+  @override
+  State<_RecentPage> createState() => _RecentPageState();
+}
+
+final class _RecentPageState extends State<_RecentPage> {
+  Future<List<FileRecord>>? _records;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureLoaded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecentPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository) _records = null;
+    _ensureLoaded();
+  }
+
+  void _ensureLoaded() {
+    if (widget.active && _records == null) refresh();
+  }
+
+  void refresh() {
+    setState(() {
+      _records =
+          Future.wait(<Future<List<FileRecord>>>[
+            for (final kind in const <AndroidMediaKind>[
+              AndroidMediaKind.images,
+              AndroidMediaKind.videos,
+              AndroidMediaKind.audio,
+              AndroidMediaKind.downloads,
+              AndroidMediaKind.documents,
+              AndroidMediaKind.applications,
+              AndroidMediaKind.archives,
+            ])
+              widget.repository.loadMedia(kind, limit: 40),
+          ]).then((pages) {
+            final byId = <String, FileRecord>{};
+            for (final record in pages.expand((page) => page)) {
+              byId[record.id] = record;
+            }
+            final records = byId.values.toList(growable: false)
+              ..sort((left, right) {
+                final leftDate = left.createdAt ?? left.modifiedAt;
+                final rightDate = right.createdAt ?? right.modifiedAt;
+                return rightDate.compareTo(leftDate);
+              });
+            return records.take(160).toList(growable: false);
+          });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return FutureBuilder<List<FileRecord>>(
+      future: _records,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(strings.text('collectionUnavailable')));
+        }
+        final records = snapshot.data ?? const <FileRecord>[];
+        return ListView.builder(
+          key: const Key('recent-file-list'),
+          padding: const EdgeInsets.all(12),
+          itemCount: records.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                child: Text(
+                  strings.text('recent'),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              );
+            }
+            final record = records[index - 1];
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              leading: SizedBox.square(
+                dimension: 58,
+                child: _OnDemandThumbnail(
+                  repository: widget.repository,
+                  record: record,
+                  maxWidth: 144,
+                  maxHeight: 144,
+                  fallbackIcon: _iconFor(record.category),
+                ),
+              ),
+              title: Text(record.displayName),
+              subtitle: Text(
+                '${_categoryLabel(strings, record.category)} · '
+                '${_formatBytes(record.sizeBytes)} · '
+                '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
+                '${_durationLabel(record)}',
+              ),
+              onTap: () => _showMediaItem(context, record, widget.repository),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+enum _OrganizeSection { menu, screenshots, photos, storage }
+
+final class _OrganizePage extends StatefulWidget {
+  const _OrganizePage({
+    super.key,
+    required this.bootstrap,
+    required this.repository,
+    required this.active,
+    required this.canReadMedia,
+    required this.onRequestAccess,
+    required this.onChooseTree,
+  });
+
+  final MobileBootstrapState? bootstrap;
+  final MobileRepository repository;
+  final bool active;
+  final bool canReadMedia;
+  final VoidCallback onRequestAccess;
+  final VoidCallback onChooseTree;
+
+  @override
+  State<_OrganizePage> createState() => _OrganizePageState();
+}
+
+final class _OrganizePageState extends State<_OrganizePage> {
+  _OrganizeSection _section = _OrganizeSection.menu;
+  final _screenshotsKey = GlobalKey<_ScreenshotsPageState>();
+
+  void openScreenshots() =>
+      setState(() => _section = _OrganizeSection.screenshots);
+  void openStorage() => setState(() => _section = _OrganizeSection.storage);
+
+  void refresh() {
+    if (_section == _OrganizeSection.screenshots) {
+      _screenshotsKey.currentState?.refresh();
+    } else {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    Widget withBack(Widget child) => Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            onPressed: () => setState(() => _section = _OrganizeSection.menu),
+            icon: const Icon(Icons.arrow_back),
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
+
+    return switch (_section) {
+      _OrganizeSection.screenshots => withBack(
+        _ScreenshotsPage(
+          key: _screenshotsKey,
+          repository: widget.repository,
+          active: widget.active,
+          canReadMedia: widget.canReadMedia,
+          onRequestAccess: widget.onRequestAccess,
+          onChooseTree: widget.onChooseTree,
+        ),
+      ),
+      _OrganizeSection.photos => withBack(
+        _PhotosPage(
+          repository: widget.repository,
+          active: widget.active,
+          canReadMedia: widget.canReadMedia,
+          onRequestAccess: widget.onRequestAccess,
+          onChooseTree: widget.onChooseTree,
+        ),
+      ),
+      _OrganizeSection.storage => withBack(
+        _StoragePage(
+          bootstrap: widget.bootstrap,
+          repository: widget.repository,
+          active: widget.active,
+        ),
+      ),
+      _OrganizeSection.menu => ListView(
+        key: const Key('organize-home'),
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            strings.text('organize'),
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 16),
+          _OrganizeCard(
+            key: const Key('organize-screenshots'),
+            icon: PickLogicVisualIcon.screenshot,
+            title: strings.text('screenshotsTitle'),
+            subtitle: strings.text('reviewSafety'),
+            onTap: openScreenshots,
+          ),
+          const SizedBox(height: 10),
+          _OrganizeCard(
+            key: const Key('organize-photos'),
+            icon: PickLogicVisualIcon.image,
+            title: strings.text('photosTitle'),
+            subtitle: strings.text('photosDescription'),
+            onTap: () => setState(() => _section = _OrganizeSection.photos),
+          ),
+          const SizedBox(height: 10),
+          _OrganizeCard(
+            key: const Key('organize-storage'),
+            icon: PickLogicVisualIcon.storage,
+            title: strings.text('storageTitle'),
+            subtitle: strings.text('limitPlatform'),
+            onTap: openStorage,
+          ),
+        ],
+      ),
+    };
+  }
+}
+
+final class _OrganizeCard extends StatelessWidget {
+  const _OrganizeCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final PickLogicVisualIcon icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
+    child: ListTile(
+      contentPadding: const EdgeInsets.all(12),
+      leading: PickLogicIcon(icon, size: 54, semanticLabel: title),
+      title: Text(title, style: Theme.of(context).textTheme.titleMedium),
+      subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    ),
+  );
+}
+
 final class _FilesPage extends StatefulWidget {
   const _FilesPage({
     super.key,
@@ -323,12 +656,20 @@ final class _FilesPage extends StatefulWidget {
     required this.active,
     required this.onChooseTree,
     required this.onSearch,
+    required this.bootstrap,
+    required this.onOpenScreenshots,
+    required this.onOpenStorage,
+    required this.onOpenRecent,
   });
 
   final MobileRepository repository;
   final bool active;
   final VoidCallback onChooseTree;
   final VoidCallback onSearch;
+  final MobileBootstrapState? bootstrap;
+  final VoidCallback onOpenScreenshots;
+  final VoidCallback onOpenStorage;
+  final VoidCallback onOpenRecent;
 
   @override
   State<_FilesPage> createState() => _FilesPageState();
@@ -339,18 +680,24 @@ final class _FilesPageState extends State<_FilesPage> {
   bool _collectionOpen = false;
   final ScrollController _scrollController = ScrollController();
   PagedMediaController<FileRecord>? _pager;
+  late Map<AndroidMediaKind, Future<int>> _counts;
+  Future<List<FileRecord>>? _sourceRecords;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadHomeData();
     _ensureLoaded();
   }
 
   @override
   void didUpdateWidget(covariant _FilesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.repository != widget.repository) _pager = null;
+    if (oldWidget.repository != widget.repository) {
+      _pager = null;
+      _loadHomeData();
+    }
     _ensureLoaded();
   }
 
@@ -362,6 +709,39 @@ final class _FilesPageState extends State<_FilesPage> {
 
   void _ensureLoaded() {
     if (widget.active && _pager == null) _resetPager(_kind);
+  }
+
+  void _loadHomeData() {
+    _counts = <AndroidMediaKind, Future<int>>{
+      for (final kind in const <AndroidMediaKind>[
+        AndroidMediaKind.images,
+        AndroidMediaKind.audio,
+        AndroidMediaKind.videos,
+        AndroidMediaKind.applications,
+        AndroidMediaKind.archives,
+        AndroidMediaKind.documents,
+      ])
+        kind: widget.repository.countMedia(kind),
+    };
+    _sourceRecords =
+        Future.wait(<Future<List<FileRecord>>>[
+          widget.repository.loadMedia(AndroidMediaKind.images, limit: 120),
+          widget.repository.loadMedia(AndroidMediaKind.screenshots, limit: 120),
+          widget.repository.loadMedia(AndroidMediaKind.downloads, limit: 120),
+          widget.repository.loadMedia(AndroidMediaKind.documents, limit: 120),
+        ]).then((pages) {
+          final byId = <String, FileRecord>{};
+          for (final record in pages.expand((page) => page)) {
+            byId[record.id] = record;
+          }
+          return byId.values.toList(growable: false);
+        });
+  }
+
+  void refresh() {
+    _loadHomeData();
+    if (_collectionOpen) _resetPager(_kind);
+    setState(() {});
   }
 
   PagedMediaController<FileRecord> _createPager(AndroidMediaKind kind) =>
@@ -410,7 +790,6 @@ final class _FilesPageState extends State<_FilesPage> {
     final strings = MobileLocalizations.of(context);
     final pager = _pager;
     final records = pager?.items ?? const <FileRecord>[];
-    final sources = _sourceFacets(records);
     if (_collectionOpen) {
       return _MobileCollectionView(
         strings: strings,
@@ -444,46 +823,52 @@ final class _FilesPageState extends State<_FilesPage> {
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 6,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 4,
-          childAspectRatio: 0.62,
+          crossAxisCount: 3,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.08,
           children: [
             _TypeShortcut(
               key: const Key('files-recent-media'),
-              icon: Icons.image_outlined,
+              icon: PickLogicVisualIcon.image,
               label: strings.text('images'),
+              count: _counts[AndroidMediaKind.images],
               selected: _kind == AndroidMediaKind.images,
               onTap: () => selectCollection(AndroidMediaKind.images),
             ),
             _TypeShortcut(
-              icon: Icons.audio_file_outlined,
+              icon: PickLogicVisualIcon.audio,
               label: strings.text('audio'),
+              count: _counts[AndroidMediaKind.audio],
               selected: _kind == AndroidMediaKind.audio,
               onTap: () => selectCollection(AndroidMediaKind.audio),
             ),
             _TypeShortcut(
-              icon: Icons.video_file_outlined,
+              icon: PickLogicVisualIcon.video,
               label: strings.text('videos'),
+              count: _counts[AndroidMediaKind.videos],
               selected: _kind == AndroidMediaKind.videos,
               onTap: () => selectCollection(AndroidMediaKind.videos),
             ),
             _TypeShortcut(
-              icon: Icons.apps_outlined,
+              icon: PickLogicVisualIcon.application,
               label: strings.text('apps'),
-              selected: false,
-              onTap: () => _showComingNext(context, strings),
+              count: _counts[AndroidMediaKind.applications],
+              selected: _kind == AndroidMediaKind.applications,
+              onTap: () => selectCollection(AndroidMediaKind.applications),
             ),
             _TypeShortcut(
-              icon: Icons.archive_outlined,
+              icon: PickLogicVisualIcon.archive,
               label: strings.text('archives'),
-              selected: false,
-              onTap: () => selectCollection(AndroidMediaKind.documents),
+              count: _counts[AndroidMediaKind.archives],
+              selected: _kind == AndroidMediaKind.archives,
+              onTap: () => selectCollection(AndroidMediaKind.archives),
             ),
             _TypeShortcut(
               key: const Key('files-documents'),
-              icon: Icons.description_outlined,
+              icon: PickLogicVisualIcon.document,
               label: strings.text('documents'),
+              count: _counts[AndroidMediaKind.documents],
               selected: _kind == AndroidMediaKind.documents,
               onTap: () => selectCollection(AndroidMediaKind.documents),
             ),
@@ -499,7 +884,7 @@ final class _FilesPageState extends State<_FilesPage> {
             _SmartCollectionChip(
               icon: Icons.screenshot_outlined,
               label: strings.text('screenshotsTitle'),
-              onTap: () => selectCollection(AndroidMediaKind.screenshots),
+              onTap: widget.onOpenScreenshots,
             ),
             _SmartCollectionChip(
               key: const Key('files-downloads'),
@@ -510,61 +895,59 @@ final class _FilesPageState extends State<_FilesPage> {
             _SmartCollectionChip(
               icon: Icons.schedule_outlined,
               label: strings.text('recent'),
-              onTap: () => selectCollection(AndroidMediaKind.images),
-            ),
-            _SmartCollectionChip(
-              icon: Icons.file_copy_outlined,
-              label: strings.text('duplicates'),
-              onTap: () => _showComingNext(context, strings),
-            ),
-            _SmartCollectionChip(
-              icon: Icons.data_usage_outlined,
-              label: strings.text('largeFiles'),
-              onTap: () => _showComingNext(context, strings),
-            ),
-            _SmartCollectionChip(
-              icon: Icons.favorite_border,
-              label: strings.text('favorites'),
-              onTap: () => _showComingNext(context, strings),
+              onTap: widget.onOpenRecent,
             ),
           ],
         ),
         const SizedBox(height: 14),
         _MobileSectionTitle(strings.text('appsSources')),
         const SizedBox(height: 6),
-        if (sources.isEmpty)
-          Text(strings.text('sourcesEmpty'))
-        else
-          SizedBox(
-            height: 74,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: sources.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final source = sources[index];
-                return ActionChip(
-                  avatar: const Icon(Icons.source_outlined, size: 18),
-                  label: Text('${source.label} · ${source.count}'),
-                  onPressed: () => _showSourceSheet(
-                    context,
-                    strings,
-                    source,
-                    records,
-                    widget.repository,
-                  ),
-                );
-              },
-            ),
-          ),
+        FutureBuilder<List<FileRecord>>(
+          future: _sourceRecords,
+          builder: (context, snapshot) {
+            final sourceRecords = snapshot.data ?? const <FileRecord>[];
+            final sources = _sourceFacets(sourceRecords);
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const LinearProgressIndicator();
+            }
+            if (sources.isEmpty) return Text(strings.text('sourcesEmpty'));
+            return SizedBox(
+              height: 74,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: sources.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final source = sources[index];
+                  return ActionChip(
+                    avatar: const Icon(Icons.source_outlined, size: 18),
+                    label: Text(
+                      '${_sourceDisplayName(strings, source.label)} · ${source.count}',
+                    ),
+                    onPressed: () => _showSourceSheet(
+                      context,
+                      strings,
+                      source,
+                      sourceRecords,
+                      widget.repository,
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
         const SizedBox(height: 8),
-        ListTile(
+        _PhoneStorageCard(
           key: const Key('phone-storage-entry'),
-          leading: const Icon(Icons.phone_android_outlined),
-          title: Text(strings.text('phoneStorage')),
-          subtitle: Text(strings.text('phoneStorageDetail')),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: widget.onChooseTree,
+          strings: strings,
+          bootstrap: widget.bootstrap,
+          onTap: widget.onOpenStorage,
+        ),
+        TextButton.icon(
+          onPressed: widget.onChooseTree,
+          icon: const Icon(Icons.create_new_folder_outlined),
+          label: Text(strings.text('chooseSafReadOnly')),
         ),
         const SizedBox(height: 12),
       ],
@@ -619,12 +1002,26 @@ final class _MobileCollectionView extends StatelessWidget {
         _PagedProgress(pager: pager!),
         for (final record in records)
           ListTile(
-            leading: Icon(_iconFor(record.category)),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 4,
+            ),
+            leading: SizedBox.square(
+              dimension: 58,
+              child: _OnDemandThumbnail(
+                repository: repository,
+                record: record,
+                maxWidth: 144,
+                maxHeight: 144,
+                fallbackIcon: _iconFor(record.category),
+              ),
+            ),
             title: Text(record.displayName),
             subtitle: Text(
               '${_categoryLabel(strings, record.category)} · '
               '${_formatBytes(record.sizeBytes)} · '
-              '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
+              '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
+              '${_durationLabel(record)}',
             ),
             onTap: () => _showMediaItem(context, record, repository),
           ),
@@ -643,6 +1040,8 @@ String _kindLabel(MobileLocalizations strings, AndroidMediaKind kind) =>
       AndroidMediaKind.screenshots => strings.text('screenshotsTitle'),
       AndroidMediaKind.downloads => strings.text('downloads'),
       AndroidMediaKind.documents => strings.text('documents'),
+      AndroidMediaKind.applications => strings.text('apps'),
+      AndroidMediaKind.archives => strings.text('archives'),
     };
 
 final class _MobileSectionTitle extends StatelessWidget {
@@ -664,12 +1063,14 @@ final class _TypeShortcut extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
+    required this.count,
     required this.selected,
     required this.onTap,
   });
 
-  final IconData icon;
+  final PickLogicVisualIcon icon;
   final String label;
+  final Future<int>? count;
   final bool selected;
   final VoidCallback onTap;
 
@@ -682,34 +1083,95 @@ final class _TypeShortcut extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: selected
-                  ? Theme.of(context).colorScheme.primaryContainer
-                  : Theme.of(context).colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(PickLogicTokens.radiusMedium),
-            ),
-            child: SizedBox.square(
-              dimension: 46,
-              child: Icon(
-                icon,
-                color: selected
-                    ? Theme.of(context).colorScheme.onPrimaryContainer
-                    : Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
+          PickLogicIcon(icon, size: 52, semanticLabel: label),
+          const SizedBox(height: 2),
           Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall,
           ),
+          FutureBuilder<int>(
+            future: count,
+            builder: (context, snapshot) => Text(
+              snapshot.data?.toString() ?? '—',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
     ),
   );
+}
+
+final class _PhoneStorageCard extends StatelessWidget {
+  const _PhoneStorageCard({
+    super.key,
+    required this.strings,
+    required this.bootstrap,
+    required this.onTap,
+  });
+
+  final MobileLocalizations strings;
+  final MobileBootstrapState? bootstrap;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final storage = bootstrap?.storage;
+    final used = storage == null
+        ? 0
+        : storage.totalBytes - storage.availableBytes;
+    final fraction = storage == null || storage.totalBytes == 0
+        ? 0.0
+        : (used / storage.totalBytes).clamp(0.0, 1.0);
+    return Card(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(PickLogicTokens.radiusMedium),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              PickLogicIcon(
+                PickLogicVisualIcon.storage,
+                size: 54,
+                semanticLabel: strings.text('phoneStorage'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      strings.text('phoneStorage'),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(value: fraction),
+                    const SizedBox(height: 4),
+                    Text(
+                      storage == null
+                          ? strings.text('storageLoading')
+                          : strings.format('volumeDetail', <String, Object>{
+                              'used': _formatBytes(used),
+                              'total': _formatBytes(storage.totalBytes),
+                            }),
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 final class _SmartCollectionChip extends StatelessWidget {
@@ -765,20 +1227,33 @@ String? _sourceLabelForRecord(FileRecord record) {
       .map((tag) => tag.substring('relative-path:'.length))
       .firstOrNull;
   final raw = '${hint ?? ''} ${path ?? ''}'.toLowerCase();
-  if (raw.contains('wechat') || raw.contains('micromsg')) return '微信';
-  if (raw.contains('tencent/qq') || raw.contains('mobileqq')) return 'QQ';
+  if (raw.contains('wechat') || raw.contains('micromsg')) return 'wechat';
+  if (raw.contains('tencent/qq') || raw.contains('mobileqq')) return 'qq';
   if (raw.contains('browser') ||
       raw.contains('chrome') ||
       raw.contains('edge')) {
-    return 'Browser';
+    return 'browser';
   }
-  if (raw.contains('camera') || raw.contains('dcim')) return 'Camera';
-  if (raw.contains('screenshot')) return 'Screenshots';
-  if (raw.contains('download')) return 'Downloads';
-  if (raw.contains('bluetooth')) return 'Bluetooth';
-  if (raw.contains('cuuca') || raw.contains('nubia')) return '互传';
+  if (raw.contains('camera') || raw.contains('dcim')) return 'camera';
+  if (raw.contains('screenshot')) return 'screenshots';
+  if (raw.contains('download')) return 'downloads';
+  if (raw.contains('bluetooth')) return 'bluetooth';
+  if (raw.contains('cuuca') || raw.contains('nubia')) return 'transfer';
   return hint;
 }
+
+String _sourceDisplayName(MobileLocalizations strings, String source) =>
+    switch (source) {
+      'wechat' => strings.text('sourceWechat'),
+      'qq' => 'QQ',
+      'browser' => strings.text('sourceBrowser'),
+      'camera' => strings.text('sourceCamera'),
+      'screenshots' => strings.text('screenshotsTitle'),
+      'downloads' => strings.text('downloads'),
+      'bluetooth' => strings.text('sourceBluetooth'),
+      'transfer' => strings.text('sourceTransfer'),
+      _ => source,
+    };
 
 String? _recordLocation(FileRecord record) {
   final path = record.tags
@@ -787,12 +1262,6 @@ String? _recordLocation(FileRecord record) {
       .where((value) => value.isNotEmpty)
       .firstOrNull;
   return path ?? _sourceLabelForRecord(record);
-}
-
-void _showComingNext(BuildContext context, MobileLocalizations strings) {
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(strings.text('comingNext'))));
 }
 
 void _showSourceSheet(
@@ -815,7 +1284,7 @@ void _showSourceSheet(
         children: [
           ListTile(
             leading: const Icon(Icons.source_outlined),
-            title: Text(source.label),
+            title: Text(_sourceDisplayName(strings, source.label)),
             subtitle: Text(
               '${strings.text('sourceInferred')} · '
               '${strings.format('itemCount', {'count': source.count})}',
@@ -828,7 +1297,16 @@ void _showSourceSheet(
               itemBuilder: (context, index) {
                 final record = visible[index];
                 return ListTile(
-                  leading: Icon(_iconFor(record.category)),
+                  leading: SizedBox.square(
+                    dimension: 48,
+                    child: _OnDemandThumbnail(
+                      repository: repository,
+                      record: record,
+                      maxWidth: 112,
+                      maxHeight: 112,
+                      fallbackIcon: _iconFor(record.category),
+                    ),
+                  ),
                   title: Text(record.displayName),
                   subtitle: Text(
                     '${_categoryLabel(strings, record.category)} · ${_formatBytes(record.sizeBytes)}',
@@ -846,6 +1324,7 @@ void _showSourceSheet(
 
 final class _ScreenshotsPage extends StatefulWidget {
   const _ScreenshotsPage({
+    super.key,
     required this.repository,
     required this.active,
     required this.canReadMedia,
@@ -894,19 +1373,23 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
 
   void _ensureLoaded() {
     if (widget.active && widget.canReadMedia && _pager == null) {
-      final pager = PagedMediaController<MobileScreenshotCandidate>(
-        loader: (offset, limit) => widget.repository.loadScreenshotCandidates(
-          offset: offset,
-          limit: limit,
-        ),
-        counter: () =>
-            widget.repository.countMedia(AndroidMediaKind.screenshots),
-        idOf: (candidate) => candidate.record.id,
-        dateOf: (candidate) => candidate.capturedAt,
-      );
-      _pager = pager;
-      unawaited(_loadNext(pager));
+      refresh();
     }
+  }
+
+  void refresh() {
+    if (!widget.canReadMedia) return;
+    final pager = PagedMediaController<MobileScreenshotCandidate>(
+      loader: (offset, limit) => widget.repository.loadScreenshotCandidates(
+        offset: offset,
+        limit: limit,
+      ),
+      counter: () => widget.repository.countMedia(AndroidMediaKind.screenshots),
+      idOf: (candidate) => candidate.record.id,
+      dateOf: (candidate) => candidate.capturedAt,
+    );
+    setState(() => _pager = pager);
+    unawaited(_loadNext(pager));
   }
 
   Future<void> _loadNext(
@@ -1337,8 +1820,8 @@ final class _PhotosPageState extends State<_PhotosPage> {
         .where((record) {
           final source = _sourceLabelForRecord(record);
           final matchesFilter = switch (_filter) {
-            'camera' => source == 'Camera',
-            'saved' => source != 'Camera',
+            'camera' => source == 'camera',
+            'saved' => source != 'camera',
             _ => true,
           };
           return matchesFilter &&
@@ -1679,8 +2162,8 @@ final class _StoragePageState extends State<_StoragePage> {
       (label: strings.text('videos'), kind: AndroidMediaKind.videos),
       (label: strings.text('audio'), kind: AndroidMediaKind.audio),
       (label: strings.text('documents'), kind: AndroidMediaKind.documents),
-      (label: strings.text('archives'), kind: AndroidMediaKind.documents),
-      (label: 'APK', kind: AndroidMediaKind.documents),
+      (label: strings.text('archives'), kind: AndroidMediaKind.archives),
+      (label: strings.text('apps'), kind: AndroidMediaKind.applications),
     ];
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1707,12 +2190,12 @@ final class _StoragePageState extends State<_StoragePage> {
         _MobileSectionTitle(strings.text('bySource')),
         ListTile(
           leading: const Icon(Icons.camera_alt_outlined),
-          title: const Text('Camera / Screenshots'),
+          title: Text(strings.text('cameraAndScreenshots')),
           subtitle: Text(strings.text('inferred')),
         ),
         ListTile(
           leading: const Icon(Icons.download_outlined),
-          title: const Text('Downloads'),
+          title: Text(strings.text('downloads')),
           subtitle: Text(strings.text('observedDirectly')),
         ),
         const SizedBox(height: 12),
@@ -2046,7 +2529,22 @@ IconData _kindIcon(AndroidMediaKind kind) => switch (kind) {
   AndroidMediaKind.audio => Icons.audio_file_outlined,
   AndroidMediaKind.downloads => Icons.download_outlined,
   AndroidMediaKind.documents => Icons.description_outlined,
+  AndroidMediaKind.applications => Icons.android_outlined,
+  AndroidMediaKind.archives => Icons.archive_outlined,
 };
+
+String _durationLabel(FileRecord record) {
+  final raw = record.tags
+      .where((tag) => tag.startsWith('duration-ms:'))
+      .map((tag) => int.tryParse(tag.substring('duration-ms:'.length)))
+      .whereType<int>()
+      .firstOrNull;
+  if (raw == null || raw <= 0) return '';
+  final totalSeconds = raw ~/ 1000;
+  final minutes = totalSeconds ~/ 60;
+  final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+  return ' · $minutes:$seconds';
+}
 
 String _formatBytes(int bytes) {
   if (bytes >= 1024 * 1024 * 1024) {
@@ -2128,54 +2626,194 @@ void _showMediaItem(
   FileRecord record,
   MobileRepository repository,
 ) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (sheetContext) {
-      final strings = MobileLocalizations.of(sheetContext);
-      return FractionallySizedBox(
-        heightFactor: 0.82,
-        child: Column(
-          children: [
-            ListTile(
-              key: const Key('media-item-details'),
-              leading: Icon(_iconFor(record.category)),
-              title: Text(record.displayName),
-              subtitle: Text(
-                '${record.mimeType} · ${_formatBytes(record.sizeBytes)}\n'
-                '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
-                '${_sourceKindLabel(strings, record.sourceKind)}',
-              ),
-              isThreeLine: true,
-            ),
-            const Divider(height: 1),
-            Expanded(child: _MobileInsightPanel(record: record)),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    final opened = await repository.open(record);
-                    if (!sheetContext.mounted) return;
-                    ScaffoldMessenger.of(sheetContext).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          strings.text(opened ? 'opened' : 'noViewer'),
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: Text(strings.text('open')),
+  Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (context) =>
+          _MobileFileDetailPage(record: record, repository: repository),
+    ),
+  );
+}
+
+final class _MobileFileDetailPage extends StatefulWidget {
+  const _MobileFileDetailPage({required this.record, required this.repository});
+
+  final FileRecord record;
+  final MobileRepository repository;
+
+  @override
+  State<_MobileFileDetailPage> createState() => _MobileFileDetailPageState();
+}
+
+final class _MobileFileDetailPageState extends State<_MobileFileDetailPage> {
+  FileRecord get record => widget.record;
+  MobileRepository get repository => widget.repository;
+
+  Future<void> _showReadOnlyMessage(
+    BuildContext context,
+    String message,
+  ) async {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(record.displayName)),
+      body: Column(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(
+                  PickLogicTokens.radiusLarge,
                 ),
               ),
+              child: _OnDemandThumbnail(
+                repository: repository,
+                record: record,
+                maxWidth: 512,
+                maxHeight: 512,
+                fallbackIcon: _iconFor(record.category),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ListTile(
+              key: const Key('media-item-details'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(record.displayName),
+              subtitle: Text(
+                '${record.mimeType} · ${_formatBytes(record.sizeBytes)} · '
+                '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
+                '${_durationLabel(record)}',
+              ),
+            ),
+          ),
+          Expanded(flex: 5, child: _MobileInsightPanel(record: record)),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _DetailAction(
+                icon: Icons.open_in_new,
+                label: strings.text('open'),
+                primary: true,
+                onTap: () async {
+                  final opened = await repository.open(record);
+                  if (!context.mounted) return;
+                  _showReadOnlyMessage(
+                    context,
+                    strings.text(opened ? 'opened' : 'noViewer'),
+                  );
+                },
+              ),
+              _DetailAction(
+                icon: _sessionFavoriteIds.contains(record.id)
+                    ? Icons.favorite
+                    : Icons.favorite_border,
+                label: strings.text('favorites'),
+                onTap: () {
+                  setState(() {
+                    if (!_sessionFavoriteIds.add(record.id)) {
+                      _sessionFavoriteIds.remove(record.id);
+                    }
+                  });
+                  _showReadOnlyMessage(context, strings.text('favoriteLocal'));
+                },
+              ),
+              _DetailAction(
+                icon: Icons.my_location_outlined,
+                label: strings.text('locate'),
+                onTap: () => _showReadOnlyMessage(
+                  context,
+                  _recordLocation(record) ?? strings.text('unknownSource'),
+                ),
+              ),
+              _DetailAction(
+                icon: _sessionReviewIds.contains(record.id)
+                    ? Icons.rule_folder
+                    : Icons.rule_folder_outlined,
+                label: strings.text('reviewQueue'),
+                onTap: () {
+                  setState(() => _sessionReviewIds.add(record.id));
+                  _showReadOnlyMessage(context, strings.text('reviewQueued'));
+                },
+              ),
+              _DetailAction(
+                icon: Icons.more_horiz,
+                label: strings.text('more'),
+                onTap: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: record.locator.value),
+                  );
+                  if (context.mounted) {
+                    _showReadOnlyMessage(
+                      context,
+                      strings.text('locationCopied'),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _DetailAction extends StatelessWidget {
+  const _DetailAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 68,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: primary ? Theme.of(context).colorScheme.primary : null,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
             ),
           ],
         ),
-      );
-    },
+      ),
+    ),
   );
 }
 

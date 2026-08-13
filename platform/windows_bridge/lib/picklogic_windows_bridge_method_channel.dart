@@ -34,6 +34,17 @@ class MethodChannelPicklogicWindowsBridge
   }
 
   @override
+  Future<List<String>> pickPdfFiles({String? title}) async {
+    final arguments = <String, Object?>{};
+    if (title != null) arguments['title'] = title;
+    return await methodChannel.invokeListMethod<String>(
+          'pickPdfFiles',
+          arguments,
+        ) ??
+        const <String>[];
+  }
+
+  @override
   Future<String> getApplicationSupportDirectory() async => (await methodChannel
       .invokeMethod<String>('getApplicationSupportDirectory'))!;
 

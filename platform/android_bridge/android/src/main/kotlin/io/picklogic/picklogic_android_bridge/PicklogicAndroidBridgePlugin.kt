@@ -430,10 +430,12 @@ class PicklogicAndroidBridgePlugin :
             projection += MediaStore.MediaColumns.OWNER_PACKAGE_NAME
         }
         val hasImageColumns = kind == "images" || kind == "photos" || kind == "screenshots"
+        val hasDurationColumn = kind == "videos" || kind == "audio"
         if (hasImageColumns) {
             projection += MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME
             projection += MediaStore.Images.ImageColumns.DATE_TAKEN
         }
+        if (hasDurationColumn) projection += MediaStore.MediaColumns.DURATION
 
         val selections = target.selections.toMutableList()
         val selectionArguments = target.selectionArguments.toMutableList()
@@ -494,6 +496,11 @@ class PicklogicAndroidBridgePlugin :
             } else {
                 -1
             }
+            val durationColumn = if (hasDurationColumn) {
+                it.getColumnIndex(MediaStore.MediaColumns.DURATION)
+            } else {
+                -1
+            }
             val items = mutableListOf<Map<String, Any?>>()
             var hasMore = false
             while (it.moveToNext()) {
@@ -542,6 +549,11 @@ class PicklogicAndroidBridgePlugin :
                     "modifiedAtEpochSeconds" to modifiedAtEpochSeconds,
                     "relativePath" to relativePath,
                     "sourceHint" to (ownerPackage ?: bucket ?: pathHint),
+                    "durationMillis" to if (durationColumn >= 0 && !it.isNull(durationColumn)) {
+                        it.getLong(durationColumn).coerceAtLeast(0L)
+                    } else {
+                        null
+                    },
                 )
             }
             return mapOf("items" to items, "offset" to offset, "hasMore" to hasMore)
@@ -583,6 +595,33 @@ class PicklogicAndroidBridgePlugin :
                 externalFiles,
                 listOf("${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"),
                 listOf(MediaStore.Files.FileColumns.MEDIA_TYPE_NONE.toString()),
+            )
+            "applications" -> QueryTarget(
+                externalFiles,
+                listOf(
+                    "(${MediaStore.MediaColumns.MIME_TYPE} = ? OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)",
+                ),
+                listOf("application/vnd.android.package-archive", "%.apk"),
+            )
+            "archives" -> QueryTarget(
+                externalFiles,
+                listOf(
+                    "(${MediaStore.MediaColumns.MIME_TYPE} IN (?, ?, ?, ?) OR " +
+                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR " +
+                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR " +
+                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR " +
+                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)",
+                ),
+                listOf(
+                    "application/zip",
+                    "application/x-7z-compressed",
+                    "application/vnd.rar",
+                    "application/x-tar",
+                    "%.zip",
+                    "%.7z",
+                    "%.rar",
+                    "%.tar",
+                ),
             )
             else -> throw IllegalArgumentException("Unsupported media collection.")
         }

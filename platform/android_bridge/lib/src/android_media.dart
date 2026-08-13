@@ -8,6 +8,8 @@ enum AndroidMediaKind {
   photos,
   downloads,
   documents,
+  applications,
+  archives,
 }
 
 final class AndroidMediaQuery {
@@ -48,6 +50,7 @@ final class AndroidMediaEntry {
     required this.modifiedAt,
     this.relativePath,
     this.sourceHint,
+    this.durationMillis,
   });
 
   factory AndroidMediaEntry.fromMap(Map<Object?, Object?> map) =>
@@ -67,6 +70,7 @@ final class AndroidMediaEntry {
         ),
         relativePath: map['relativePath'] as String?,
         sourceHint: map['sourceHint'] as String?,
+        durationMillis: map['durationMillis'] as int?,
       );
 
   final String id;
@@ -78,6 +82,7 @@ final class AndroidMediaEntry {
   final DateTime modifiedAt;
   final String? relativePath;
   final String? sourceHint;
+  final int? durationMillis;
 }
 
 final class AndroidThumbnailRequest {

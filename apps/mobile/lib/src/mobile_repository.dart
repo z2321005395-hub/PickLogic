@@ -357,6 +357,8 @@ final class SyntheticMobileRepository implements MobileRepository {
         AndroidMediaKind.documents => 'Document_${index + 1}.txt',
         AndroidMediaKind.videos => 'Video_${index + 1}.mp4',
         AndroidMediaKind.audio => 'Audio_${index + 1}.mp3',
+        AndroidMediaKind.applications => 'Application_${index + 1}.apk',
+        AndroidMediaKind.archives => 'Archive_${index + 1}.zip',
       }),
     ).skip(offset).take(limit).toList(growable: false);
   }
@@ -527,6 +529,8 @@ FileRecord _recordFromAndroid(AndroidMediaEntry entry, AndroidMediaKind kind) {
       AndroidMediaKind.audio => VirtualCategory.audio,
       AndroidMediaKind.downloads => VirtualCategory.downloads,
       AndroidMediaKind.documents => _categoryForExtension(extension),
+      AndroidMediaKind.applications => VirtualCategory.installers,
+      AndroidMediaKind.archives => VirtualCategory.archives,
     },
     tags: <String>[
       'platform-metadata',
@@ -534,6 +538,8 @@ FileRecord _recordFromAndroid(AndroidMediaEntry entry, AndroidMediaKind kind) {
         'relative-path:$path',
       if (entry.sourceHint?.trim() case final hint? when hint.isNotEmpty)
         'source-hint:$hint',
+      if (entry.durationMillis case final duration? when duration > 0)
+        'duration-ms:$duration',
     ],
     hashState: HashState.notRequested,
     ocrState: OcrState.notRequested,
@@ -554,6 +560,7 @@ VirtualCategory _categoryForExtension(String extension) => switch (extension) {
   'png' || 'jpg' || 'jpeg' || 'webp' => VirtualCategory.images,
   'mp4' || 'mkv' || 'webm' => VirtualCategory.videos,
   'mp3' || 'wav' || 'flac' => VirtualCategory.audio,
+  'apk' => VirtualCategory.installers,
   'zip' || '7z' || 'rar' => VirtualCategory.archives,
   'txt' || 'doc' || 'docx' || 'md' => VirtualCategory.documents,
   _ => VirtualCategory.unknown,
