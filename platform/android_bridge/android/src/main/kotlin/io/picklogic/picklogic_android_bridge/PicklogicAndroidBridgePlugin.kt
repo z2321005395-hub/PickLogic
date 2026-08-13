@@ -39,6 +39,17 @@ internal fun hasRequestedMediaAccess(
     return (fullVisual || selectedVisual) && state["audio"] == true
 }
 
+internal fun mediaSortOrder(hasImageColumns: Boolean): String {
+    val primary = if (hasImageColumns) {
+        "CASE WHEN ${MediaStore.Images.ImageColumns.DATE_TAKEN} > 0 " +
+            "THEN ${MediaStore.Images.ImageColumns.DATE_TAKEN} / 1000 " +
+            "ELSE ${MediaStore.MediaColumns.DATE_MODIFIED} END"
+    } else {
+        MediaStore.MediaColumns.DATE_MODIFIED
+    }
+    return "$primary DESC, ${MediaStore.MediaColumns._ID} DESC"
+}
+
 /** Read-only Android metadata bridge for PickLogic. */
 class PicklogicAndroidBridgePlugin :
     FlutterPlugin,
@@ -412,7 +423,6 @@ class PicklogicAndroidBridgePlugin :
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.SIZE,
-            MediaStore.MediaColumns.DATE_ADDED,
             MediaStore.MediaColumns.DATE_MODIFIED,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -433,18 +443,12 @@ class PicklogicAndroidBridgePlugin :
         }
         val selection = selections.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
         val selectionArgs = selectionArguments.takeIf { it.isNotEmpty() }?.toTypedArray()
+        val sortOrder = mediaSortOrder(hasImageColumns)
         val cursor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val queryArgs = Bundle().apply {
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
                 putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs)
-                putStringArray(
-                    ContentResolver.QUERY_ARG_SORT_COLUMNS,
-                    arrayOf(MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns._ID),
-                )
-                putInt(
-                    ContentResolver.QUERY_ARG_SORT_DIRECTION,
-                    ContentResolver.QUERY_SORT_DIRECTION_DESCENDING,
-                )
+                putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
                 putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1)
                 putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
             }
@@ -460,8 +464,7 @@ class PicklogicAndroidBridgePlugin :
                 projection.toTypedArray(),
                 selection,
                 selectionArgs,
-                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC, " +
-                    "${MediaStore.MediaColumns._ID} DESC LIMIT ${limit + 1} OFFSET $offset",
+                "$sortOrder LIMIT ${limit + 1} OFFSET $offset",
             )
         } ?: return mapOf("items" to emptyList<Map<String, Any?>>(), "offset" to offset, "hasMore" to false)
 
@@ -470,7 +473,6 @@ class PicklogicAndroidBridgePlugin :
             val nameColumn = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
             val mimeColumn = it.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
             val sizeColumn = it.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-            val addedColumn = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
             val modifiedColumn = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
             val relativePathColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 it.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
@@ -524,10 +526,11 @@ class PicklogicAndroidBridgePlugin :
                 } else {
                     0L
                 }
+                val modifiedAtEpochSeconds = it.getLong(modifiedColumn).coerceAtLeast(0L)
                 val createdAtEpochSeconds = if (dateTakenMillis > 0) {
                     dateTakenMillis / 1000L
                 } else {
-                    it.getLong(addedColumn).coerceAtLeast(0L)
+                    modifiedAtEpochSeconds
                 }
                 items += mapOf(
                     "id" to "$kind:$id",
@@ -536,7 +539,7 @@ class PicklogicAndroidBridgePlugin :
                     "mimeType" to it.getString(mimeColumn),
                     "sizeBytes" to it.getLong(sizeColumn).coerceAtLeast(0L),
                     "createdAtEpochSeconds" to createdAtEpochSeconds,
-                    "modifiedAtEpochSeconds" to it.getLong(modifiedColumn).coerceAtLeast(0L),
+                    "modifiedAtEpochSeconds" to modifiedAtEpochSeconds,
                     "relativePath" to relativePath,
                     "sourceHint" to (ownerPackage ?: bucket ?: pathHint),
                 )

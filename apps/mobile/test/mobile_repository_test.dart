@@ -26,7 +26,10 @@ void main() {
       expect(groups.first.summary.memberIds, <String>['1', '2']);
       expect(groups.first.summary.sourceHint, 'app.notes');
       expect(groups.first.summary.ocrState, OcrState.notRequested);
-      expect(groups.first.summary.contentHint, contains('未运行 OCR'));
+      expect(
+        groups.first.summary.contentHint,
+        'mediastore_time_and_source_clues',
+      );
     });
 
     test('falls back to an honest folder clue', () {
@@ -36,7 +39,24 @@ void main() {
         null,
         relativePath: 'Pictures/Screenshots/',
       );
-      expect(screenshotSourceHint(entry), '文件夹：Screenshots');
+      expect(screenshotSourceHint(entry), 'folder:Screenshots');
+    });
+
+    test('uses stable native id order for equal displayed dates', () {
+      final capturedAt = DateTime.utc(2026, 8, 12, 10);
+      final groups = buildScreenshotGroups(<MobileScreenshotCandidate>[
+        _candidate('screenshots:119', capturedAt, 'app.notes'),
+        _candidate('screenshots:120', capturedAt, 'app.notes'),
+      ]);
+
+      expect(groups.single.summary.memberIds, <String>[
+        'screenshots:120',
+        'screenshots:119',
+      ]);
+      expect(
+        groups.single.summary.contentHint,
+        isNot(contains(RegExp(r'[\u4e00-\u9fff]'))),
+      );
     });
   });
 

@@ -10,6 +10,7 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'src/incremental_index_queue.dart';
 import 'src/mobile_localizations.dart';
 import 'src/mobile_repository.dart';
+import 'src/paged_media.dart';
 import 'src/screenshot_grouping.dart';
 
 void main() =>
@@ -318,39 +319,79 @@ final class _FilesPage extends StatefulWidget {
 
 final class _FilesPageState extends State<_FilesPage> {
   AndroidMediaKind _kind = AndroidMediaKind.documents;
-  Future<List<FileRecord>>? _records;
+  final ScrollController _scrollController = ScrollController();
+  PagedMediaController<FileRecord>? _pager;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _ensureLoaded();
   }
 
   @override
   void didUpdateWidget(covariant _FilesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.repository != widget.repository) _records = null;
+    if (oldWidget.repository != widget.repository) _pager = null;
     _ensureLoaded();
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   void _ensureLoaded() {
-    if (widget.active && _records == null) {
-      _records = widget.repository.loadMedia(_kind);
+    if (widget.active && _pager == null) _resetPager(_kind);
+  }
+
+  PagedMediaController<FileRecord> _createPager(AndroidMediaKind kind) =>
+      PagedMediaController<FileRecord>(
+        loader: (offset, limit) =>
+            widget.repository.loadMedia(kind, offset: offset, limit: limit),
+        counter: () => widget.repository.countMedia(kind),
+        idOf: (record) => record.id,
+        dateOf: (record) => record.createdAt ?? record.modifiedAt,
+      );
+
+  void _resetPager(AndroidMediaKind kind) {
+    final pager = _createPager(kind);
+    setState(() => _pager = pager);
+    unawaited(_loadNext(pager));
+  }
+
+  Future<void> _loadNext(PagedMediaController<FileRecord> pager) async {
+    if (pager.isLoading || !pager.hasMore) return;
+    setState(() {});
+    try {
+      await pager.loadNext();
+    } catch (_) {
+      // The localized retry footer remains available.
+    }
+    if (mounted && identical(_pager, pager)) setState(() {});
+  }
+
+  void _onScroll() {
+    final pager = _pager;
+    if (pager != null && _scrollController.position.extentAfter < 600) {
+      unawaited(_loadNext(pager));
     }
   }
 
   void _selectCollection(AndroidMediaKind kind) {
     if (_kind == kind) return;
-    setState(() {
-      _kind = kind;
-      _records = widget.repository.loadMedia(kind);
-    });
+    _kind = kind;
+    _resetPager(kind);
   }
 
   @override
   Widget build(BuildContext context) {
     final strings = MobileLocalizations.of(context);
+    final pager = _pager;
+    final records = pager?.items ?? const <FileRecord>[];
     return ListView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       children: [
         Text(
@@ -363,6 +404,12 @@ final class _FilesPageState extends State<_FilesPage> {
         Wrap(
           spacing: 8,
           children: [
+            ChoiceChip(
+              key: const Key('files-recent-media'),
+              label: Text(strings.text('recentMedia')),
+              selected: _kind == AndroidMediaKind.images,
+              onSelected: (_) => _selectCollection(AndroidMediaKind.images),
+            ),
             ChoiceChip(
               key: const Key('files-documents'),
               label: Text(strings.text('documents')),
@@ -378,7 +425,29 @@ final class _FilesPageState extends State<_FilesPage> {
           ],
         ),
         const SizedBox(height: 12),
-        _RecordList(future: _records, repository: widget.repository),
+        if (pager == null || (pager.isLoading && records.isEmpty))
+          const LinearProgressIndicator()
+        else if (pager.error != null && records.isEmpty)
+          Text(strings.text('collectionUnavailable'))
+        else if (records.isEmpty)
+          Text(strings.text('emptyCollection'))
+        else ...[
+          _PagedProgress(pager: pager),
+          for (final record in records)
+            Card(
+              child: ListTile(
+                leading: Icon(_iconFor(record.category)),
+                title: Text(record.displayName),
+                subtitle: Text(
+                  '${_categoryLabel(strings, record.category)} · '
+                  '${_formatBytes(record.sizeBytes)} · '
+                  '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
+                ),
+                onTap: () => _showMediaItem(context, record, widget.repository),
+              ),
+            ),
+          _LoadMoreFooter(pager: pager, onLoadMore: () => _loadNext(pager)),
+        ],
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: widget.onChooseTree,
@@ -388,42 +457,6 @@ final class _FilesPageState extends State<_FilesPage> {
       ],
     );
   }
-}
-
-final class _RecordList extends StatelessWidget {
-  const _RecordList({required this.future, required this.repository});
-
-  final Future<List<FileRecord>>? future;
-  final MobileRepository repository;
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<List<FileRecord>>(
-    future: future,
-    builder: (context, snapshot) {
-      final strings = MobileLocalizations.of(context);
-      if (future == null) return Text(strings.text('lazyLoad'));
-      if (snapshot.hasError) {
-        return Text(strings.text('collectionUnavailable'));
-      }
-      if (!snapshot.hasData) return const LinearProgressIndicator();
-      if (snapshot.data!.isEmpty) return Text(strings.text('emptyCollection'));
-      return Column(
-        children: [
-          for (final record in snapshot.data!)
-            Card(
-              child: ListTile(
-                leading: Icon(_iconFor(record.category)),
-                title: Text(record.displayName),
-                subtitle: Text(
-                  '${record.category.name} · ${_formatBytes(record.sizeBytes)}',
-                ),
-                onTap: () => _showMediaItem(context, record, repository),
-              ),
-            ),
-        ],
-      );
-    },
-  );
 }
 
 final class _ScreenshotsPage extends StatefulWidget {
@@ -447,12 +480,14 @@ final class _ScreenshotsPage extends StatefulWidget {
 
 final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
   final Map<String, ScreenshotReviewState> _review = {};
-  Future<_ScreenshotSnapshot>? _snapshot;
+  final ScrollController _scrollController = ScrollController();
+  PagedMediaController<MobileScreenshotCandidate>? _pager;
   String? _month;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _ensureLoaded();
   }
 
@@ -461,31 +496,58 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
     super.didUpdateWidget(oldWidget);
     if ((!oldWidget.canReadMedia && widget.canReadMedia) ||
         oldWidget.repository != widget.repository) {
-      _snapshot = null;
+      _pager = null;
     }
     _ensureLoaded();
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   void _ensureLoaded() {
-    if (widget.active && widget.canReadMedia && _snapshot == null) {
-      _snapshot = _loadSnapshot();
+    if (widget.active && widget.canReadMedia && _pager == null) {
+      final pager = PagedMediaController<MobileScreenshotCandidate>(
+        loader: (offset, limit) => widget.repository.loadScreenshotCandidates(
+          offset: offset,
+          limit: limit,
+        ),
+        counter: () =>
+            widget.repository.countMedia(AndroidMediaKind.screenshots),
+        idOf: (candidate) => candidate.record.id,
+        dateOf: (candidate) => candidate.capturedAt,
+      );
+      _pager = pager;
+      unawaited(_loadNext(pager));
     }
   }
 
-  Future<_ScreenshotSnapshot> _loadSnapshot() async {
-    final countFuture = widget.repository
-        .countMedia(AndroidMediaKind.screenshots)
-        .catchError((_) => -1);
-    final groups = await widget.repository.loadScreenshotGroups(limit: 60);
-    final loaded = groups.fold<int>(
-      0,
-      (sum, group) => sum + group.records.length,
-    );
-    final count = await countFuture;
-    return _ScreenshotSnapshot(
-      groups: groups,
-      totalCount: count < 0 ? loaded : count,
-    );
+  Future<void> _loadNext(
+    PagedMediaController<MobileScreenshotCandidate> pager,
+  ) async {
+    if (pager.isLoading || !pager.hasMore) return;
+    setState(() {});
+    try {
+      await pager.loadNext();
+    } catch (_) {
+      // The localized retry footer remains available.
+    }
+    if (mounted && identical(_pager, pager)) setState(() {});
+  }
+
+  void _onScroll() {
+    final pager = _pager;
+    if (pager != null && _scrollController.position.extentAfter < 600) {
+      unawaited(_loadNext(pager));
+    }
+  }
+
+  void _selectMonth(String? month) {
+    setState(() => _month = month);
+    final pager = _pager;
+    if (pager != null && pager.hasMore) unawaited(_loadNext(pager));
   }
 
   void _mark(FileRecord record, ScreenshotReviewState state) {
@@ -522,202 +584,204 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
         ],
       );
     }
-    if (_snapshot == null) {
+    final pager = _pager;
+    if (pager == null) {
       return Center(child: Text(strings.text('screenshotLazy')));
     }
+    if (pager.isLoading && pager.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (pager.error != null && pager.items.isEmpty) {
+      return Center(child: Text(strings.text('screenshotError')));
+    }
+    final groups = buildScreenshotGroups(pager.items);
+    final entries = <_ScreenshotPageEntry>[
+      for (final group in groups)
+        for (final record in group.records)
+          _ScreenshotPageEntry(group: group, record: record),
+    ];
+    final months = <String>{
+      for (final entry in entries)
+        _monthKey(entry.record.createdAt ?? entry.record.modifiedAt),
+    }.toList(growable: false);
+    final visible = entries
+        .where(
+          (entry) =>
+              _month == null ||
+              _monthKey(entry.record.createdAt ?? entry.record.modifiedAt) ==
+                  _month,
+        )
+        .toList(growable: false);
+    final keepCount = _review.values
+        .where((state) => state == ScreenshotReviewState.keep)
+        .length;
+    final laterCount = _review.values
+        .where((state) => state == ScreenshotReviewState.later)
+        .length;
+    final deleteCount = _review.values
+        .where((state) => state == ScreenshotReviewState.deleteReview)
+        .length;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: FutureBuilder<_ScreenshotSnapshot>(
-              future: _snapshot,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Text(strings.text('screenshotError'));
-                }
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final groups = snapshot.data!.groups;
-                if (groups.isEmpty) {
-                  return Center(child: Text(strings.text('screenshotEmpty')));
-                }
-                final entries = <_ScreenshotPageEntry>[
-                  for (final group in groups)
-                    for (final record in group.records)
-                      _ScreenshotPageEntry(group: group, record: record),
-                ];
-                final months = <String>{
-                  for (final entry in entries)
-                    _monthKey(
-                      entry.record.createdAt ?? entry.record.modifiedAt,
-                    ),
-                }.toList(growable: false);
-                final visible = entries
-                    .where(
-                      (entry) =>
-                          _month == null ||
-                          _monthKey(
-                                entry.record.createdAt ??
-                                    entry.record.modifiedAt,
-                              ) ==
-                              _month,
-                    )
-                    .toList(growable: false);
-                final keepCount = _review.values
-                    .where((state) => state == ScreenshotReviewState.keep)
-                    .length;
-                final laterCount = _review.values
-                    .where((state) => state == ScreenshotReviewState.later)
-                    .length;
-                final deleteCount = _review.values
-                    .where(
-                      (state) => state == ScreenshotReviewState.deleteReview,
-                    )
-                    .length;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      strings.text('screenshotsTitle'),
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    Text(
-                      strings.format('screenshotCount', <String, Object>{
-                        'total': snapshot.data!.totalCount,
-                        'visible': entries.length,
-                      }),
-                      key: const Key('screenshot-real-count'),
-                    ),
-                    Text(strings.text('groupNote')),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
+          if (entries.isEmpty)
+            Expanded(
+              child: Center(child: Text(strings.text('screenshotEmpty'))),
+            )
+          else
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    strings.text('screenshotsTitle'),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Text(
+                    strings.format('screenshotCount', <String, Object>{
+                      'total': pager.totalCount ?? pager.loadedCount,
+                      'visible': entries.length,
+                    }),
+                    key: const Key('screenshot-real-count'),
+                  ),
+                  Text(strings.text('groupNote')),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          key: const Key('screenshot-month-all'),
+                          label: Text(strings.text('allMonths')),
+                          selected: _month == null,
+                          onSelected: (_) => _selectMonth(null),
+                        ),
+                        for (final month in months) ...[
+                          const SizedBox(width: 8),
                           ChoiceChip(
-                            key: const Key('screenshot-month-all'),
-                            label: Text(strings.text('allMonths')),
-                            selected: _month == null,
-                            onSelected: (_) => setState(() => _month = null),
+                            key: Key('screenshot-month-$month'),
+                            label: Text(month),
+                            selected: _month == month,
+                            onSelected: (_) => _selectMonth(month),
                           ),
-                          for (final month in months) ...[
-                            const SizedBox(width: 8),
-                            ChoiceChip(
-                              key: Key('screenshot-month-$month'),
-                              label: Text(month),
-                              selected: _month == month,
-                              onSelected: (_) => setState(() => _month = month),
-                            ),
-                          ],
                         ],
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    strings.format('reviewSummary', <String, Object>{
+                      'keep': keepCount,
+                      'later': laterCount,
+                      'delete': deleteCount,
+                    }),
+                    key: const Key('screenshot-review-summary'),
+                  ),
+                  Text(strings.text('reviewSafety')),
+                  if (pager.hasMore)
                     Text(
-                      strings.format('reviewSummary', <String, Object>{
-                        'keep': keepCount,
-                        'later': laterCount,
-                        'delete': deleteCount,
+                      strings.format('monthProgress', <String, Object>{
+                        'loaded': pager.loadedCount,
+                        'total': pager.totalCount ?? '—',
                       }),
-                      key: const Key('screenshot-review-summary'),
+                      key: const Key('screenshot-month-progress'),
                     ),
-                    Text(strings.text('reviewSafety')),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: GridView.builder(
-                        key: const Key('screenshot-thumbnail-grid'),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 6,
-                              mainAxisSpacing: 6,
-                              childAspectRatio: 0.82,
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: GridView.builder(
+                      key: const Key('screenshot-thumbnail-grid'),
+                      controller: _scrollController,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 6,
+                            mainAxisSpacing: 6,
+                            childAspectRatio: 0.82,
+                          ),
+                      itemCount: visible.length,
+                      itemBuilder: (context, index) {
+                        final entry = visible[index];
+                        final record = entry.record;
+                        final group = entry.group.summary;
+                        final state =
+                            _review[record.id] ??
+                            ScreenshotReviewState.unreviewed;
+                        return Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            key: Key('screenshot-item-${record.id}'),
+                            onTap: () => _showScreenshotItem(
+                              context,
+                              record,
+                              entry.group,
+                              state,
+                              widget.repository,
+                              _mark,
                             ),
-                        itemCount: visible.length,
-                        itemBuilder: (context, index) {
-                          final entry = visible[index];
-                          final record = entry.record;
-                          final group = entry.group.summary;
-                          final state =
-                              _review[record.id] ??
-                              ScreenshotReviewState.unreviewed;
-                          return Card(
-                            clipBehavior: Clip.antiAlias,
-                            child: InkWell(
-                              key: Key('screenshot-item-${record.id}'),
-                              onTap: () => _showScreenshotItem(
-                                context,
-                                record,
-                                entry.group,
-                                state,
-                                widget.repository,
-                                _mark,
-                              ),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  _OnDemandThumbnail(
-                                    repository: widget.repository,
-                                    record: record,
-                                    maxWidth: 192,
-                                    maxHeight: 192,
-                                    fallbackIcon:
-                                        Icons.screenshot_monitor_outlined,
-                                  ),
-                                  Align(
-                                    alignment: Alignment.bottomCenter,
-                                    child: Container(
-                                      width: double.infinity,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .surface
-                                          .withValues(alpha: 0.90),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 4,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                _OnDemandThumbnail(
+                                  repository: widget.repository,
+                                  record: record,
+                                  maxWidth: 192,
+                                  maxHeight: 192,
+                                  fallbackIcon:
+                                      Icons.screenshot_monitor_outlined,
+                                ),
+                                Align(
+                                  alignment: Alignment.bottomCenter,
+                                  child: Container(
+                                    width: double.infinity,
+                                    color: Theme.of(context).colorScheme.surface
+                                        .withValues(alpha: 0.90),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 4,
+                                    ),
+                                    child: Text(
+                                      _formatDateTime(
+                                        record.createdAt ?? record.modifiedAt,
                                       ),
-                                      child: Text(
-                                        _formatDateTime(
-                                          record.createdAt ?? record.modifiedAt,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.labelSmall,
-                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
                                     ),
                                   ),
-                                  if (group.memberIds.length > 1)
-                                    _GridBadge(
-                                      alignment: Alignment.topLeft,
-                                      label: strings.format(
-                                        'consecutive',
-                                        <String, Object>{
-                                          'count': group.memberIds.length,
-                                        },
-                                      ),
+                                ),
+                                if (group.memberIds.length > 1)
+                                  _GridBadge(
+                                    alignment: Alignment.topLeft,
+                                    label: strings.format(
+                                      'consecutive',
+                                      <String, Object>{
+                                        'count': group.memberIds.length,
+                                      },
                                     ),
-                                  if (state != ScreenshotReviewState.unreviewed)
-                                    _GridBadge(
-                                      alignment: Alignment.topRight,
-                                      label: _reviewLabel(strings, state),
-                                    ),
-                                ],
-                              ),
+                                  ),
+                                if (state != ScreenshotReviewState.unreviewed)
+                                  _GridBadge(
+                                    alignment: Alignment.topRight,
+                                    label: _reviewLabel(strings, state),
+                                  ),
+                              ],
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                );
-              },
+                  ),
+                  _LoadMoreFooter(
+                    pager: pager,
+                    onLoadMore: () => _loadNext(pager),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -744,12 +808,14 @@ final class _PhotosPage extends StatefulWidget {
 }
 
 final class _PhotosPageState extends State<_PhotosPage> {
-  Future<List<FileRecord>>? _records;
+  final ScrollController _scrollController = ScrollController();
+  PagedMediaController<FileRecord>? _pager;
   String _query = '';
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _ensureLoaded();
   }
 
@@ -758,14 +824,57 @@ final class _PhotosPageState extends State<_PhotosPage> {
     super.didUpdateWidget(oldWidget);
     if ((!oldWidget.canReadMedia && widget.canReadMedia) ||
         oldWidget.repository != widget.repository) {
-      _records = null;
+      _pager = null;
     }
     _ensureLoaded();
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   void _ensureLoaded() {
-    if (widget.active && widget.canReadMedia && _records == null) {
-      _records = widget.repository.loadMedia(AndroidMediaKind.photos);
+    if (widget.active && widget.canReadMedia && _pager == null) {
+      final pager = PagedMediaController<FileRecord>(
+        loader: (offset, limit) => widget.repository.loadMedia(
+          AndroidMediaKind.photos,
+          offset: offset,
+          limit: limit,
+        ),
+        counter: () => widget.repository.countMedia(AndroidMediaKind.photos),
+        idOf: (record) => record.id,
+        dateOf: (record) => record.createdAt ?? record.modifiedAt,
+      );
+      _pager = pager;
+      unawaited(_loadNext(pager));
+    }
+  }
+
+  Future<void> _loadNext(PagedMediaController<FileRecord> pager) async {
+    if (pager.isLoading || !pager.hasMore) return;
+    setState(() {});
+    try {
+      await pager.loadNext();
+    } catch (_) {
+      // The localized retry footer remains available.
+    }
+    if (mounted && identical(_pager, pager)) setState(() {});
+  }
+
+  void _onScroll() {
+    final pager = _pager;
+    if (pager != null && _scrollController.position.extentAfter < 600) {
+      unawaited(_loadNext(pager));
+    }
+  }
+
+  void _setQuery(String value) {
+    setState(() => _query = value.trim().toLowerCase());
+    final pager = _pager;
+    if (_query.isNotEmpty && pager != null && pager.hasMore) {
+      unawaited(_loadNext(pager));
     }
   }
 
@@ -789,9 +898,24 @@ final class _PhotosPageState extends State<_PhotosPage> {
         ],
       );
     }
-    if (_records == null) {
+    final pager = _pager;
+    if (pager == null) {
       return Center(child: Text(strings.text('photosLazy')));
     }
+    if (pager.isLoading && pager.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (pager.error != null && pager.items.isEmpty) {
+      return Center(child: Text(strings.text('photosError')));
+    }
+    final records = pager.items
+        .where(
+          (record) =>
+              _query.isEmpty ||
+              record.displayName.toLowerCase().contains(_query) ||
+              record.mimeType.toLowerCase().contains(_query),
+        )
+        .toList(growable: false);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -811,63 +935,49 @@ final class _PhotosPageState extends State<_PhotosPage> {
               border: const OutlineInputBorder(),
               isDense: true,
             ),
-            onChanged: (value) =>
-                setState(() => _query = value.trim().toLowerCase()),
+            onChanged: _setQuery,
           ),
           const SizedBox(height: 8),
+          _PagedProgress(pager: pager),
           Expanded(
-            child: FutureBuilder<List<FileRecord>>(
-              future: _records,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text(strings.text('photosError')));
-                }
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final records = snapshot.data!
-                    .where(
-                      (record) =>
-                          _query.isEmpty ||
-                          record.displayName.toLowerCase().contains(_query) ||
-                          record.mimeType.toLowerCase().contains(_query),
-                    )
-                    .toList(growable: false);
-                if (records.isEmpty) {
-                  return Center(child: Text(strings.text('photosNoMatches')));
-                }
-                return GridView.builder(
-                  key: const Key('photos-thumbnail-grid'),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: records.length,
-                  itemBuilder: (context, index) {
-                    final record = records[index];
-                    return Card(
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () =>
-                            _showMediaItem(context, record, widget.repository),
-                        child: Semantics(
-                          label: record.displayName,
-                          child: _OnDemandThumbnail(
-                            repository: widget.repository,
-                            record: record,
-                            maxWidth: 160,
-                            maxHeight: 160,
-                            fallbackIcon: Icons.image_outlined,
+            child: records.isEmpty
+                ? Center(child: Text(strings.text('photosNoMatches')))
+                : GridView.builder(
+                    key: const Key('photos-thumbnail-grid'),
+                    controller: _scrollController,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                    itemCount: records.length,
+                    itemBuilder: (context, index) {
+                      final record = records[index];
+                      return Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => _showMediaItem(
+                            context,
+                            record,
+                            widget.repository,
+                          ),
+                          child: Semantics(
+                            label: record.displayName,
+                            child: _OnDemandThumbnail(
+                              repository: widget.repository,
+                              record: record,
+                              maxWidth: 160,
+                              maxHeight: 160,
+                              fallbackIcon: Icons.image_outlined,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                      );
+                    },
+                  ),
           ),
+          _LoadMoreFooter(pager: pager, onLoadMore: () => _loadNext(pager)),
         ],
       ),
     );
@@ -881,11 +991,64 @@ final class _ScreenshotPageEntry {
   final FileRecord record;
 }
 
-final class _ScreenshotSnapshot {
-  const _ScreenshotSnapshot({required this.groups, required this.totalCount});
+final class _PagedProgress<T> extends StatelessWidget {
+  const _PagedProgress({required this.pager});
 
-  final List<MobileScreenshotGroup> groups;
-  final int totalCount;
+  final PagedMediaController<T> pager;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    final total = pager.totalCount;
+    return Text(
+      strings.format('loadedProgress', <String, Object>{
+        'loaded': pager.loadedCount,
+        'total': total ?? '—',
+      }),
+      key: const Key('paged-media-progress'),
+    );
+  }
+}
+
+final class _LoadMoreFooter<T> extends StatelessWidget {
+  const _LoadMoreFooter({required this.pager, required this.onLoadMore});
+
+  final PagedMediaController<T> pager;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = MobileLocalizations.of(context);
+    if (pager.isLoading) {
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+            Text(strings.text('loadingMore')),
+          ],
+        ),
+      );
+    }
+    if (!pager.hasMore) return const SizedBox.shrink();
+    return TextButton.icon(
+      key: const Key('paged-media-load-more'),
+      onPressed: onLoadMore,
+      icon: Icon(
+        pager.error == null ? Icons.expand_more : Icons.refresh_outlined,
+      ),
+      label: Text(
+        pager.error == null
+            ? strings.text('loadMore')
+            : strings.text('loadMoreError'),
+      ),
+    );
+  }
 }
 
 final class _GridBadge extends StatelessWidget {
@@ -1277,7 +1440,7 @@ final class _SearchResults extends StatelessWidget {
           return ListTile(
             leading: Icon(_iconFor(record.category)),
             title: Text(record.displayName),
-            subtitle: Text(record.category.name),
+            subtitle: Text(_categoryLabel(strings, record.category)),
             onTap: () => onSelected(record),
           );
         },
@@ -1305,13 +1468,13 @@ final class _MobileInsightPanel extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           strings.format('insightSummary', <String, Object>{
-            'type': record.category.name,
+            'type': _categoryLabel(strings, record.category),
           }),
         ),
         const SizedBox(height: 12),
         _InsightDetail(
           label: strings.text('type'),
-          value: record.category.name,
+          value: _categoryLabel(strings, record.category),
         ),
         _InsightDetail(
           label: strings.text('risk'),
@@ -1328,7 +1491,7 @@ final class _MobileInsightPanel extends StatelessWidget {
         ),
         _InsightDetail(
           label: strings.text('source'),
-          value: record.sourceKind.name,
+          value: _sourceKindLabel(strings, record.sourceKind),
         ),
         const SizedBox(height: 8),
         Text(strings.text('metadataEvidence')),
@@ -1398,6 +1561,49 @@ String _reviewLabel(MobileLocalizations strings, ScreenshotReviewState state) =>
       ScreenshotReviewState.unreviewed => strings.text('unreviewed'),
     };
 
+String _categoryLabel(MobileLocalizations strings, VirtualCategory category) =>
+    switch (category) {
+      VirtualCategory.documents => strings.text('categoryDocuments'),
+      VirtualCategory.spreadsheets => strings.text('categorySpreadsheets'),
+      VirtualCategory.presentations => strings.text('categoryPresentations'),
+      VirtualCategory.pdf => strings.text('categoryPdf'),
+      VirtualCategory.images => strings.text('categoryImages'),
+      VirtualCategory.videos => strings.text('categoryVideos'),
+      VirtualCategory.audio => strings.text('categoryAudio'),
+      VirtualCategory.archives => strings.text('categoryArchives'),
+      VirtualCategory.installers => strings.text('categoryInstallers'),
+      VirtualCategory.code => strings.text('categoryCode'),
+      VirtualCategory.academicPapers => strings.text('categoryAcademicPapers'),
+      VirtualCategory.screenshots => strings.text('categoryScreenshots'),
+      VirtualCategory.downloads => strings.text('categoryDownloads'),
+      VirtualCategory.duplicates => strings.text('categoryDuplicates'),
+      VirtualCategory.largeFiles => strings.text('categoryLargeFiles'),
+      VirtualCategory.unknown => strings.text('categoryUnknown'),
+    };
+
+String _sourceKindLabel(MobileLocalizations strings, SourceKind source) =>
+    switch (source) {
+      SourceKind.fileSystem => strings.text('sourceFileSystem'),
+      SourceKind.mediaStore => strings.text('sourceMediaStore'),
+      SourceKind.storageAccessFramework => strings.text(
+        'sourceStorageAccessFramework',
+      ),
+      SourceKind.downloads => strings.text('sourceDownloads'),
+      SourceKind.appOwned => strings.text('sourceAppOwned'),
+      SourceKind.synthetic => strings.text('sourceSynthetic'),
+      SourceKind.unknown => strings.text('sourceUnknownKind'),
+    };
+
+String _localizedSourceHint(MobileLocalizations strings, String sourceHint) {
+  if (sourceHint == 'unknown') return strings.text('unknownSource');
+  if (sourceHint.startsWith('folder:')) {
+    return strings.format('folderSource', <String, Object>{
+      'name': sourceHint.substring('folder:'.length),
+    });
+  }
+  return sourceHint;
+}
+
 void _showMediaItem(
   BuildContext context,
   FileRecord record,
@@ -1420,7 +1626,7 @@ void _showMediaItem(
               subtitle: Text(
                 '${record.mimeType} · ${_formatBytes(record.sizeBytes)}\n'
                 '${_formatDateTime(record.createdAt ?? record.modifiedAt)} · '
-                '${record.sourceKind.name}',
+                '${_sourceKindLabel(strings, record.sourceKind)}',
               ),
               isThreeLine: true,
             ),
@@ -1500,7 +1706,7 @@ void _showScreenshotItem(
                     '${_formatDateTime(record.createdAt ?? record.modifiedAt)}',
                   ),
                   Text(
-                    '${strings.format('sourceClue', <String, Object>{'source': group.summary.sourceHint})} · '
+                    '${strings.format('sourceClue', <String, Object>{'source': _localizedSourceHint(strings, group.summary.sourceHint)})} · '
                     '${group.records.length > 1 ? strings.format('consecutive', <String, Object>{'count': group.records.length}) : strings.text('single')}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

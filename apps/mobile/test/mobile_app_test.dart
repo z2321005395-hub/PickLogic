@@ -54,7 +54,10 @@ void main() {
 
     await tester.tap(find.text('Screenshots'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('4 accessible screenshots'), findsOneWidget);
+    expect(
+      find.textContaining('All 4 screenshots are browsable by date'),
+      findsOneWidget,
+    );
     expect(find.textContaining('Local review'), findsOneWidget);
     await tester.tap(find.byKey(const Key('screenshot-item-Screenshot_1.png')));
     await tester.pumpAndSettle();
@@ -82,7 +85,7 @@ void main() {
     await tester.tap(find.text('截图'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('screenshot-real-count')), findsOneWidget);
-    expect(find.textContaining('共 4 张可访问截图'), findsOneWidget);
+    expect(find.textContaining('全部 4 张截图均可按日期浏览'), findsOneWidget);
     expect(find.byKey(const Key('screenshot-thumbnail-grid')), findsOneWidget);
     expect(find.textContaining('删除审查不会删除、移动或重命名'), findsOneWidget);
     expect(find.textContaining('来源线索不是应用归属结论'), findsOneWidget);
@@ -138,9 +141,7 @@ void main() {
     expect(find.text('Download_1.pdf'), findsOneWidget);
   });
 
-  testWidgets('photos support bounded current-page metadata search', (
-    tester,
-  ) async {
+  testWidgets('photos support loaded metadata search', (tester) async {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.tap(find.text('照片'));
     await tester.pumpAndSettle();
@@ -152,6 +153,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.bySemanticsLabel('Photo_12.jpg'), findsOneWidget);
     expect(find.bySemanticsLabel('Photo_1.jpg'), findsNothing);
+  });
+
+  testWidgets('photos continue past 120 items near the grid bottom', (
+    tester,
+  ) async {
+    final base = DateTime.utc(2026, 8, 13, 12);
+    final photos = List<FileRecord>.generate(
+      145,
+      (index) => syntheticMobileRecord(
+        'Photo_${index + 1}.jpg',
+        createdAt: base.subtract(Duration(minutes: index)),
+      ),
+      growable: false,
+    );
+    final repository = _RetryMobileRepository(
+      failBootstrapOnce: false,
+      photos: photos,
+    );
+    await tester.pumpWidget(PickLogicMobileApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('照片'));
+    await tester.pumpAndSettle();
+    expect(repository.photoOffsets, <int>[0]);
+    expect(find.text('已加载 120 / 145'), findsOneWidget);
+
+    for (
+      var attempt = 0;
+      attempt < 20 && repository.photoOffsets.length < 2;
+      attempt++
+    ) {
+      await tester.drag(
+        find.byKey(const Key('photos-thumbnail-grid')),
+        const Offset(0, -1200),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    expect(repository.photoOffsets, <int>[0, 120]);
+    expect(find.text('已加载 145 / 145', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('storage insight exposes platform and attribution limits', (
@@ -214,12 +255,15 @@ final class _RetryMobileRepository implements MobileRepository {
     this.failBootstrapOnce = true,
     this.failPermissionRequest = false,
     this.bootstrapState,
+    this.photos,
   });
 
   final MobileRepository _delegate = const SyntheticMobileRepository();
   final bool failBootstrapOnce;
   final bool failPermissionRequest;
   final MobileBootstrapState? bootstrapState;
+  final List<FileRecord>? photos;
+  final List<int> photoOffsets = <int>[];
   int bootstrapCalls = 0;
 
   @override
@@ -249,18 +293,39 @@ final class _RetryMobileRepository implements MobileRepository {
   @override
   Future<List<FileRecord>> loadMedia(
     AndroidMediaKind kind, {
-    int limit = 60,
+    int limit = 120,
     int offset = 0,
-  }) => _delegate.loadMedia(kind, limit: limit, offset: offset);
+  }) {
+    if (kind == AndroidMediaKind.photos && photos != null) {
+      final records = photos!;
+      photoOffsets.add(offset);
+      return Future<List<FileRecord>>.value(
+        records.skip(offset).take(limit).toList(growable: false),
+      );
+    }
+    return _delegate.loadMedia(kind, limit: limit, offset: offset);
+  }
 
   @override
   Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
-    int limit = 60,
+    int limit = 120,
     int offset = 0,
   }) => _delegate.loadScreenshotGroups(limit: limit, offset: offset);
 
   @override
-  Future<int> countMedia(AndroidMediaKind kind) => _delegate.countMedia(kind);
+  Future<List<MobileScreenshotCandidate>> loadScreenshotCandidates({
+    int limit = 120,
+    int offset = 0,
+  }) => _delegate.loadScreenshotCandidates(limit: limit, offset: offset);
+
+  @override
+  Future<int> countMedia(AndroidMediaKind kind) {
+    if (kind == AndroidMediaKind.photos && photos != null) {
+      final records = photos!;
+      return Future<int>.value(records.length);
+    }
+    return _delegate.countMedia(kind);
+  }
 
   @override
   Future<Uint8List?> loadThumbnail(

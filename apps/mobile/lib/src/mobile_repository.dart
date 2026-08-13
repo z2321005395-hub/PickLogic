@@ -30,12 +30,17 @@ abstract interface class MobileRepository {
 
   Future<List<FileRecord>> loadMedia(
     AndroidMediaKind kind, {
-    int limit = 60,
+    int limit = 120,
     int offset = 0,
   });
 
   Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
-    int limit = 60,
+    int limit = 120,
+    int offset = 0,
+  });
+
+  Future<List<MobileScreenshotCandidate>> loadScreenshotCandidates({
+    int limit = 120,
     int offset = 0,
   });
 
@@ -136,7 +141,7 @@ final class AndroidMobileRepository implements MobileRepository {
   @override
   Future<List<FileRecord>> loadMedia(
     AndroidMediaKind kind, {
-    int limit = 60,
+    int limit = 120,
     int offset = 0,
   }) async {
     final page = await _loadAndCachePage(
@@ -149,7 +154,17 @@ final class AndroidMobileRepository implements MobileRepository {
 
   @override
   Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
-    int limit = 60,
+    int limit = 120,
+    int offset = 0,
+  }) async {
+    return buildScreenshotGroups(
+      await loadScreenshotCandidates(limit: limit, offset: offset),
+    );
+  }
+
+  @override
+  Future<List<MobileScreenshotCandidate>> loadScreenshotCandidates({
+    int limit = 120,
     int offset = 0,
   }) async {
     final page = await _loadAndCachePage(
@@ -159,14 +174,14 @@ final class AndroidMobileRepository implements MobileRepository {
         offset: offset,
       ),
     );
-    return buildScreenshotGroups(
-      page.items.map(
-        (entry) => MobileScreenshotCandidate(
-          record: _recordFromAndroid(entry, AndroidMediaKind.screenshots),
-          metadata: entry,
-        ),
-      ),
-    );
+    return page.items
+        .map(
+          (entry) => MobileScreenshotCandidate(
+            record: _recordFromAndroid(entry, AndroidMediaKind.screenshots),
+            metadata: entry,
+          ),
+        )
+        .toList(growable: false);
   }
 
   @override
@@ -324,11 +339,11 @@ final class SyntheticMobileRepository implements MobileRepository {
   @override
   Future<List<FileRecord>> loadMedia(
     AndroidMediaKind kind, {
-    int limit = 60,
+    int limit = 120,
     int offset = 0,
   }) async {
     final count = switch (kind) {
-      AndroidMediaKind.screenshots => 3,
+      AndroidMediaKind.screenshots => 4,
       AndroidMediaKind.photos || AndroidMediaKind.images => 12,
       _ => 3,
     };
@@ -348,7 +363,17 @@ final class SyntheticMobileRepository implements MobileRepository {
 
   @override
   Future<List<MobileScreenshotGroup>> loadScreenshotGroups({
-    int limit = 60,
+    int limit = 120,
+    int offset = 0,
+  }) async {
+    return buildScreenshotGroups(
+      await loadScreenshotCandidates(limit: limit, offset: offset),
+    );
+  }
+
+  @override
+  Future<List<MobileScreenshotCandidate>> loadScreenshotCandidates({
+    int limit = 120,
     int offset = 0,
   }) async {
     final times = <DateTime>[
@@ -384,7 +409,7 @@ final class SyntheticMobileRepository implements MobileRepository {
           ),
         ),
     ];
-    return buildScreenshotGroups(candidates.skip(offset).take(limit));
+    return candidates.skip(offset).take(limit).toList(growable: false);
   }
 
   @override

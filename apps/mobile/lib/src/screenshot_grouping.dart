@@ -1,6 +1,8 @@
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 
+import 'paged_media.dart';
+
 final class MobileScreenshotCandidate {
   const MobileScreenshotCandidate({
     required this.record,
@@ -30,7 +32,11 @@ List<MobileScreenshotGroup> buildScreenshotGroups(
     throw ArgumentError.value(continuousGap, 'continuousGap');
   }
   final sorted = candidates.toList(growable: false)
-    ..sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    ..sort((left, right) {
+      final byDate = right.capturedAt.compareTo(left.capturedAt);
+      if (byDate != 0) return byDate;
+      return compareMediaIdsDescending(left.metadata.id, right.metadata.id);
+    });
   if (sorted.isEmpty) return const <MobileScreenshotGroup>[];
 
   final result = <MobileScreenshotGroup>[];
@@ -52,7 +58,7 @@ List<MobileScreenshotGroup> buildScreenshotGroups(
           endedAt: newest,
           memberIds: memberIds,
           duplicateConfidence: 0,
-          contentHint: '仅按 MediaStore 时间与来源线索分组；未运行 OCR。',
+          contentHint: 'mediastore_time_and_source_clues',
           ocrState: OcrState.notRequested,
           reviewState: ScreenshotReviewState.unreviewed,
           protectedCount: 0,
@@ -90,9 +96,9 @@ String screenshotSourceHint(AndroidMediaEntry entry) {
       .where((segment) => segment.trim().isNotEmpty)
       .toList(growable: false);
   if (segments != null && segments.isNotEmpty) {
-    return '文件夹：${segments.last}';
+    return 'folder:${segments.last}';
   }
-  return '来源未知';
+  return 'unknown';
 }
 
 bool _sameLocalDay(DateTime left, DateTime right) {
