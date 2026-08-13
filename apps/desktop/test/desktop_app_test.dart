@@ -20,10 +20,7 @@ void main() {
     await tester.pumpWidget(const PickLogicDesktopApp(pro: false));
     await tester.pumpAndSettle();
     expect(find.text('Developer Safe Mode: ON'), findsOneWidget);
-    expect(
-      find.text('Developer Safe Mode — real files are read-only.'),
-      findsWidgets,
-    );
+    expect(find.text('开发者安全模式 — 真实文件只读。'), findsWidgets);
     expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
     expect(find.textContaining('文献'), findsNothing);
     expect(
@@ -44,6 +41,53 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('Standard newly added strings follow the 中/EN locale switch', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _TrackARepository();
+    await tester.pumpWidget(
+      PickLogicDesktopApp(pro: false, repository: repository),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '文档/PDF'), findsOneWidget);
+    expect(find.text('开发者安全模式 — 真实文件只读。'), findsWidgets);
+
+    await tester.tap(find.text('选择文件夹 · 只读扫描'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('重复项 · Duplicates'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('精确重复项：1 组 · 2 个文件'), findsOneWidget);
+
+    await tester.tap(find.text('EN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose folder · Read-only scan'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Documents/PDF'), findsOneWidget);
+    expect(
+      find.text('Developer Safe Mode — real files are read-only.'),
+      findsWidgets,
+    );
+    expect(
+      find.textContaining('Exact duplicates: 1 group(s) · 2 files'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(OutlinedButton, 'Move'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Rename'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);
+    expect(find.text('选择文件夹 · 只读扫描'), findsNothing);
+    expect(find.text('开发者安全模式 — 真实文件只读。'), findsNothing);
+
+    await tester.tap(find.text('中'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择文件夹 · 只读扫描'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '文档/PDF'), findsOneWidget);
+    expect(find.text('开发者安全模式 — 真实文件只读。'), findsWidgets);
+    expect(find.textContaining('精确重复项：1 组 · 2 个文件'), findsOneWidget);
   });
 
   testWidgets(

@@ -263,6 +263,7 @@ final class _DesktopShellState extends State<DesktopShell> {
   @override
   Widget build(BuildContext context) {
     final strings = PickLogicLocalizations.of(context);
+    final standardStrings = _StandardStrings.of(context);
     final query = _searchController.text.toLowerCase();
     var visible = query.isEmpty
         ? _records
@@ -299,11 +300,11 @@ final class _DesktopShellState extends State<DesktopShell> {
       body: Column(
         children: [
           const Align(alignment: Alignment.centerLeft, child: SafeModeBanner()),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
-              child: Text('Developer Safe Mode — real files are read-only.'),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Text(standardStrings.readOnlySafety),
             ),
           ),
           Expanded(
@@ -342,7 +343,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                                           ? null
                                           : _scanSelectedDirectory,
                                       icon: const Icon(Icons.folder_open),
-                                      label: const Text('选择文件夹 · 只读扫描'),
+                                      label: Text(standardStrings.chooseFolder),
                                     ),
                                     if (_scanning)
                                       OutlinedButton.icon(
@@ -358,6 +359,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                                 const SizedBox(height: 12),
                                 _CategoryFilters(
                                   selected: _categoryFilter,
+                                  strings: standardStrings,
                                   onSelected: (value) =>
                                       setState(() => _categoryFilter = value),
                                 ),
@@ -373,6 +375,7 @@ final class _DesktopShellState extends State<DesktopShell> {
                                     ),
                                     hashedCount: _duplicateHashedCount,
                                     failedCount: _duplicateFailedCount,
+                                    strings: standardStrings,
                                   ),
                                 ],
                                 const SizedBox(height: 12),
@@ -514,21 +517,26 @@ final class _CompactDetailPane extends StatelessWidget {
 }
 
 final class _CategoryFilters extends StatelessWidget {
-  const _CategoryFilters({required this.selected, required this.onSelected});
+  const _CategoryFilters({
+    required this.selected,
+    required this.strings,
+    required this.onSelected,
+  });
 
   final String selected;
+  final _StandardStrings strings;
   final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    const filters = <(String, String)>[
-      ('all', '全部'),
-      ('documents', '文档/PDF'),
-      ('spreadsheets', '表格'),
-      ('images', '图片'),
-      ('media', '音视频'),
-      ('archives', '压缩包'),
-      ('other', '其他'),
+    final filters = <(String, String)>[
+      ('all', strings.categoryAll),
+      ('documents', strings.categoryDocuments),
+      ('spreadsheets', strings.categorySpreadsheets),
+      ('images', strings.categoryImages),
+      ('media', strings.categoryMedia),
+      ('archives', strings.categoryArchives),
+      ('other', strings.categoryOther),
     ];
     return Wrap(
       spacing: 8,
@@ -553,6 +561,7 @@ final class _DuplicateStatus extends StatelessWidget {
     required this.fileCount,
     required this.hashedCount,
     required this.failedCount,
+    required this.strings,
   });
 
   final bool running;
@@ -561,34 +570,39 @@ final class _DuplicateStatus extends StatelessWidget {
   final int fileCount;
   final int hashedCount;
   final int failedCount;
+  final _StandardStrings strings;
 
   @override
   Widget build(BuildContext context) {
     if (running) {
-      return const Row(
+      return Row(
         children: [
-          SizedBox.square(
+          const SizedBox.square(
             dimension: 18,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          SizedBox(width: 8),
-          Expanded(child: Text('正在只读计算 SHA-256 精确重复项…')),
+          const SizedBox(width: 8),
+          Expanded(child: Text(strings.duplicatesRunning)),
         ],
       );
     }
     if (!ready) {
-      return const Text('选择重复项后，将只读计算大小相同文件的 SHA-256。');
+      return Text(strings.duplicatesPrompt);
     }
     if (groupCount == 0) {
       return Text(
         failedCount == 0
-            ? '未发现精确重复项；原文件未更改。'
-            : '重复项检查完成，但有 $failedCount 个候选无法读取；原文件未更改。',
+            ? strings.duplicatesNone
+            : strings.duplicatesFailed(failedCount),
       );
     }
     return Text(
-      '精确重复项：$groupCount 组 · $fileCount 个文件 · '
-      '本次哈希 $hashedCount 个${failedCount == 0 ? '' : ' · 失败 $failedCount 个'}。',
+      strings.duplicatesFound(
+        groupCount: groupCount,
+        fileCount: fileCount,
+        hashedCount: hashedCount,
+        failedCount: failedCount,
+      ),
     );
   }
 }
@@ -705,21 +719,81 @@ final class _PreviewPane extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 16),
-      const Text('Developer Safe Mode — real files are read-only.'),
+      Text(_StandardStrings.of(context).readOnlySafety),
       const SizedBox(height: 8),
-      const Wrap(
+      Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
-          OutlinedButton(onPressed: null, child: Text('移动')),
-          OutlinedButton(onPressed: null, child: Text('重命名')),
-          OutlinedButton(onPressed: null, child: Text('删除')),
+          OutlinedButton(
+            onPressed: null,
+            child: Text(_StandardStrings.of(context).move),
+          ),
+          OutlinedButton(
+            onPressed: null,
+            child: Text(_StandardStrings.of(context).rename),
+          ),
+          OutlinedButton(
+            onPressed: null,
+            child: Text(_StandardStrings.of(context).delete),
+          ),
         ],
       ),
       const SizedBox(height: 32),
       const Text('Read-only metadata preview. Original location is unchanged.'),
     ],
   );
+}
+
+final class _StandardStrings {
+  const _StandardStrings._(this.isChinese);
+
+  factory _StandardStrings.of(BuildContext context) =>
+      _StandardStrings._(Localizations.localeOf(context).languageCode == 'zh');
+
+  final bool isChinese;
+
+  String get readOnlySafety => isChinese
+      ? '开发者安全模式 — 真实文件只读。'
+      : 'Developer Safe Mode — real files are read-only.';
+  String get chooseFolder =>
+      isChinese ? '选择文件夹 · 只读扫描' : 'Choose folder · Read-only scan';
+  String get categoryAll => isChinese ? '全部' : 'All';
+  String get categoryDocuments => isChinese ? '文档/PDF' : 'Documents/PDF';
+  String get categorySpreadsheets => isChinese ? '表格' : 'Spreadsheets';
+  String get categoryImages => isChinese ? '图片' : 'Images';
+  String get categoryMedia => isChinese ? '音视频' : 'Audio/Video';
+  String get categoryArchives => isChinese ? '压缩包' : 'Archives';
+  String get categoryOther => isChinese ? '其他' : 'Other';
+  String get duplicatesRunning => isChinese
+      ? '正在只读计算 SHA-256 精确重复项…'
+      : 'Finding exact duplicates with read-only SHA-256…';
+  String get duplicatesPrompt => isChinese
+      ? '选择重复项后，将只读计算大小相同文件的 SHA-256。'
+      : 'Duplicate detection uses read-only SHA-256 for files with matching sizes.';
+  String get duplicatesNone => isChinese
+      ? '未发现精确重复项；原文件未更改。'
+      : 'No exact duplicates found; original files are unchanged.';
+  String duplicatesFailed(int failedCount) => isChinese
+      ? '重复项检查完成，但有 $failedCount 个候选无法读取；原文件未更改。'
+      : 'Duplicate check finished, but $failedCount candidate(s) could not be read; original files are unchanged.';
+  String duplicatesFound({
+    required int groupCount,
+    required int fileCount,
+    required int hashedCount,
+    required int failedCount,
+  }) {
+    if (isChinese) {
+      return '精确重复项：$groupCount 组 · $fileCount 个文件 · '
+          '本次哈希 $hashedCount 个${failedCount == 0 ? '' : ' · 失败 $failedCount 个'}。';
+    }
+    return 'Exact duplicates: $groupCount group(s) · $fileCount files · '
+        '$hashedCount hashed${failedCount == 0 ? '' : ' · $failedCount failed'}.';
+  }
+
+  String get move => isChinese ? '移动' : 'Move';
+  String get rename => isChinese ? '重命名' : 'Rename';
+  String get delete => isChinese ? '删除' : 'Delete';
 }
 
 bool _matchesCategory(FileRecord record, String filter) => switch (filter) {
