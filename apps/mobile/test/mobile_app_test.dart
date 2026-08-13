@@ -163,6 +163,11 @@ void main() {
       expect(find.text('文件类型'), findsOneWidget);
       expect(find.text('智能集合'), findsOneWidget);
       expect(find.text('应用与来源'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('phone-storage-entry')),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byKey(const Key('phone-storage-entry')), findsOneWidget);
       for (final label in ['图片', '音频', '视频', '应用', '压缩包', '文档']) {
         expect(find.text(label), findsWidgets);

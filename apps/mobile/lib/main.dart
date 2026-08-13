@@ -447,7 +447,7 @@ final class _FilesPageState extends State<_FilesPage> {
           crossAxisCount: 6,
           mainAxisSpacing: 6,
           crossAxisSpacing: 4,
-          childAspectRatio: 0.78,
+          childAspectRatio: 0.62,
           children: [
             _TypeShortcut(
               key: const Key('files-recent-media'),

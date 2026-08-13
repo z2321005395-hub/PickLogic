@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 abstract final class PickLogicTokens {
@@ -31,6 +32,7 @@ abstract final class PickLogicTokens {
     required Color seed,
     required Color surface,
   }) {
+    final android = defaultTargetPlatform == TargetPlatform.android;
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: brightness,
@@ -40,8 +42,10 @@ abstract final class PickLogicTokens {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      fontFamily: 'Segoe UI',
-      fontFamilyFallback: const ['Microsoft YaHei UI'],
+      fontFamily: android ? 'Roboto' : 'Segoe UI',
+      fontFamilyFallback: android
+          ? const ['Noto Sans CJK SC', 'Noto Sans SC', 'sans-serif']
+          : const ['Microsoft YaHei UI', 'Arial'],
       scaffoldBackgroundColor: surface,
       visualDensity: VisualDensity.compact,
       dividerTheme: DividerThemeData(color: scheme.outlineVariant, space: 1),
