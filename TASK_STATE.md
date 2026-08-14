@@ -191,3 +191,13 @@ Push the scoped Private PR, wait for its single CI gate, merge to `develop`, and
 ## Current blocker / next action
 
 The nubia Z70 is not currently listed by ADB. After USB connection and the user's RSA/media/SAF confirmations, install the final APK, open real MediaStore read-only, validate viewers and grid paging, then stop feature work. Push the scoped Private PR, wait for CI, and merge to `develop`; do not publish a Release or make the repository Public.
+
+## Open / Preview / Operate CI recovery
+
+- Private PR #29 built Windows Standard, Windows Pro, and Android Debug successfully, but its Linux quality job exposed one host assumption: `WindowsWorkspaceController` required `USERPROFILE` during cross-platform Flutter widget tests.
+- The controller now keeps the Windows `%USERPROFILE%\\PickLogic-TestWorkspace` contract unchanged and uses the system temporary directory only on non-Windows test hosts.
+- Local verification after the fix: the complete Desktop Flutter suite passed 20/20.
+
+## Next action
+
+Run the quick repository gate, push the focused CI fix, require a green PR, merge it into `develop`, and retain the Z70 USB/RSA/media/SAF validation as the only physical-device gate.

@@ -30,6 +30,11 @@ final class WindowsWorkspaceController {
   final Set<String> _managedRoots = <String>{};
 
   Directory get testRoot {
+    if (!Platform.isWindows) {
+      return Directory(
+        _join(Directory.systemTemp.path, 'PickLogic-TestWorkspace'),
+      );
+    }
     final profile = Platform.environment['USERPROFILE'];
     if (profile == null || profile.trim().isEmpty) {
       throw StateError('Windows did not expose the current user profile.');
