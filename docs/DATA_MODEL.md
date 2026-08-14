@@ -24,6 +24,8 @@ Required transition:
 
 Failure and cancellation are explicit terminal states. UI cannot skip confirmation.
 
+Developer Safe Mode now distinguishes an untrusted browse location from one exact root explicitly selected by the user. Mutations remain denied unless a `FileOperator` first canonicalizes both paths, proves they stay inside that root, previews the plan, receives confirmation, and records rollback metadata. This is an additive authorization input; existing callers default to denied.
+
 ## InsightRecord
 
 `summary`, `fileType`, `probableOwner`, `probableOrigin`, `whyItExists`, `relatedApplication`, `spaceUsage`, `runningOrActiveState`, `riskLevel`, `confidence`, `evidence`, `recommendedActions`, and `limitations`.

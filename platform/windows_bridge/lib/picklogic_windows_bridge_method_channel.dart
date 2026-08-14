@@ -45,6 +45,17 @@ class MethodChannelPicklogicWindowsBridge
   }
 
   @override
+  Future<List<String>> pickFiles({String? title}) async {
+    final arguments = <String, Object?>{};
+    if (title != null) arguments['title'] = title;
+    return await methodChannel.invokeListMethod<String>(
+          'pickFiles',
+          arguments,
+        ) ??
+        const <String>[];
+  }
+
+  @override
   Future<String> getApplicationSupportDirectory() async => (await methodChannel
       .invokeMethod<String>('getApplicationSupportDirectory'))!;
 
@@ -86,4 +97,60 @@ class MethodChannelPicklogicWindowsBridge
     );
     return WindowsStorageSummary.fromMap(raw!);
   }
+
+  @override
+  Future<WindowsShellThumbnail?> loadShellThumbnail(
+    String path, {
+    required int size,
+  }) async {
+    if (size < 16 || size > 512) {
+      throw RangeError.range(size, 16, 512, 'size');
+    }
+    final raw = await methodChannel.invokeMapMethod<Object?, Object?>(
+      'loadShellThumbnail',
+      <String, Object>{'path': path, 'size': size},
+    );
+    return raw == null ? null : WindowsShellThumbnail.fromMap(raw);
+  }
+
+  @override
+  Future<WindowsRecycleResult> recycleItem(
+    String path, {
+    required String operationId,
+  }) async {
+    final raw = await methodChannel.invokeMapMethod<Object?, Object?>(
+      'recycleItem',
+      <String, Object>{'path': path, 'operationId': operationId},
+    );
+    return WindowsRecycleResult.fromMap(raw!);
+  }
+
+  @override
+  Future<bool> restoreRecycledItem(String operationId) async =>
+      await methodChannel.invokeMethod<bool>(
+        'restoreRecycledItem',
+        <String, Object>{'operationId': operationId},
+      ) ??
+      false;
+
+  @override
+  Future<void> writeProtectedSecret(String name, String value) =>
+      methodChannel.invokeMethod<void>('writeProtectedSecret', <String, Object>{
+        'name': name,
+        'value': value,
+      });
+
+  @override
+  Future<String?> readProtectedSecret(String name) =>
+      methodChannel.invokeMethod<String>(
+        'readProtectedSecret',
+        <String, Object>{'name': name},
+      );
+
+  @override
+  Future<void> deleteProtectedSecret(String name) =>
+      methodChannel.invokeMethod<void>(
+        'deleteProtectedSecret',
+        <String, Object>{'name': name},
+      );
 }

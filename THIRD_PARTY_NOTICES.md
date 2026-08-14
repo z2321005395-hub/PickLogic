@@ -15,6 +15,8 @@ This file is the redistribution notice index for PickLogic. It is not a replacem
 | `flutter_svg` 2.3.0 | BSD-3-Clause; Copyright 2018 Dan Field and contributors | Resolved package license is covered by the dependency audit and generated notices |
 | `desktop_drop` 0.7.1 | Apache-2.0; Copyright Mixin Network | Resolved package license and notice are retained in generated notices |
 | `archive` 4.0.9 | MIT; Copyright Brendan Duncan | Resolved package license is covered by the dependency audit and generated notices |
+| `video_player` 2.13.0 | BSD-3-Clause; Copyright 2013 The Flutter Authors | Resolved package and Android implementation licenses are covered by the dependency audit and generated notices |
+| `video_player_win` 3.2.2 | BSD-3-Clause; Copyright 2022 jakky1 | The package license is retained in generated notices; its Media Foundation backend uses Windows system components |
 
 ## Binary provenance
 

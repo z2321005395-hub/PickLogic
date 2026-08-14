@@ -24,6 +24,11 @@ class MockPicklogicWindowsBridgePlatform
   ];
 
   @override
+  Future<List<String>> pickFiles({String? title}) async => <String>[
+    r'X:\synthetic\sample.txt',
+  ];
+
+  @override
   Future<String> getApplicationSupportDirectory() async =>
       r'X:\synthetic\app-support';
 
@@ -58,6 +63,30 @@ class MockPicklogicWindowsBridgePlatform
         totalBytes: 100,
         availableBytes: 40,
       );
+
+  @override
+  Future<WindowsShellThumbnail?> loadShellThumbnail(
+    String path, {
+    required int size,
+  }) async => null;
+
+  @override
+  Future<WindowsRecycleResult> recycleItem(
+    String path, {
+    required String operationId,
+  }) async => const WindowsRecycleResult(recycled: true, undoAvailable: true);
+
+  @override
+  Future<bool> restoreRecycledItem(String operationId) async => true;
+
+  @override
+  Future<void> writeProtectedSecret(String name, String value) async {}
+
+  @override
+  Future<String?> readProtectedSecret(String name) async => 'synthetic-secret';
+
+  @override
+  Future<void> deleteProtectedSecret(String name) async {}
 }
 
 void main() {
@@ -85,6 +114,7 @@ void main() {
     expect(await bridge.pickDirectory(), 'synthetic-root');
     expect(await bridge.pickPdfFile(), r'X:\synthetic\paper.pdf');
     expect(await bridge.pickPdfFiles(), hasLength(2));
+    expect(await bridge.pickFiles(), hasLength(1));
     expect(
       await bridge.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',
@@ -97,5 +127,10 @@ void main() {
     expect((await bridge.getSystemDriveSummary()).availableBytes, 40);
     expect(await bridge.openItem('synthetic'), isTrue);
     expect(await bridge.revealItem('synthetic'), isTrue);
+    expect(
+      (await bridge.recycleItem('synthetic', operationId: 'trash-1')).recycled,
+      isTrue,
+    );
+    expect(await bridge.restoreRecycledItem('trash-1'), isTrue);
   });
 }
