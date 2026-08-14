@@ -1,6 +1,6 @@
 # Task State
 
-Updated: 2026-08-13
+Updated: 2026-08-15
 
 ## Goal
 
@@ -176,3 +176,28 @@ Merge the green Private integration PR into `develop`, then stop feature work an
 ## Next action
 
 Push the scoped Private PR, wait for its single CI gate, merge to `develop`, and stop feature work for maintainer hands-on testing. Do not make the repository or artifacts Public.
+
+## Open / Preview / Operate recovery
+
+- Desktop now opens images, system-supported video/audio, PDF, bounded text/code, ZIP lists, Office Open XML summaries, folders, and Shell thumbnails internally. File views support Details/List/icon/grid/dual-pane modes, 48–256 px Ctrl-wheel zoom, and independent preview zoom.
+- Windows creates `%USERPROFILE%\PickLogic-TestWorkspace`, imports only copies, and executes previewed/confirmed create, move, rename, Test-Trash, and Undo operations inside authorized roots. Managed-folder delete uses the Windows Recycle Bin with in-session restore when Shell supplies an undo item; unselected locations remain read-only.
+- Pro retains one SQLite-backed literature library and PDFium reader, adding multi-PDF import, selection/copy, opt-in selected-text translation with DPAPI secret storage, first-party module registry, and authorized rename execution after preview.
+- Mobile adds internal image/video/audio/PDF/text/APK/archive/Office viewers, persisted PDF position and 2–6-column media grids, system-confirmed APK install and MediaStore Trash entry points, plus an SAF-authorized Test Workspace with copy/move/rename/Test-Trash/Undo.
+- New direct dependencies are `video_player` 2.13.0 and `video_player_win` 3.2.2, both BSD-3-Clause and recorded in all dependency ledgers. Full dependency/license and privacy gates report zero restricted, unknown, missing, or private-data findings.
+- Local verification: full Dart gate passed 11 quick + 6 remaining modules; Desktop 20/20, Mobile 30/30, Windows bridge 9/9, and Android bridge 12/12 tests passed. Windows Standard/Pro Release and Android ARM64 Debug/Release/Profile builds compiled; packaged Pro PDF smoke exited 0.
+- Emulator validation: the final arm64-only, v2-signed Profile APK installed and launched on `TTDT_Modern_64`; UI semantics showed the localized PickLogic home and app-scoped log review found zero fatal matches. Only old PickLogic emulator test data was removed to make installation space; no other emulator or user data was changed.
+- User-test artifacts: Standard 18,259,594 B ZIP / 42,315,395 B installed; Pro 18,276,491 B ZIP / 42,348,163 B installed; Mobile ARM64 Profile 31,668,994 B. Checksums are stored beside ignored local artifacts.
+
+## Current blocker / next action
+
+The nubia Z70 is not currently listed by ADB. After USB connection and the user's RSA/media/SAF confirmations, install the final APK, open real MediaStore read-only, validate viewers and grid paging, then stop feature work. Push the scoped Private PR, wait for CI, and merge to `develop`; do not publish a Release or make the repository Public.
+
+## Open / Preview / Operate CI recovery
+
+- Private PR #29 built Windows Standard, Windows Pro, and Android Debug successfully, but its Linux quality job exposed one host assumption: `WindowsWorkspaceController` required `USERPROFILE` during cross-platform Flutter widget tests.
+- The controller now keeps the Windows `%USERPROFILE%\\PickLogic-TestWorkspace` contract unchanged and uses the system temporary directory only on non-Windows test hosts.
+- Local verification after the fix: the complete Desktop Flutter suite passed 20/20.
+
+## Next action
+
+Run the quick repository gate, push the focused CI fix, require a green PR, merge it into `develop`, and retain the Z70 USB/RSA/media/SAF validation as the only physical-device gate.

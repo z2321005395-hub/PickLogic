@@ -20,6 +20,7 @@ void main() {
               r'X:\synthetic\paper.pdf',
               r'X:\synthetic\second.pdf',
             ],
+            'pickFiles' => <String>[r'X:\synthetic\sample.txt'],
             'getApplicationSupportDirectory' => r'X:\synthetic\app-support',
             'getBrowseRoots' => <Object>[
               <String, Object>{
@@ -45,6 +46,14 @@ void main() {
               'totalBytes': 1000,
               'availableBytes': 250,
             },
+            'loadShellThumbnail' => null,
+            'recycleItem' => <String, Object>{
+              'recycled': true,
+              'undoAvailable': true,
+            },
+            'restoreRecycledItem' => true,
+            'writeProtectedSecret' || 'deleteProtectedSecret' => null,
+            'readProtectedSecret' => 'synthetic-secret',
             _ => null,
           };
         });
@@ -76,12 +85,33 @@ void main() {
       r'X:\synthetic\paper.pdf',
       r'X:\synthetic\second.pdf',
     ]);
+    expect(await platform.pickFiles(title: 'Pick files'), hasLength(1));
     expect(
       await platform.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',
     );
     expect(await platform.openItem('synthetic'), isTrue);
     expect(await platform.revealItem('synthetic'), isTrue);
+  });
+
+  test('delegates bounded thumbnails and protected settings', () async {
+    expect(await platform.loadShellThumbnail('synthetic', size: 96), isNull);
+    await platform.writeProtectedSecret('translation', 'value');
+    expect(
+      await platform.readProtectedSecret('translation'),
+      'synthetic-secret',
+    );
+    await platform.deleteProtectedSecret('translation');
+  });
+
+  test('delegates recycle and in-session restore', () async {
+    final recycled = await platform.recycleItem(
+      'synthetic',
+      operationId: 'trash-1',
+    );
+    expect(recycled.recycled, isTrue);
+    expect(recycled.undoAvailable, isTrue);
+    expect(await platform.restoreRecycledItem('trash-1'), isTrue);
   });
 
   test('parses synthetic browse roots', () async {

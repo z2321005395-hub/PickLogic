@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
@@ -8,6 +12,8 @@ import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 import 'desktop_repository.dart';
 import 'file_preview.dart';
 import 'pro_workspace.dart';
+import 'shell_thumbnail.dart';
+import 'workspace_controller.dart';
 
 final class StandardExplorer extends StatefulWidget {
   const StandardExplorer({
@@ -31,7 +37,16 @@ final class StandardExplorer extends StatefulWidget {
 
 enum _DetailMode { hidden, context }
 
-enum _WorkspaceViewMode { list, grid, dual }
+enum _WorkspaceViewMode {
+  details,
+  list,
+  smallIcons,
+  mediumIcons,
+  largeIcons,
+  extraLargeIcons,
+  grid,
+  dual,
+}
 
 enum _AutoIndexStatus { off, running, complete, failed }
 
@@ -57,17 +72,24 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   _AutoIndexStatus _autoIndexStatus = _AutoIndexStatus.off;
   _DetailMode _detailMode = _DetailMode.hidden;
   _WorkspaceViewMode _viewMode = _WorkspaceViewMode.dual;
+  double _thumbnailSize = 96;
   _WorkspaceSection _section = _WorkspaceSection.home;
   WindowsStorageSummary? _storageSummary;
   bool _storageLoading = false;
   bool _storageError = false;
   final List<BrowseEntry> _recentEntries = <BrowseEntry>[];
+  late final WindowsWorkspaceController _workspace =
+      WindowsWorkspaceController();
+  OperationPlan? _lastCompletedOperation;
+  bool _workspaceReady = false;
 
   @override
   void initState() {
     super.initState();
     _loadRoots();
     _loadStorageSummary();
+    _loadViewPreference();
+    _initializeWorkspace();
   }
 
   @override
@@ -92,6 +114,301 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       });
     }
   }
+
+  Future<void> _initializeWorkspace() async {
+    try {
+      final root = await _workspace.initialize();
+      if (!mounted) return;
+      setState(() {
+        _workspaceReady = true;
+        if (!_extraRoots.any((item) => item.path == root.path)) {
+          _extraRoots.add(root);
+        }
+      });
+    } on Object {
+      if (mounted) setState(() => _workspaceReady = false);
+    }
+  }
+
+  WorkspaceAccessLevel get _activeAccess => _workspace.accessFor(
+    _panes[_activePane].selected?.path ?? _panes[_activePane].snapshot?.path,
+  );
+
+  Future<void> _openTestWorkspace() async {
+    if (!_workspaceReady) await _initializeWorkspace();
+    if (!mounted || !_workspaceReady) return;
+    _openWorkspace(mode: _WorkspaceViewMode.dual);
+    await _navigate(0, _workspace.testRoot.path);
+    await _navigate(1, _workspace.testRoot.path);
+  }
+
+  Future<void> _authorizeManagedFolder() async {
+    final path = await _workspace.authorizeManagedFolder(
+      chinese: widget.locale.languageCode == 'zh',
+    );
+    if (!mounted || path == null) return;
+    setState(() {
+      if (!_extraRoots.any((root) => root.path == path)) {
+        _extraRoots.add(
+          WindowsBrowseRoot(
+            id: 'managed:$path',
+            path: path,
+            kind: WindowsBrowseRootKind.folder,
+          ),
+        );
+      }
+    });
+    await _navigate(_activePane, path);
+  }
+
+  Future<void> _importTestCopies() async {
+    try {
+      final copied = await _workspace.importTestCopies(
+        chinese: widget.locale.languageCode == 'zh',
+      );
+      if (!mounted || copied.isEmpty) return;
+      _openWorkspace();
+      await _navigate(
+        _activePane,
+        '${_workspace.testRoot.path}${Platform.pathSeparator}Inbox',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.locale.languageCode == 'zh'
+                ? '已导入 ${copied.length} 个测试副本；原文件未移动。'
+                : 'Imported ${copied.length} test copies; originals were not moved.',
+          ),
+        ),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.locale.languageCode == 'zh'
+                ? '测试副本导入未完成。'
+                : 'Test-copy import did not complete.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _createFolder() async {
+    final parent = _panes[_activePane].snapshot?.path;
+    if (parent == null || _activeAccess == WorkspaceAccessLevel.browseOnly) {
+      return;
+    }
+    final name = await _promptName(
+      title: widget.locale.languageCode == 'zh' ? '新建文件夹' : 'New folder',
+      initialValue: widget.locale.languageCode == 'zh' ? '新文件夹' : 'New folder',
+    );
+    if (name == null) return;
+    try {
+      await _workspace.createFolder(parent, name);
+      await _refreshWorkspacePanes();
+    } on Object {
+      _showOperationMessage(false);
+    }
+  }
+
+  Future<void> _renameSelected() async {
+    final selected = _panes[_activePane].selected;
+    if (selected == null || _activeAccess == WorkspaceAccessLevel.browseOnly) {
+      return;
+    }
+    final name = await _promptName(
+      title: widget.locale.languageCode == 'zh' ? '重命名预览' : 'Rename preview',
+      initialValue: selected.name,
+    );
+    if (name == null || name == selected.name) return;
+    try {
+      await _confirmAndExecute(
+        await _workspace.previewRename(selected.path, name),
+      );
+    } on Object {
+      _showOperationMessage(false);
+    }
+  }
+
+  Future<void> _moveSelectedToOtherPane() async {
+    final selected = _panes[_activePane].selected;
+    final destination = _panes[1 - _activePane].snapshot?.path;
+    if (selected == null ||
+        destination == null ||
+        _activeAccess == WorkspaceAccessLevel.browseOnly) {
+      return;
+    }
+    try {
+      await _confirmAndExecute(
+        await _workspace.previewMove(selected.path, destination),
+      );
+    } on Object {
+      _showOperationMessage(false);
+    }
+  }
+
+  Future<void> _moveDroppedEntry(
+    _PaneDragPayload payload,
+    int targetPane,
+  ) async {
+    final destination = _panes[targetPane].snapshot?.path;
+    if (payload.sourcePane == targetPane ||
+        destination == null ||
+        _workspace.accessFor(payload.entry.path) ==
+            WorkspaceAccessLevel.browseOnly) {
+      _showOperationMessage(false);
+      return;
+    }
+    try {
+      await _confirmAndExecute(
+        await _workspace.previewMove(payload.entry.path, destination),
+      );
+    } on Object {
+      _showOperationMessage(false);
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    final selected = _panes[_activePane].selected;
+    if (selected == null || _activeAccess == WorkspaceAccessLevel.browseOnly) {
+      return;
+    }
+    try {
+      await _confirmAndExecute(await _workspace.previewDelete(selected.path));
+    } on Object {
+      _showOperationMessage(false);
+    }
+  }
+
+  Future<void> _confirmAndExecute(OperationPlan preview) async {
+    final chinese = widget.locale.languageCode == 'zh';
+    final destination =
+        preview.destination?.value ??
+        (preview.rollbackMetadata['strategy'] == 'windows-recycle-bin'
+            ? (chinese ? 'Windows 回收站' : 'Windows Recycle Bin')
+            : (chinese ? '测试回收站' : 'Test-Trash'));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('workspace-operation-preview'),
+        title: Text(chinese ? '操作预览' : 'Operation preview'),
+        content: SelectableText(
+          '${_operationLabel(preview.operationType, chinese)}\n${preview.source.value}\n→\n$destination',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(chinese ? '取消' : 'Cancel'),
+          ),
+          FilledButton(
+            key: const Key('confirm-workspace-operation'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(chinese ? '确认执行' : 'Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final result = await _workspace.execute(
+      preview.transitionTo(OperationStatus.confirmed),
+    );
+    if (!mounted) return;
+    if (result.success) {
+      final canUndo =
+          result.plan.rollbackMetadata['nativeUndoAvailable'] != 'false';
+      setState(() => _lastCompletedOperation = canUndo ? result.plan : null);
+      await _refreshWorkspacePanes();
+      _showOperationMessage(true, canUndo: canUndo);
+      return;
+    }
+    _showOperationMessage(false);
+  }
+
+  Future<void> _undoLastOperation() async {
+    final completed = _lastCompletedOperation;
+    if (completed == null) return;
+    final result = await _workspace.undo(completed);
+    if (!mounted) return;
+    if (result.success) {
+      setState(() => _lastCompletedOperation = null);
+      await _refreshWorkspacePanes();
+    }
+    _showOperationMessage(result.success);
+  }
+
+  Future<void> _refreshWorkspacePanes() async {
+    final paths = [for (final pane in _panes) pane.snapshot?.path];
+    for (var index = 0; index < paths.length; index++) {
+      final path = paths[index];
+      if (path != null &&
+          !path.startsWith('search:') &&
+          !path.startsWith('duplicates:')) {
+        await _navigate(index, path);
+      }
+    }
+  }
+
+  Future<String?> _promptName({
+    required String title,
+    required String initialValue,
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          key: const Key('workspace-name-field'),
+          controller: controller,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(widget.locale.languageCode == 'zh' ? '取消' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(widget.locale.languageCode == 'zh' ? '预览' : 'Preview'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value;
+  }
+
+  void _showOperationMessage(bool success, {bool canUndo = true}) {
+    if (!mounted) return;
+    final chinese = widget.locale.languageCode == 'zh';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? canUndo
+                    ? (chinese
+                          ? '操作已完成，可撤销。'
+                          : 'Operation completed and can be undone.')
+                    : (chinese
+                          ? '项目已移到 Windows 回收站；可在资源管理器中恢复。'
+                          : 'Moved to the Windows Recycle Bin; restore it in Explorer.')
+              : (chinese
+                    ? '操作未执行；没有覆盖任何文件。'
+                    : 'Operation was not executed; nothing was overwritten.'),
+        ),
+      ),
+    );
+  }
+
+  String _operationLabel(OperationType type, bool chinese) => switch (type) {
+    OperationType.rename => chinese ? '重命名' : 'Rename',
+    OperationType.move => chinese ? '移动' : 'Move',
+    OperationType.deleteToTrash => chinese ? '移到回收站' : 'Move to trash',
+  };
 
   void _activatePane(int index) {
     if (_activePane == index) return;
@@ -177,6 +494,31 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       await _navigate(paneIndex, entry.path);
       return;
     }
+    if (supportsDesktopInternalViewer(entry)) {
+      final entries =
+          (_panes[paneIndex].snapshot?.entries ?? const <BrowseEntry>[])
+              .where(supportsDesktopInternalViewer)
+              .toList(growable: false);
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (context) => DesktopInternalViewerPage(
+            entries: entries.isEmpty ? <BrowseEntry>[entry] : entries,
+            initialEntry: entry,
+            chinese: widget.locale.languageCode == 'zh',
+            onOpenWith: (selected) async {
+              final opened = await widget.repository.openBrowseEntry(selected);
+              if (!context.mounted || opened) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_ExplorerStrings.of(context).openFailed),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
     final opened = await widget.repository.openBrowseEntry(entry);
     if (!mounted || opened) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -204,6 +546,77 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       _section = _WorkspaceSection.files;
       if (mode != null) _viewMode = mode;
     });
+  }
+
+  File get _viewPreferenceFile {
+    final base =
+        Platform.environment['LOCALAPPDATA'] ?? Directory.systemTemp.path;
+    return File(
+      '$base${Platform.pathSeparator}PickLogic${Platform.pathSeparator}desktop-view-v1.json',
+    );
+  }
+
+  Future<void> _loadViewPreference() async {
+    try {
+      final file = _viewPreferenceFile;
+      if (!await file.exists()) return;
+      final value =
+          jsonDecode(await file.readAsString()) as Map<String, Object?>;
+      final modeName = value['mode'] as String?;
+      final size = (value['thumbnailSize'] as num?)?.toDouble();
+      final mode = _WorkspaceViewMode.values
+          .where((candidate) => candidate.name == modeName)
+          .firstOrNull;
+      if (!mounted) return;
+      setState(() {
+        if (mode != null) _viewMode = mode;
+        if (size != null) _thumbnailSize = size.clamp(48, 256);
+      });
+    } on Object {
+      // A corrupt app-owned preference never blocks file browsing.
+    }
+  }
+
+  Future<void> _saveViewPreference() async {
+    try {
+      final file = _viewPreferenceFile;
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        jsonEncode(<String, Object>{
+          'mode': _viewMode.name,
+          'thumbnailSize': _thumbnailSize,
+        }),
+        flush: true,
+      );
+    } on Object {
+      // View preferences are non-critical and never affect source files.
+    }
+  }
+
+  void _setViewMode(_WorkspaceViewMode mode) {
+    setState(() {
+      _viewMode = mode;
+      _thumbnailSize = switch (mode) {
+        _WorkspaceViewMode.smallIcons => 48,
+        _WorkspaceViewMode.mediumIcons => 80,
+        _WorkspaceViewMode.largeIcons => 144,
+        _WorkspaceViewMode.extraLargeIcons => 220,
+        _ => _thumbnailSize,
+      };
+    });
+    unawaited(_saveViewPreference());
+  }
+
+  void _adjustThumbnailSize(double delta, {bool reset = false}) {
+    setState(() {
+      _thumbnailSize = reset ? 96 : (_thumbnailSize + delta).clamp(48, 256);
+      if (_viewMode == _WorkspaceViewMode.details ||
+          _viewMode == _WorkspaceViewMode.list ||
+          _viewMode == _WorkspaceViewMode.dual) {
+        _viewMode = _WorkspaceViewMode.grid;
+      }
+    });
+    unawaited(_saveViewPreference());
   }
 
   void _openRoot(WindowsBrowseRoot root) {
@@ -420,193 +833,243 @@ final class _StandardExplorerState extends State<StandardExplorer> {
     final strings = _ExplorerStrings.of(context);
     final selected = _panes[_activePane].selected;
     final navigationSections = _navigationSections(widget.pro);
-    return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            key: const Key('primary-navigation'),
-            selectedIndex: navigationSections.indexOf(_section).clamp(0, 4),
-            labelType: NavigationRailLabelType.all,
-            onDestinationSelected: _selectSection,
-            destinations: [
-              NavigationRailDestination(
-                icon: const Icon(Icons.home_outlined),
-                selectedIcon: const Icon(Icons.home),
-                label: Text(strings.homeNav, key: const Key('nav-home')),
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.equal, control: true): () =>
+            _adjustThumbnailSize(16),
+        const SingleActivator(LogicalKeyboardKey.add, control: true): () =>
+            _adjustThumbnailSize(16),
+        const SingleActivator(LogicalKeyboardKey.minus, control: true): () =>
+            _adjustThumbnailSize(-16),
+        const SingleActivator(LogicalKeyboardKey.digit0, control: true): () =>
+            _adjustThumbnailSize(0, reset: true),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Row(
+            children: [
+              NavigationRail(
+                key: const Key('primary-navigation'),
+                selectedIndex: navigationSections.indexOf(_section).clamp(0, 4),
+                labelType: NavigationRailLabelType.all,
+                onDestinationSelected: _selectSection,
+                destinations: [
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.home_outlined),
+                    selectedIcon: const Icon(Icons.home),
+                    label: Text(strings.homeNav, key: const Key('nav-home')),
+                  ),
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.folder_copy_outlined),
+                    selectedIcon: const Icon(Icons.folder_copy),
+                    label: Text(strings.files, key: const Key('nav-files')),
+                  ),
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.manage_search_outlined),
+                    selectedIcon: const Icon(Icons.manage_search),
+                    label: Text(strings.search, key: const Key('nav-search')),
+                  ),
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.file_copy_outlined),
+                    selectedIcon: const Icon(Icons.file_copy),
+                    label: Text(
+                      strings.duplicates,
+                      key: const Key('nav-duplicates'),
+                    ),
+                  ),
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.storage_outlined),
+                    selectedIcon: const Icon(Icons.storage),
+                    label: Text(strings.storage, key: const Key('nav-storage')),
+                  ),
+                  if (widget.pro) ...[
+                    NavigationRailDestination(
+                      icon: const Icon(Icons.menu_book_outlined),
+                      selectedIcon: const Icon(Icons.menu_book),
+                      label: Text(strings.literature),
+                    ),
+                    NavigationRailDestination(
+                      icon: const Icon(Icons.science_outlined),
+                      selectedIcon: const Icon(Icons.science),
+                      label: Text(strings.research),
+                    ),
+                    NavigationRailDestination(
+                      icon: const Icon(Icons.monitor_heart_outlined),
+                      selectedIcon: const Icon(Icons.monitor_heart),
+                      label: Text(strings.systemInsight),
+                    ),
+                  ],
+                ],
               ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.folder_copy_outlined),
-                selectedIcon: const Icon(Icons.folder_copy),
-                label: Text(strings.files, key: const Key('nav-files')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.manage_search_outlined),
-                selectedIcon: const Icon(Icons.manage_search),
-                label: Text(strings.search, key: const Key('nav-search')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.file_copy_outlined),
-                selectedIcon: const Icon(Icons.file_copy),
-                label: Text(
-                  strings.duplicates,
-                  key: const Key('nav-duplicates'),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Column(
+                  children: [
+                    _TopBar(
+                      strings: strings,
+                      locale: widget.locale,
+                      searchController: _searchController,
+                      onLocaleChanged: _changeLocale,
+                      onChooseFolder: _chooseFolder,
+                      onSearchChanged: (value) => setState(() {
+                        _panes[_activePane].query = value;
+                      }),
+                      onIndexSearch: _searchIndex,
+                      canShowDetails: selected != null,
+                      detailMode: _detailMode,
+                      onDetailModeChanged: (mode) => setState(() {
+                        _detailMode = _detailMode == mode
+                            ? _DetailMode.hidden
+                            : mode;
+                      }),
+                      activePane: _activePane,
+                      viewMode: _viewMode,
+                      onViewModeChanged: _setViewMode,
+                      thumbnailSize: _thumbnailSize,
+                      onThumbnailSizeChanged: (value) {
+                        setState(() => _thumbnailSize = value);
+                        unawaited(_saveViewPreference());
+                      },
+                    ),
+                    _StatusStrip(
+                      strings: strings,
+                      status: _autoIndexStatus,
+                      onChanged: _requestAutoIndex,
+                      access: _activeAccess,
+                    ),
+                    if (_section == _WorkspaceSection.files ||
+                        _section == _WorkspaceSection.search ||
+                        _section == _WorkspaceSection.duplicates)
+                      _WorkspaceActionBar(
+                        strings: strings,
+                        access: _activeAccess,
+                        hasSelection: selected != null,
+                        hasMoveTarget:
+                            selected != null &&
+                            _panes[1 - _activePane].snapshot != null,
+                        canUndo: _lastCompletedOperation != null,
+                        onOpenTestWorkspace: _openTestWorkspace,
+                        onAuthorizeManagedFolder: _authorizeManagedFolder,
+                        onImportTestCopies: _importTestCopies,
+                        onCreateFolder: _createFolder,
+                        onRename: _renameSelected,
+                        onMove: _moveSelectedToOtherPane,
+                        onDelete: _deleteSelected,
+                        onUndo: _undoLastOperation,
+                      ),
+                    Expanded(
+                      child: _section == _WorkspaceSection.home
+                          ? _DesktopHome(
+                              strings: strings,
+                              roots: [..._roots, ..._extraRoots],
+                              rootsLoading: _rootsLoading,
+                              storage: _storageSummary,
+                              recent: _recentEntries,
+                              onSearch: _searchIndex,
+                              onOpenRoot: _openRoot,
+                              onOpenCategory: _openCategory,
+                              onOpenRecent: (entry) {
+                                _openWorkspace();
+                                _selectEntry(_activePane, entry);
+                              },
+                              onOpenDualPane: () =>
+                                  _openWorkspace(mode: _WorkspaceViewMode.dual),
+                            )
+                          : _section == _WorkspaceSection.storage
+                          ? _StorageView(
+                              strings: strings,
+                              summary: _storageSummary,
+                              loading: _storageLoading,
+                              error: _storageError,
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: _BrowserPane(
+                                    index: 0,
+                                    active: _activePane == 0,
+                                    state: _panes[0],
+                                    roots: [..._roots, ..._extraRoots],
+                                    rootsLoading: _rootsLoading,
+                                    rootsError: _rootsError != null,
+                                    strings: strings,
+                                    onHome: () {
+                                      _activatePane(0);
+                                      _goHome(0);
+                                    },
+                                    onNavigate: (path) {
+                                      _activatePane(0);
+                                      _navigate(0, path);
+                                    },
+                                    onSelect: (entry) => _selectEntry(0, entry),
+                                    onOpen: (entry) => _openEntry(0, entry),
+                                    onDrop: (payload) =>
+                                        _moveDroppedEntry(payload, 0),
+                                    viewMode: _viewMode,
+                                    thumbnailSize: _thumbnailSize,
+                                    onThumbnailZoom: _adjustThumbnailSize,
+                                  ),
+                                ),
+                                if (_viewMode == _WorkspaceViewMode.dual) ...[
+                                  const VerticalDivider(width: 1),
+                                  Expanded(
+                                    child: _BrowserPane(
+                                      index: 1,
+                                      active: _activePane == 1,
+                                      state: _panes[1],
+                                      roots: [..._roots, ..._extraRoots],
+                                      rootsLoading: _rootsLoading,
+                                      rootsError: _rootsError != null,
+                                      strings: strings,
+                                      onHome: () {
+                                        _activatePane(1);
+                                        _goHome(1);
+                                      },
+                                      onNavigate: (path) {
+                                        _activatePane(1);
+                                        _navigate(1, path);
+                                      },
+                                      onSelect: (entry) =>
+                                          _selectEntry(1, entry),
+                                      onOpen: (entry) => _openEntry(1, entry),
+                                      onDrop: (payload) =>
+                                          _moveDroppedEntry(payload, 1),
+                                      viewMode: _WorkspaceViewMode.list,
+                                      thumbnailSize: _thumbnailSize,
+                                      onThumbnailZoom: _adjustThumbnailSize,
+                                    ),
+                                  ),
+                                ],
+                                if (_detailMode != _DetailMode.hidden) ...[
+                                  const VerticalDivider(width: 1),
+                                  SizedBox(
+                                    width: 340,
+                                    child: _DetailPane(
+                                      mode: _detailMode,
+                                      entry: selected,
+                                      strings: strings,
+                                      onClose: () => setState(
+                                        () => _detailMode = _DetailMode.hidden,
+                                      ),
+                                      onReveal: selected == null
+                                          ? null
+                                          : _revealSelected,
+                                      onOpen: selected == null
+                                          ? null
+                                          : _openSelected,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                    ),
+                  ],
                 ),
               ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.storage_outlined),
-                selectedIcon: const Icon(Icons.storage),
-                label: Text(strings.storage, key: const Key('nav-storage')),
-              ),
-              if (widget.pro) ...[
-                NavigationRailDestination(
-                  icon: const Icon(Icons.menu_book_outlined),
-                  selectedIcon: const Icon(Icons.menu_book),
-                  label: Text(strings.literature),
-                ),
-                NavigationRailDestination(
-                  icon: const Icon(Icons.science_outlined),
-                  selectedIcon: const Icon(Icons.science),
-                  label: Text(strings.research),
-                ),
-                NavigationRailDestination(
-                  icon: const Icon(Icons.monitor_heart_outlined),
-                  selectedIcon: const Icon(Icons.monitor_heart),
-                  label: Text(strings.systemInsight),
-                ),
-              ],
             ],
           ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: Column(
-              children: [
-                _TopBar(
-                  strings: strings,
-                  locale: widget.locale,
-                  searchController: _searchController,
-                  onLocaleChanged: _changeLocale,
-                  onChooseFolder: _chooseFolder,
-                  onSearchChanged: (value) => setState(() {
-                    _panes[_activePane].query = value;
-                  }),
-                  onIndexSearch: _searchIndex,
-                  canShowDetails: selected != null,
-                  detailMode: _detailMode,
-                  onDetailModeChanged: (mode) => setState(() {
-                    _detailMode = _detailMode == mode
-                        ? _DetailMode.hidden
-                        : mode;
-                  }),
-                  activePane: _activePane,
-                  viewMode: _viewMode,
-                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
-                ),
-                _StatusStrip(
-                  strings: strings,
-                  status: _autoIndexStatus,
-                  onChanged: _requestAutoIndex,
-                ),
-                Expanded(
-                  child: _section == _WorkspaceSection.home
-                      ? _DesktopHome(
-                          strings: strings,
-                          roots: [..._roots, ..._extraRoots],
-                          rootsLoading: _rootsLoading,
-                          storage: _storageSummary,
-                          recent: _recentEntries,
-                          onSearch: _searchIndex,
-                          onOpenRoot: _openRoot,
-                          onOpenCategory: _openCategory,
-                          onOpenRecent: (entry) {
-                            _openWorkspace();
-                            _selectEntry(_activePane, entry);
-                          },
-                          onOpenDualPane: () =>
-                              _openWorkspace(mode: _WorkspaceViewMode.dual),
-                        )
-                      : _section == _WorkspaceSection.storage
-                      ? _StorageView(
-                          strings: strings,
-                          summary: _storageSummary,
-                          loading: _storageLoading,
-                          error: _storageError,
-                        )
-                      : Row(
-                          children: [
-                            Expanded(
-                              child: _BrowserPane(
-                                index: 0,
-                                active: _activePane == 0,
-                                state: _panes[0],
-                                roots: [..._roots, ..._extraRoots],
-                                rootsLoading: _rootsLoading,
-                                rootsError: _rootsError != null,
-                                strings: strings,
-                                onHome: () {
-                                  _activatePane(0);
-                                  _goHome(0);
-                                },
-                                onNavigate: (path) {
-                                  _activatePane(0);
-                                  _navigate(0, path);
-                                },
-                                onSelect: (entry) => _selectEntry(0, entry),
-                                onOpen: (entry) => _openEntry(0, entry),
-                                viewMode: _viewMode,
-                              ),
-                            ),
-                            if (_viewMode == _WorkspaceViewMode.dual) ...[
-                              const VerticalDivider(width: 1),
-                              Expanded(
-                                child: _BrowserPane(
-                                  index: 1,
-                                  active: _activePane == 1,
-                                  state: _panes[1],
-                                  roots: [..._roots, ..._extraRoots],
-                                  rootsLoading: _rootsLoading,
-                                  rootsError: _rootsError != null,
-                                  strings: strings,
-                                  onHome: () {
-                                    _activatePane(1);
-                                    _goHome(1);
-                                  },
-                                  onNavigate: (path) {
-                                    _activatePane(1);
-                                    _navigate(1, path);
-                                  },
-                                  onSelect: (entry) => _selectEntry(1, entry),
-                                  onOpen: (entry) => _openEntry(1, entry),
-                                  viewMode: _WorkspaceViewMode.list,
-                                ),
-                              ),
-                            ],
-                            if (_detailMode != _DetailMode.hidden) ...[
-                              const VerticalDivider(width: 1),
-                              SizedBox(
-                                width: 340,
-                                child: _DetailPane(
-                                  mode: _detailMode,
-                                  entry: selected,
-                                  strings: strings,
-                                  onClose: () => setState(
-                                    () => _detailMode = _DetailMode.hidden,
-                                  ),
-                                  onReveal: selected == null
-                                      ? null
-                                      : _revealSelected,
-                                  onOpen: selected == null
-                                      ? null
-                                      : _openSelected,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -660,6 +1123,8 @@ final class _TopBar extends StatelessWidget {
     required this.activePane,
     required this.viewMode,
     required this.onViewModeChanged,
+    required this.thumbnailSize,
+    required this.onThumbnailSizeChanged,
   });
 
   final _ExplorerStrings strings;
@@ -675,6 +1140,8 @@ final class _TopBar extends StatelessWidget {
   final int activePane;
   final _WorkspaceViewMode viewMode;
   final ValueChanged<_WorkspaceViewMode> onViewModeChanged;
+  final double thumbnailSize;
+  final ValueChanged<double> onThumbnailSizeChanged;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -719,28 +1186,49 @@ final class _TopBar extends StatelessWidget {
               icon: const Icon(Icons.manage_search),
             ),
             const SizedBox(width: PickLogicTokens.spaceMd),
-            SegmentedButton<_WorkspaceViewMode>(
+            PopupMenuButton<_WorkspaceViewMode>(
               key: const Key('workspace-view-mode'),
-              segments: [
-                ButtonSegment(
-                  value: _WorkspaceViewMode.list,
-                  icon: const Icon(Icons.view_list_outlined),
-                  tooltip: strings.listView,
-                ),
-                ButtonSegment(
-                  value: _WorkspaceViewMode.grid,
-                  icon: const Icon(Icons.grid_view_outlined),
-                  tooltip: strings.gridView,
-                ),
-                ButtonSegment(
-                  value: _WorkspaceViewMode.dual,
-                  icon: const Icon(Icons.vertical_split_outlined),
-                  tooltip: strings.dualPane,
-                ),
+              tooltip: strings.viewMode,
+              onSelected: onViewModeChanged,
+              itemBuilder: (context) => [
+                for (final mode in _WorkspaceViewMode.values)
+                  PopupMenuItem<_WorkspaceViewMode>(
+                    value: mode,
+                    child: ListTile(
+                      leading: Icon(_viewModeIcon(mode)),
+                      title: Text(strings.viewModeLabel(mode)),
+                    ),
+                  ),
               ],
-              selected: {viewMode},
-              onSelectionChanged: (value) => onViewModeChanged(value.first),
-              showSelectedIcon: false,
+              child: Chip(
+                avatar: Icon(_viewModeIcon(viewMode), size: 18),
+                label: Text(strings.viewModeLabel(viewMode)),
+              ),
+            ),
+            const SizedBox(width: PickLogicTokens.spaceSm),
+            IconButton(
+              tooltip: strings.zoomOut,
+              onPressed: () =>
+                  onThumbnailSizeChanged((thumbnailSize - 16).clamp(48, 256)),
+              icon: const Icon(Icons.remove),
+            ),
+            SizedBox(
+              width: 112,
+              child: Slider(
+                key: const Key('thumbnail-size-slider'),
+                min: 48,
+                max: 256,
+                divisions: 13,
+                value: thumbnailSize.clamp(48, 256),
+                label: '${thumbnailSize.round()} px',
+                onChanged: onThumbnailSizeChanged,
+              ),
+            ),
+            IconButton(
+              tooltip: strings.zoomIn,
+              onPressed: () =>
+                  onThumbnailSizeChanged((thumbnailSize + 16).clamp(48, 256)),
+              icon: const Icon(Icons.add),
             ),
             const SizedBox(width: PickLogicTokens.spaceMd),
             IconButton.filledTonal(
@@ -763,31 +1251,6 @@ final class _TopBar extends StatelessWidget {
               tooltip: strings.switchLanguage,
               icon: const Icon(Icons.language),
             ),
-            const SizedBox(width: PickLogicTokens.spaceXs),
-            PopupMenuButton<String>(
-              key: const Key('safe-file-actions'),
-              tooltip: strings.moreActions,
-              icon: const Icon(Icons.more_horiz),
-              itemBuilder: (context) => [
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: ListTile(
-                    leading: const Icon(Icons.create_new_folder_outlined),
-                    title: Text(strings.newFolder),
-                    subtitle: Text(strings.safeModeReadOnly),
-                  ),
-                ),
-                PopupMenuItem<String>(
-                  key: const Key('move-to-target'),
-                  enabled: false,
-                  child: ListTile(
-                    leading: const Icon(Icons.drive_file_move_outline),
-                    title: Text(strings.moveToTarget(activePane)),
-                    subtitle: Text(strings.safeModeReadOnly),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),
@@ -800,11 +1263,13 @@ final class _StatusStrip extends StatelessWidget {
     required this.strings,
     required this.status,
     required this.onChanged,
+    required this.access,
   });
 
   final _ExplorerStrings strings;
   final _AutoIndexStatus status;
   final ValueChanged<bool> onChanged;
+  final WorkspaceAccessLevel access;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -816,7 +1281,16 @@ final class _StatusStrip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const SafeModeBanner(key: Key('standard-safe-mode')),
+          Chip(
+            key: const Key('workspace-access-status'),
+            avatar: Icon(
+              access == WorkspaceAccessLevel.browseOnly
+                  ? Icons.lock_outline
+                  : Icons.verified_user_outlined,
+              size: 18,
+            ),
+            label: Text(strings.accessLabel(access)),
+          ),
           const SizedBox(width: PickLogicTokens.spaceMd),
           Icon(
             status == _AutoIndexStatus.running
@@ -853,6 +1327,104 @@ final class _StatusStrip extends StatelessWidget {
   );
 }
 
+final class _WorkspaceActionBar extends StatelessWidget {
+  const _WorkspaceActionBar({
+    required this.strings,
+    required this.access,
+    required this.hasSelection,
+    required this.hasMoveTarget,
+    required this.canUndo,
+    required this.onOpenTestWorkspace,
+    required this.onAuthorizeManagedFolder,
+    required this.onImportTestCopies,
+    required this.onCreateFolder,
+    required this.onRename,
+    required this.onMove,
+    required this.onDelete,
+    required this.onUndo,
+  });
+
+  final _ExplorerStrings strings;
+  final WorkspaceAccessLevel access;
+  final bool hasSelection;
+  final bool hasMoveTarget;
+  final bool canUndo;
+  final VoidCallback onOpenTestWorkspace;
+  final VoidCallback onAuthorizeManagedFolder;
+  final VoidCallback onImportTestCopies;
+  final VoidCallback onCreateFolder;
+  final VoidCallback onRename;
+  final VoidCallback onMove;
+  final VoidCallback onDelete;
+  final VoidCallback onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final mutable = access != WorkspaceAccessLevel.browseOnly;
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      child: SizedBox(
+        height: 50,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          children: [
+            TextButton.icon(
+              key: const Key('open-test-workspace'),
+              onPressed: onOpenTestWorkspace,
+              icon: const Icon(Icons.science_outlined),
+              label: Text(strings.testWorkspace),
+            ),
+            TextButton.icon(
+              key: const Key('authorize-managed-folder'),
+              onPressed: onAuthorizeManagedFolder,
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: Text(strings.manageFolder),
+            ),
+            TextButton.icon(
+              key: const Key('import-test-copies'),
+              onPressed: onImportTestCopies,
+              icon: const Icon(Icons.copy_all_outlined),
+              label: Text(strings.importTestCopies),
+            ),
+            const VerticalDivider(),
+            TextButton.icon(
+              key: const Key('create-workspace-folder'),
+              onPressed: mutable ? onCreateFolder : null,
+              icon: const Icon(Icons.create_new_folder_outlined),
+              label: Text(strings.newFolder),
+            ),
+            TextButton.icon(
+              key: const Key('rename-workspace-item'),
+              onPressed: mutable && hasSelection ? onRename : null,
+              icon: const Icon(Icons.drive_file_rename_outline),
+              label: Text(strings.rename),
+            ),
+            TextButton.icon(
+              key: const Key('move-workspace-item'),
+              onPressed: mutable && hasMoveTarget ? onMove : null,
+              icon: const Icon(Icons.drive_file_move_outline),
+              label: Text(strings.move),
+            ),
+            TextButton.icon(
+              key: const Key('trash-workspace-item'),
+              onPressed: mutable && hasSelection ? onDelete : null,
+              icon: const Icon(Icons.delete_outline),
+              label: Text(strings.moveToTrash),
+            ),
+            TextButton.icon(
+              key: const Key('undo-workspace-operation'),
+              onPressed: canUndo ? onUndo : null,
+              icon: const Icon(Icons.undo),
+              label: Text(strings.undo),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 final class _BrowserPane extends StatelessWidget {
   const _BrowserPane({
     required this.index,
@@ -866,7 +1438,10 @@ final class _BrowserPane extends StatelessWidget {
     required this.onNavigate,
     required this.onSelect,
     required this.onOpen,
+    required this.onDrop,
     required this.viewMode,
+    required this.thumbnailSize,
+    required this.onThumbnailZoom,
   });
 
   final int index;
@@ -880,7 +1455,10 @@ final class _BrowserPane extends StatelessWidget {
   final ValueChanged<String> onNavigate;
   final ValueChanged<BrowseEntry> onSelect;
   final ValueChanged<BrowseEntry> onOpen;
+  final ValueChanged<_PaneDragPayload> onDrop;
   final _WorkspaceViewMode viewMode;
+  final double thumbnailSize;
+  final ValueChanged<double> onThumbnailZoom;
 
   @override
   Widget build(BuildContext context) {
@@ -898,50 +1476,63 @@ final class _BrowserPane extends StatelessWidget {
             )
             .toList(growable: false) ??
         const <BrowseEntry>[];
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: active
-              ? Theme.of(context).colorScheme.primary
-              : Colors.transparent,
-          width: 2,
+    return DragTarget<_PaneDragPayload>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.sourcePane != index && snapshot != null,
+      onAcceptWithDetails: (details) => onDrop(details.data),
+      builder: (context, candidates, rejected) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: candidates.isEmpty
+              ? null
+              : Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.35),
+          border: Border.all(
+            color: candidates.isNotEmpty || active
+                ? Theme.of(context).colorScheme.primary
+                : Colors.transparent,
+            width: 2,
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          _PaneHeader(
-            index: index,
-            active: active,
-            snapshot: snapshot,
-            strings: strings,
-            onHome: onHome,
-            onNavigate: onNavigate,
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: state.loading || (snapshot == null && rootsLoading)
-                ? const Center(child: CircularProgressIndicator())
-                : state.error || (snapshot == null && rootsError)
-                ? Center(child: Text(strings.folderUnavailable))
-                : snapshot == null
-                ? _RootList(
-                    paneIndex: index,
-                    roots: roots,
-                    strings: strings,
-                    onNavigate: onNavigate,
-                  )
-                : _EntryList(
-                    paneIndex: index,
-                    entries: entries,
-                    selected: state.selected,
-                    truncated: snapshot.truncated,
-                    strings: strings,
-                    onSelect: onSelect,
-                    onOpen: onOpen,
-                    grid: viewMode == _WorkspaceViewMode.grid,
-                  ),
-          ),
-        ],
+        child: Column(
+          children: [
+            _PaneHeader(
+              index: index,
+              active: active,
+              snapshot: snapshot,
+              strings: strings,
+              onHome: onHome,
+              onNavigate: onNavigate,
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: state.loading || (snapshot == null && rootsLoading)
+                  ? const Center(child: CircularProgressIndicator())
+                  : state.error || (snapshot == null && rootsError)
+                  ? Center(child: Text(strings.folderUnavailable))
+                  : snapshot == null
+                  ? _RootList(
+                      paneIndex: index,
+                      roots: roots,
+                      strings: strings,
+                      onNavigate: onNavigate,
+                    )
+                  : _EntryList(
+                      paneIndex: index,
+                      entries: entries,
+                      selected: state.selected,
+                      truncated: snapshot.truncated,
+                      strings: strings,
+                      onSelect: onSelect,
+                      onOpen: onOpen,
+                      onDrag: (entry) => _PaneDragPayload(index, entry),
+                      viewMode: viewMode,
+                      thumbnailSize: thumbnailSize,
+                      onThumbnailZoom: onThumbnailZoom,
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1084,7 +1675,10 @@ final class _EntryList extends StatelessWidget {
     required this.strings,
     required this.onSelect,
     required this.onOpen,
-    required this.grid,
+    required this.onDrag,
+    required this.viewMode,
+    required this.thumbnailSize,
+    required this.onThumbnailZoom,
   });
 
   final int paneIndex;
@@ -1094,130 +1688,265 @@ final class _EntryList extends StatelessWidget {
   final _ExplorerStrings strings;
   final ValueChanged<BrowseEntry> onSelect;
   final ValueChanged<BrowseEntry> onOpen;
-  final bool grid;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      if (truncated)
-        MaterialBanner(
-          content: Text(strings.listTruncated),
-          actions: const [SizedBox.shrink()],
-        ),
-      Expanded(
-        child: entries.isEmpty
-            ? Center(child: Text(strings.emptyFolder))
-            : grid
-            ? GridView.builder(
-                padding: const EdgeInsets.all(PickLogicTokens.spaceSm),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 180,
-                  mainAxisExtent: 150,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: entries.length,
-                itemBuilder: (context, entryIndex) {
-                  final entry = entries[entryIndex];
-                  return InkWell(
-                    key: ValueKey('pane-$paneIndex-entry-${entry.id}'),
-                    borderRadius: BorderRadius.circular(
-                      PickLogicTokens.radiusMedium,
-                    ),
-                    onTap: () => onSelect(entry),
-                    onDoubleTap: () => onOpen(entry),
-                    child: Card(
-                      color: selected?.id == entry.id
-                          ? Theme.of(context).colorScheme.secondaryContainer
-                          : Theme.of(context).colorScheme.surfaceContainerLow,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Column(
-                          children: [
-                            Expanded(child: _DesktopEntryVisual(entry: entry)),
-                            const SizedBox(height: 6),
-                            Text(
-                              entry.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                            Text(
-                              entry.isDirectory
-                                  ? strings.folder
-                                  : strings.compactMetadata(entry),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.all(PickLogicTokens.spaceSm),
-                itemCount: entries.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(height: PickLogicTokens.spaceXs),
-                itemBuilder: (context, entryIndex) {
-                  final entry = entries[entryIndex];
-                  return InkWell(
-                    key: ValueKey('pane-$paneIndex-entry-${entry.id}'),
-                    onTap: () => onSelect(entry),
-                    onDoubleTap: () => onOpen(entry),
-                    child: ListTile(
-                      selected: selected?.id == entry.id,
-                      leading: SizedBox.square(
-                        dimension: 46,
-                        child: _DesktopEntryVisual(entry: entry),
-                      ),
-                      title: Text(entry.name, maxLines: 1),
-                      subtitle: Text(
-                        entry.isDirectory
-                            ? strings.folder
-                            : '${strings.metadataSummary(entry)} · '
-                                  '${entry.modifiedAt == null ? strings.unknown : strings.date(entry.modifiedAt!)}',
-                      ),
-                    ),
-                  );
-                },
-              ),
-      ),
-    ],
-  );
-}
-
-final class _DesktopEntryVisual extends StatelessWidget {
-  const _DesktopEntryVisual({required this.entry});
-
-  final BrowseEntry entry;
+  final _PaneDragPayload Function(BrowseEntry entry) onDrag;
+  final _WorkspaceViewMode viewMode;
+  final double thumbnailSize;
+  final ValueChanged<double> onThumbnailZoom;
 
   @override
   Widget build(BuildContext context) {
-    if (!entry.isDirectory &&
-        (entry.category == VirtualCategory.images ||
-            entry.category == VirtualCategory.screenshots)) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(PickLogicTokens.radiusSmall),
-        child: Image.file(
-          File(entry.path),
-          fit: BoxFit.cover,
-          cacheWidth: 320,
-          errorBuilder: (_, _, _) =>
-              PickLogicIcon(PickLogicVisualIcon.image, size: 42),
-        ),
-      );
-    }
-    return Center(
-      child: PickLogicIcon(
-        _visualIconForEntry(entry),
-        size: entry.isDirectory ? 48 : 42,
+    final grid = switch (viewMode) {
+      _WorkspaceViewMode.smallIcons ||
+      _WorkspaceViewMode.mediumIcons ||
+      _WorkspaceViewMode.largeIcons ||
+      _WorkspaceViewMode.extraLargeIcons ||
+      _WorkspaceViewMode.grid => true,
+      _ => false,
+    };
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent &&
+            HardwareKeyboard.instance.isControlPressed) {
+          onThumbnailZoom(event.scrollDelta.dy < 0 ? 16 : -16);
+        }
+      },
+      child: Column(
+        children: [
+          if (truncated)
+            MaterialBanner(
+              content: Text(strings.listTruncated),
+              actions: const [SizedBox.shrink()],
+            ),
+          if (viewMode == _WorkspaceViewMode.details && entries.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(74, 4, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(child: Text(strings.name)),
+                  SizedBox(width: 110, child: Text(strings.type)),
+                  SizedBox(width: 92, child: Text(strings.size)),
+                  SizedBox(width: 132, child: Text(strings.modified)),
+                ],
+              ),
+            ),
+          Expanded(
+            child: entries.isEmpty
+                ? Center(child: Text(strings.emptyFolder))
+                : grid
+                ? GridView.builder(
+                    padding: const EdgeInsets.all(PickLogicTokens.spaceSm),
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: (thumbnailSize + 64).clamp(112, 320),
+                      mainAxisExtent: (thumbnailSize + 72).clamp(120, 330),
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: entries.length,
+                    itemBuilder: (context, entryIndex) {
+                      final entry = entries[entryIndex];
+                      return _draggable(
+                        context,
+                        entry,
+                        InkWell(
+                          key: ValueKey('pane-$paneIndex-entry-${entry.id}'),
+                          borderRadius: BorderRadius.circular(
+                            PickLogicTokens.radiusMedium,
+                          ),
+                          onTap: () => onSelect(entry),
+                          onDoubleTap: () => onOpen(entry),
+                          child: Card(
+                            color: selected?.id == entry.id
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.secondaryContainer
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerLow,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: _DesktopEntryVisual(
+                                      entry: entry,
+                                      size: thumbnailSize,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    entry.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  Text(
+                                    entry.isDirectory
+                                        ? strings.folder
+                                        : strings.compactMetadata(entry),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelSmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(PickLogicTokens.spaceSm),
+                    itemCount: entries.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: PickLogicTokens.spaceXs),
+                    itemBuilder: (context, entryIndex) {
+                      final entry = entries[entryIndex];
+                      return _draggable(
+                        context,
+                        entry,
+                        InkWell(
+                          key: ValueKey('pane-$paneIndex-entry-${entry.id}'),
+                          onTap: () => onSelect(entry),
+                          onDoubleTap: () => onOpen(entry),
+                          child: ListTile(
+                            selected: selected?.id == entry.id,
+                            leading: SizedBox.square(
+                              dimension: thumbnailSize.clamp(32, 64),
+                              child: _DesktopEntryVisual(
+                                entry: entry,
+                                size: thumbnailSize.clamp(32, 64),
+                              ),
+                            ),
+                            title: viewMode == _WorkspaceViewMode.details
+                                ? Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(entry.name, maxLines: 1),
+                                      ),
+                                      SizedBox(
+                                        width: 110,
+                                        child: Text(
+                                          strings.category(entry.category),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 92,
+                                        child: Text(
+                                          entry.isDirectory
+                                              ? '—'
+                                              : _compactEntryBytes(
+                                                  entry.sizeBytes,
+                                                ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 132,
+                                        child: Text(
+                                          entry.modifiedAt == null
+                                              ? strings.unknown
+                                              : strings.date(entry.modifiedAt!),
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Text(entry.name, maxLines: 1),
+                            subtitle: viewMode == _WorkspaceViewMode.details
+                                ? null
+                                : Text(
+                                    entry.isDirectory
+                                        ? strings.folder
+                                        : '${strings.metadataSummary(entry)} · '
+                                              '${entry.modifiedAt == null ? strings.unknown : strings.date(entry.modifiedAt!)}',
+                                  ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _draggable(BuildContext context, BrowseEntry entry, Widget child) =>
+      LongPressDraggable<_PaneDragPayload>(
+        data: onDrag(entry),
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        feedback: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(10),
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    entry.isDirectory
+                        ? Icons.folder_outlined
+                        : Icons.insert_drive_file_outlined,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      entry.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.35, child: child),
+        child: child,
+      );
+}
+
+final class _PaneDragPayload {
+  const _PaneDragPayload(this.sourcePane, this.entry);
+
+  final int sourcePane;
+  final BrowseEntry entry;
+}
+
+final class _DesktopEntryVisual extends StatelessWidget {
+  const _DesktopEntryVisual({required this.entry, required this.size});
+
+  final BrowseEntry entry;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return DesktopShellThumbnail(
+      entry: entry,
+      size: size,
+      fallback: _fallbackIconForEntry(entry),
+    );
+  }
+}
+
+IconData _fallbackIconForEntry(BrowseEntry entry) {
+  if (entry.isDirectory) return Icons.folder_outlined;
+  return switch (entry.category) {
+    VirtualCategory.pdf ||
+    VirtualCategory.academicPapers => Icons.picture_as_pdf_outlined,
+    VirtualCategory.images ||
+    VirtualCategory.screenshots => Icons.image_outlined,
+    VirtualCategory.videos => Icons.video_file_outlined,
+    VirtualCategory.audio => Icons.audio_file_outlined,
+    VirtualCategory.archives => Icons.archive_outlined,
+    VirtualCategory.installers => Icons.apps_outlined,
+    _ => Icons.description_outlined,
+  };
 }
 
 PickLogicVisualIcon _visualIconForEntry(BrowseEntry entry) {
@@ -1233,6 +1962,28 @@ PickLogicVisualIcon _visualIconForEntry(BrowseEntry entry) {
     VirtualCategory.installers => PickLogicVisualIcon.application,
     _ => PickLogicVisualIcon.document,
   };
+}
+
+IconData _viewModeIcon(_WorkspaceViewMode mode) => switch (mode) {
+  _WorkspaceViewMode.details => Icons.table_rows_outlined,
+  _WorkspaceViewMode.list => Icons.view_list_outlined,
+  _WorkspaceViewMode.smallIcons => Icons.apps_outlined,
+  _WorkspaceViewMode.mediumIcons => Icons.grid_view_outlined,
+  _WorkspaceViewMode.largeIcons => Icons.grid_on_outlined,
+  _WorkspaceViewMode.extraLargeIcons => Icons.photo_size_select_large_outlined,
+  _WorkspaceViewMode.grid => Icons.dashboard_outlined,
+  _WorkspaceViewMode.dual => Icons.vertical_split_outlined,
+};
+
+String _compactEntryBytes(int bytes) {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '$bytes B';
 }
 
 final class _DesktopHome extends StatelessWidget {
@@ -1739,12 +2490,34 @@ final class _ExplorerStrings {
       chinese ? '安全模式下不可用' : 'Unavailable in Safe Mode';
   String get searchIndex => chinese ? '在索引中搜索' : 'Search index';
   String get newFolder => chinese ? '新建文件夹' : 'New folder';
+  String get rename => chinese ? '重命名' : 'Rename';
+  String get move => chinese ? '移动到另一栏' : 'Move to other pane';
+  String get moveToTrash => chinese ? '移至工作区回收站' : 'Move to workspace trash';
+  String get undo => chinese ? '撤销' : 'Undo';
+  String get testWorkspace => chinese ? '测试工作区' : 'Test Workspace';
+  String get manageFolder => chinese ? '授权管理目录' : 'Authorize managed folder';
+  String get importTestCopies => chinese ? '导入测试副本' : 'Import test copies';
   String get preview => chinese ? '预览' : 'Preview';
   String get insight => chinese ? '知件' : 'Insight';
   String get contextPanel => chinese ? '预览与知件' : 'Preview and Insight';
   String get listView => chinese ? '列表' : 'List';
   String get gridView => chinese ? '网格' : 'Grid';
   String get dualPane => chinese ? '双栏工作区' : 'Dual pane';
+  String get viewMode => chinese ? '显示模式' : 'View mode';
+  String get zoomIn => chinese ? '增大缩略图' : 'Larger thumbnails';
+  String get zoomOut => chinese ? '减小缩略图' : 'Smaller thumbnails';
+
+  String viewModeLabel(_WorkspaceViewMode mode) => switch (mode) {
+    _WorkspaceViewMode.details => chinese ? '详细信息' : 'Details',
+    _WorkspaceViewMode.list => chinese ? '列表' : 'List',
+    _WorkspaceViewMode.smallIcons => chinese ? '小图标' : 'Small icons',
+    _WorkspaceViewMode.mediumIcons => chinese ? '中等图标' : 'Medium icons',
+    _WorkspaceViewMode.largeIcons => chinese ? '大图标' : 'Large icons',
+    _WorkspaceViewMode.extraLargeIcons =>
+      chinese ? '超大图标' : 'Extra large icons',
+    _WorkspaceViewMode.grid => chinese ? '网格' : 'Grid',
+    _WorkspaceViewMode.dual => chinese ? '双栏' : 'Dual pane',
+  };
   String get homeGreeting => chinese
       ? '不用记文件在哪里，只需要知道它是什么。'
       : 'Find files by what they are, not where they are.';
@@ -1827,8 +2600,14 @@ final class _ExplorerStrings {
   String get notCalculated => chinese ? '尚未计算' : 'Not calculated';
   String get protected => chinese ? '受保护' : 'Protected';
   String get insightExplanation => chinese
-      ? '事实来自当前文件的本地元数据；分类属于规则推断。无法确认所属软件或系统关系时保持“无法确认”。安全模式禁止真实文件移动、重命名和删除。'
-      : 'Facts come from local metadata; category is a rule inference. Ownership and system relationships remain Unknown when evidence is insufficient. Safe Mode blocks real-file move, rename, and delete operations.';
+      ? '事实来自当前文件的本地元数据；分类属于规则推断。无法确认所属软件或系统关系时保持“无法确认”。未授权位置只读；只有明确授权的管理目录和测试工作区可执行已预览、确认且可撤销的操作。'
+      : 'Facts come from local metadata; category is a rule inference. Ownership and system relationships remain Unknown when evidence is insufficient. Untrusted locations are read-only; only an explicitly managed folder or Test Workspace can run previewed, confirmed, reversible operations.';
+
+  String accessLabel(WorkspaceAccessLevel access) => switch (access) {
+    WorkspaceAccessLevel.browseOnly => chinese ? '只读位置' : 'Read-only location',
+    WorkspaceAccessLevel.managedFolder => chinese ? '已管理目录' : 'Managed folder',
+    WorkspaceAccessLevel.testWorkspace => chinese ? '测试工作区' : 'Test Workspace',
+  };
 
   String date(DateTime value) {
     final local = value.toLocal();

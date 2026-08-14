@@ -7,11 +7,11 @@
 - Architecture: one Flutter/Dart workspace, shared pure-Dart core, narrow Windows/Android bridges.
 - Desktop: one implementation with `main_standard.dart` and `main_pro.dart`; no duplicate app.
 - Core safety: virtual classification does not move files; mutations require Plan -> Preview -> Confirm -> Execute -> Undo/Trash.
-- Debug: visible and enforced `Developer Safe Mode: ON`.
-- Real data: read-only by default; tests use synthetic fixtures only.
+- Debug safety is enforced through per-location states: read-only, managed folder, or Test Workspace; no global mutation grant exists.
+- Real data is read-only by default. Test Workspace imports copies; managed roots require an explicit system picker authorization.
 - Privacy: no account, ads, default telemetry, backend, or full-file upload.
 - AI: optional provider; deterministic rules and metadata come first; app works with AI disabled.
-- Size targets: Android 40 MB, Standard 80 MB, Pro 130 MB.
+- Current recovery targets: Android user-test <= 60 MiB, Standard <= 80 MiB, Pro soft target <= 180 MiB.
 - Canonical contracts: `docs/DATA_MODEL.md`.
 - Current state and next action: `TASK_STATE.md`; installation limits: `docs/KNOWN_ISSUES.md`.
 - Repository map: `docs/REPO_MAP.md`.
@@ -30,8 +30,8 @@
 - Pro Literature supports multi-PDF selection/drop, SQLite persistence, reading-position recovery, and app-local manual metadata correction; source PDFs remain read-only.
 - Native build assets: PDFium and SQLite, including opt-in Android x64 validation, are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: Private repository, real milestones/issues, and reviewed integration PRs; Public remains maintainer-gated.
-- Release evidence: private Draft artifacts are refreshed only from green `develop` merges and must match remote digests and budgets; the Android installable remains debug-signed.
-- Current limitation: Office files disclose that no embedded system preview handler is connected and retain a single system Open action; no Office renderer is bundled.
+- Release evidence: private Draft artifacts are refreshed only from green `develop` merges and must match remote digests and budgets; the Android user-test Profile APK uses a test signature and formal signing remains gated.
+- Current limitation: Office Open XML files have bounded structural summaries and Shell thumbnails, but an installed Office/WPS Shell Preview Handler is not embedded; no Office runtime is bundled.
 
 ## Ownership
 

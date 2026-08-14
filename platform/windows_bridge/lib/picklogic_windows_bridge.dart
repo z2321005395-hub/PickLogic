@@ -18,6 +18,9 @@ final class PicklogicWindowsBridge {
   Future<List<String>> pickPdfFiles({String? title}) =>
       PicklogicWindowsBridgePlatform.instance.pickPdfFiles(title: title);
 
+  Future<List<String>> pickFiles({String? title}) =>
+      PicklogicWindowsBridgePlatform.instance.pickFiles(title: title);
+
   Future<String> getApplicationSupportDirectory() =>
       PicklogicWindowsBridgePlatform.instance.getApplicationSupportDirectory();
 
@@ -35,4 +38,32 @@ final class PicklogicWindowsBridge {
 
   Future<WindowsStorageSummary> getSystemDriveSummary() =>
       PicklogicWindowsBridgePlatform.instance.getSystemDriveSummary();
+
+  Future<WindowsShellThumbnail?> loadShellThumbnail(
+    String path, {
+    required int size,
+  }) => PicklogicWindowsBridgePlatform.instance.loadShellThumbnail(
+    path,
+    size: size,
+  );
+
+  Future<WindowsRecycleResult> recycleItem(
+    String path, {
+    required String operationId,
+  }) => PicklogicWindowsBridgePlatform.instance.recycleItem(
+    path,
+    operationId: operationId,
+  );
+
+  Future<bool> restoreRecycledItem(String operationId) =>
+      PicklogicWindowsBridgePlatform.instance.restoreRecycledItem(operationId);
+
+  Future<void> writeProtectedSecret(String name, String value) =>
+      PicklogicWindowsBridgePlatform.instance.writeProtectedSecret(name, value);
+
+  Future<String?> readProtectedSecret(String name) =>
+      PicklogicWindowsBridgePlatform.instance.readProtectedSecret(name);
+
+  Future<void> deleteProtectedSecret(String name) =>
+      PicklogicWindowsBridgePlatform.instance.deleteProtectedSecret(name);
 }

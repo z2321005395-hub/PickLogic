@@ -71,6 +71,7 @@ final class SafeOperationGate {
     OperationPlan plan, {
     required bool syntheticTarget,
     required bool testMutationAuthorized,
+    bool userAuthorizedManagedTarget = false,
   }) {
     if (plan.status != OperationStatus.confirmed) return false;
     final capability = switch (plan.operationType) {
@@ -82,6 +83,7 @@ final class SafeOperationGate {
       capability,
       syntheticTarget: syntheticTarget,
       testMutationAuthorized: testMutationAuthorized,
+      userAuthorizedManagedTarget: userAuthorizedManagedTarget,
     );
   }
 }

@@ -1,8 +1,9 @@
 # Known Issues — v0.1.0-alpha Draft
 
 - Windows artifacts are portable unsigned ZIPs, not MSI/MSIX installers. Final signing and installer format are maintainer gates.
-- Android's installable artifact is debug-signed and arm64-only for the verified reference device. Upgrade identity is not guaranteed across CI builds.
-- The arm64 unsigned release APK is a size-check artifact, not an installable release.
+- Android's installable user-test artifact is test-signed, arm64-only Profile mode. Formal release signing and upgrade identity remain maintainer gates.
+- The arm64 unsigned Release APK remains size evidence only and is not shipped as the user-test artifact.
+- Office Open XML files use bounded structural summaries and Windows Shell thumbnails; PickLogic does not yet embed installed Office/WPS Shell Preview Handlers or bundle an Office runtime.
 - Pro's accepted PDFium path supports local page rendering, thumbnails, search, selection/copy, and a packaged native smoke test. Advanced PDF editing and conversion remain out of scope.
 - System Insight uses synthetic observations in the current vertical slice and performs no registry/service/task/startup inspection on the reference machine.
 - No real Windows directory or Android media collection has been indexed or benchmarked.

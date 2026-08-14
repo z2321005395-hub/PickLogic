@@ -29,7 +29,6 @@ void main() {
     expect(find.text('存储'), findsOneWidget);
     expect(find.byKey(const Key('desktop-home')), findsOneWidget);
     expect(find.byKey(const Key('home-dual-pane')), findsOneWidget);
-    expect(find.text('开发者安全模式：已开启，真实文件只读'), findsOneWidget);
     expect(find.byKey(const Key('detail-pane')), findsNothing);
     expect(
       tester.widget<Switch>(find.byKey(const Key('auto-index-switch'))).value,
@@ -37,7 +36,6 @@ void main() {
     );
     expect(find.textContaining('磁盘根仅用于浏览'), findsOneWidget);
     expect(find.text('磁盘与常用目录'), findsOneWidget);
-    expect(find.byKey(const Key('safe-file-actions')), findsOneWidget);
     expect(find.byKey(const Key('move-to-target')), findsNothing);
     expect(find.textContaining('Left pane'), findsNothing);
     expect(find.textContaining('Developer Safe Mode'), findsNothing);
@@ -122,8 +120,13 @@ void main() {
       tester
           .widget<InkWell>(find.byKey(const ValueKey('pane-0-entry-report')))
           .onDoubleTap!();
-      await tester.pump();
-      expect(repository.opened, ['report']);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('desktop-internal-viewer')), findsOneWidget);
+      expect(repository.opened, isEmpty);
+      Navigator.of(
+        tester.element(find.byKey(const Key('desktop-internal-viewer'))),
+      ).pop();
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('pane-1-home')));
       await tester.pump();
@@ -134,12 +137,13 @@ void main() {
           .widget<InkWell>(find.byKey(const ValueKey('pane-1-entry-figure')))
           .onTap!();
       await tester.pump();
-      await tester.tap(find.byKey(const Key('safe-file-actions')));
-      await tester.pumpAndSettle();
-      expect(find.text('移动到左栏'), findsOneWidget);
-      expect(find.text('安全模式下不可用'), findsNWidgets(2));
-      await tester.tapAt(const Offset(20, 20));
-      await tester.pumpAndSettle();
+      expect(find.text('只读位置'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('move-workspace-item')))
+            .onPressed,
+        isNull,
+      );
       await tester.enterText(
         find.byKey(const Key('active-pane-search')),
         'figure',
@@ -164,9 +168,13 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('pane-1-entry-figure')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('safe-file-actions')));
-      await tester.pumpAndSettle();
-      expect(find.text('移动到右栏'), findsOneWidget);
+      expect(find.byKey(const Key('move-workspace-item')), findsOneWidget);
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('move-workspace-item')))
+            .onPressed,
+        isNull,
+      );
     },
   );
 
@@ -284,10 +292,7 @@ void main() {
       expect(find.text('PickLogic'), findsOneWidget);
       expect(find.text('Left pane'), findsOneWidget);
       expect(find.text('Right pane'), findsOneWidget);
-      expect(
-        find.text('Developer Safe Mode: On, real files are read-only'),
-        findsOneWidget,
-      );
+      expect(find.text('Read-only location'), findsOneWidget);
       expect(
         find.textContaining('Common-folder indexing completed'),
         findsOneWidget,

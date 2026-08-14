@@ -8,8 +8,10 @@ import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'src/incremental_index_queue.dart';
+import 'src/mobile_internal_viewer.dart';
 import 'src/mobile_localizations.dart';
 import 'src/mobile_repository.dart';
+import 'src/mobile_test_workspace.dart';
 import 'src/paged_media.dart';
 import 'src/screenshot_grouping.dart';
 
@@ -163,6 +165,22 @@ final class _MobileShellState extends State<MobileShell> {
                   title: Text(strings.text('safeModeTitle')),
                   subtitle: Text(strings.text('safeModeDetail')),
                 ),
+                ListTile(
+                  key: const Key('mobile-test-workspace-entry'),
+                  leading: const Icon(Icons.folder_special_outlined),
+                  title: Text(strings.text('testWorkspace')),
+                  subtitle: Text(strings.text('testWorkspaceDetail')),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(this.context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (context) => MobileTestWorkspacePage(
+                          repository: widget.repository,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -287,13 +305,6 @@ final class _MobileShellState extends State<MobileShell> {
                 onPressed: _showSettings,
               ),
             ],
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(32),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: SafeModeBanner(),
-              ),
-            ),
           ),
           body: snapshot.hasError
               ? _BootstrapFailure(onRetry: _retryBootstrap)
@@ -1347,11 +1358,13 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
   final ScrollController _scrollController = ScrollController();
   PagedMediaController<MobileScreenshotCandidate>? _pager;
   String? _month;
+  int _gridColumns = 3;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    unawaited(_restoreGridColumns());
     _ensureLoaded();
   }
 
@@ -1361,8 +1374,25 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
     if ((!oldWidget.canReadMedia && widget.canReadMedia) ||
         oldWidget.repository != widget.repository) {
       _pager = null;
+      unawaited(_restoreGridColumns());
     }
     _ensureLoaded();
+  }
+
+  Future<void> _restoreGridColumns() async {
+    final value = await widget.repository.loadGridColumns(
+      'screenshotGridColumns',
+    );
+    if (mounted) setState(() => _gridColumns = value);
+  }
+
+  void _setGridColumns(int value) {
+    final bounded = value.clamp(2, 6);
+    if (bounded == _gridColumns) return;
+    setState(() => _gridColumns = bounded);
+    unawaited(
+      widget.repository.saveGridColumns('screenshotGridColumns', bounded),
+    );
   }
 
   @override
@@ -1597,89 +1627,94 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                     ),
                   const SizedBox(height: 8),
                   Expanded(
-                    child: GridView.builder(
-                      key: const Key('screenshot-thumbnail-grid'),
-                      controller: _scrollController,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 6,
-                            mainAxisSpacing: 6,
-                            childAspectRatio: 0.82,
-                          ),
-                      itemCount: visible.length,
-                      itemBuilder: (context, index) {
-                        final entry = visible[index];
-                        final record = entry.record;
-                        final group = entry.group.summary;
-                        final state =
-                            _review[record.id] ??
-                            ScreenshotReviewState.unreviewed;
-                        return Card(
-                          clipBehavior: Clip.antiAlias,
-                          child: InkWell(
-                            key: Key('screenshot-item-${record.id}'),
-                            onTap: () => _showScreenshotItem(
-                              context,
-                              record,
-                              entry.group,
-                              state,
-                              widget.repository,
-                              _mark,
-                            ),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                _OnDemandThumbnail(
-                                  repository: widget.repository,
-                                  record: record,
-                                  maxWidth: 192,
-                                  maxHeight: 192,
-                                  fallbackIcon:
-                                      Icons.screenshot_monitor_outlined,
-                                ),
-                                Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: Container(
-                                    width: double.infinity,
-                                    color: Theme.of(context).colorScheme.surface
-                                        .withValues(alpha: 0.90),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 4,
-                                    ),
-                                    child: Text(
-                                      _formatDateTime(
-                                        record.createdAt ?? record.modifiedAt,
+                    child: _PinchColumnGrid(
+                      columns: _gridColumns,
+                      onColumnsChanged: _setGridColumns,
+                      child: GridView.builder(
+                        key: const Key('screenshot-thumbnail-grid'),
+                        controller: _scrollController,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: _gridColumns,
+                          crossAxisSpacing: 6,
+                          mainAxisSpacing: 6,
+                          childAspectRatio: 0.82,
+                        ),
+                        itemCount: visible.length,
+                        itemBuilder: (context, index) {
+                          final entry = visible[index];
+                          final record = entry.record;
+                          final group = entry.group.summary;
+                          final state =
+                              _review[record.id] ??
+                              ScreenshotReviewState.unreviewed;
+                          return Card(
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              key: Key('screenshot-item-${record.id}'),
+                              onTap: () => _showScreenshotItem(
+                                context,
+                                record,
+                                entry.group,
+                                state,
+                                widget.repository,
+                                _mark,
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  _OnDemandThumbnail(
+                                    repository: widget.repository,
+                                    record: record,
+                                    maxWidth: 192,
+                                    maxHeight: 192,
+                                    fallbackIcon:
+                                        Icons.screenshot_monitor_outlined,
+                                  ),
+                                  Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: Container(
+                                      width: double.infinity,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surface
+                                          .withValues(alpha: 0.90),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 4,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.labelSmall,
+                                      child: Text(
+                                        _formatDateTime(
+                                          record.createdAt ?? record.modifiedAt,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (group.memberIds.length > 1)
-                                  _GridBadge(
-                                    alignment: Alignment.topLeft,
-                                    label: strings.format(
-                                      'consecutive',
-                                      <String, Object>{
-                                        'count': group.memberIds.length,
-                                      },
+                                  if (group.memberIds.length > 1)
+                                    _GridBadge(
+                                      alignment: Alignment.topLeft,
+                                      label: strings.format(
+                                        'consecutive',
+                                        <String, Object>{
+                                          'count': group.memberIds.length,
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                if (state != ScreenshotReviewState.unreviewed)
-                                  _GridBadge(
-                                    alignment: Alignment.topRight,
-                                    label: _reviewLabel(strings, state),
-                                  ),
-                              ],
+                                  if (state != ScreenshotReviewState.unreviewed)
+                                    _GridBadge(
+                                      alignment: Alignment.topRight,
+                                      label: _reviewLabel(strings, state),
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
                   _LoadMoreFooter(
@@ -1719,11 +1754,13 @@ final class _PhotosPageState extends State<_PhotosPage> {
   PagedMediaController<FileRecord>? _pager;
   String _query = '';
   String _filter = 'all';
+  int _gridColumns = 3;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    unawaited(_restoreGridColumns());
     _ensureLoaded();
   }
 
@@ -1733,8 +1770,21 @@ final class _PhotosPageState extends State<_PhotosPage> {
     if ((!oldWidget.canReadMedia && widget.canReadMedia) ||
         oldWidget.repository != widget.repository) {
       _pager = null;
+      unawaited(_restoreGridColumns());
     }
     _ensureLoaded();
+  }
+
+  Future<void> _restoreGridColumns() async {
+    final value = await widget.repository.loadGridColumns('photoGridColumns');
+    if (mounted) setState(() => _gridColumns = value);
+  }
+
+  void _setGridColumns(int value) {
+    final bounded = value.clamp(2, 6);
+    if (bounded == _gridColumns) return;
+    setState(() => _gridColumns = bounded);
+    unawaited(widget.repository.saveGridColumns('photoGridColumns', bounded));
   }
 
   @override
@@ -1877,39 +1927,42 @@ final class _PhotosPageState extends State<_PhotosPage> {
           Expanded(
             child: records.isEmpty
                 ? Center(child: Text(strings.text('photosNoMatches')))
-                : GridView.builder(
-                    key: const Key('photos-thumbnail-grid'),
-                    controller: _scrollController,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                    itemCount: records.length,
-                    itemBuilder: (context, index) {
-                      final record = records[index];
-                      return Card(
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: () => _showMediaItem(
-                            context,
-                            record,
-                            widget.repository,
-                          ),
-                          child: Semantics(
-                            label: record.displayName,
-                            child: _OnDemandThumbnail(
-                              repository: widget.repository,
-                              record: record,
-                              maxWidth: 160,
-                              maxHeight: 160,
-                              fallbackIcon: Icons.image_outlined,
+                : _PinchColumnGrid(
+                    columns: _gridColumns,
+                    onColumnsChanged: _setGridColumns,
+                    child: GridView.builder(
+                      key: const Key('photos-thumbnail-grid'),
+                      controller: _scrollController,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _gridColumns,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemCount: records.length,
+                      itemBuilder: (context, index) {
+                        final record = records[index];
+                        return Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => _showMediaItem(
+                              context,
+                              record,
+                              widget.repository,
+                            ),
+                            child: Semantics(
+                              label: record.displayName,
+                              child: _OnDemandThumbnail(
+                                repository: widget.repository,
+                                record: record,
+                                maxWidth: 160,
+                                maxHeight: 160,
+                                fallbackIcon: Icons.image_outlined,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
           ),
           _LoadMoreFooter(pager: pager, onLoadMore: () => _loadNext(pager)),
@@ -2657,6 +2710,95 @@ final class _MobileFileDetailPageState extends State<_MobileFileDetailPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _openInternalViewer() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: Text(record.displayName)),
+          body: MobileInternalViewer(record: record, repository: repository),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMore(MobileLocalizations strings) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: Text(strings.text('openWithOtherApp')),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final opened = await repository.open(record);
+                if (!mounted) return;
+                _showReadOnlyMessage(
+                  context,
+                  strings.text(opened ? 'opened' : 'noViewer'),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: Text(strings.text('copyLocation')),
+              onTap: () async {
+                await Clipboard.setData(
+                  ClipboardData(text: record.locator.value),
+                );
+                if (!mounted || !sheetContext.mounted) return;
+                Navigator.pop(sheetContext);
+                _showReadOnlyMessage(context, strings.text('locationCopied'));
+              },
+            ),
+            if (record.sourceKind == SourceKind.mediaStore &&
+                record.locator.value.startsWith('content://'))
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline,
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
+                title: Text(strings.text('systemTrash')),
+                subtitle: Text(strings.text('systemTrashConfirmDetail')),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: Text(strings.text('systemTrash')),
+                      content: Text(strings.text('systemTrashConfirmDetail')),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: Text(strings.text('cancel')),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: Text(strings.text('continueAction')),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true || !mounted) return;
+                  final trashed = await repository.requestSystemTrash(record);
+                  if (!mounted) return;
+                  _showReadOnlyMessage(
+                    context,
+                    strings.text(
+                      trashed ? 'systemTrashDone' : 'systemTrashCancelled',
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = MobileLocalizations.of(context);
@@ -2675,12 +2817,10 @@ final class _MobileFileDetailPageState extends State<_MobileFileDetailPage> {
                   PickLogicTokens.radiusLarge,
                 ),
               ),
-              child: _OnDemandThumbnail(
-                repository: repository,
+              clipBehavior: Clip.antiAlias,
+              child: MobileInternalViewer(
                 record: record,
-                maxWidth: 512,
-                maxHeight: 512,
-                fallbackIcon: _iconFor(record.category),
+                repository: repository,
               ),
             ),
           ),
@@ -2708,17 +2848,15 @@ final class _MobileFileDetailPageState extends State<_MobileFileDetailPage> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _DetailAction(
-                icon: Icons.open_in_new,
-                label: strings.text('open'),
+                icon: Icons.fullscreen,
+                label: strings.text('fullScreenPreview'),
                 primary: true,
-                onTap: () async {
-                  final opened = await repository.open(record);
-                  if (!context.mounted) return;
-                  _showReadOnlyMessage(
-                    context,
-                    strings.text(opened ? 'opened' : 'noViewer'),
-                  );
-                },
+                onTap: supportsMobileInternalViewer(record)
+                    ? _openInternalViewer
+                    : () => _showReadOnlyMessage(
+                        context,
+                        strings.text('noViewer'),
+                      ),
               ),
               _DetailAction(
                 icon: _sessionFavoriteIds.contains(record.id)
@@ -2755,17 +2893,7 @@ final class _MobileFileDetailPageState extends State<_MobileFileDetailPage> {
               _DetailAction(
                 icon: Icons.more_horiz,
                 label: strings.text('more'),
-                onTap: () async {
-                  await Clipboard.setData(
-                    ClipboardData(text: record.locator.value),
-                  );
-                  if (context.mounted) {
-                    _showReadOnlyMessage(
-                      context,
-                      strings.text('locationCopied'),
-                    );
-                  }
-                },
+                onTap: () => _showMore(strings),
               ),
             ],
           ),
@@ -2814,6 +2942,69 @@ final class _DetailAction extends StatelessWidget {
         ),
       ),
     ),
+  );
+}
+
+/// Observes two-pointer distance without claiming the scroll gesture arena.
+/// This keeps one-finger grid scrolling native while pinch changes 2–6 columns.
+final class _PinchColumnGrid extends StatefulWidget {
+  const _PinchColumnGrid({
+    required this.columns,
+    required this.onColumnsChanged,
+    required this.child,
+  });
+
+  final int columns;
+  final ValueChanged<int> onColumnsChanged;
+  final Widget child;
+
+  @override
+  State<_PinchColumnGrid> createState() => _PinchColumnGridState();
+}
+
+final class _PinchColumnGridState extends State<_PinchColumnGrid> {
+  final Map<int, Offset> _pointers = <int, Offset>{};
+  double? _baseline;
+
+  void _down(PointerDownEvent event) {
+    _pointers[event.pointer] = event.localPosition;
+    if (_pointers.length == 2) _baseline = _distance();
+  }
+
+  void _move(PointerMoveEvent event) {
+    if (!_pointers.containsKey(event.pointer)) return;
+    _pointers[event.pointer] = event.localPosition;
+    if (_pointers.length != 2) return;
+    final distance = _distance();
+    final baseline = _baseline ?? distance;
+    if (distance > baseline * 1.18 && widget.columns > 2) {
+      widget.onColumnsChanged(widget.columns - 1);
+      _baseline = distance;
+    } else if (distance < baseline * 0.82 && widget.columns < 6) {
+      widget.onColumnsChanged(widget.columns + 1);
+      _baseline = distance;
+    }
+  }
+
+  double _distance() {
+    final values = _pointers.values.take(2).toList(growable: false);
+    return (values[0] - values[1]).distance;
+  }
+
+  void _up(PointerEvent event) {
+    _pointers.remove(event.pointer);
+    if (_pointers.length < 2) _baseline = null;
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    key: const Key('mobile-grid-pinch-listener'),
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: _down,
+    onPointerMove: _move,
+    onPointerUp: _up,
+    onPointerCancel: _up,
+    child: widget.child,
   );
 }
 

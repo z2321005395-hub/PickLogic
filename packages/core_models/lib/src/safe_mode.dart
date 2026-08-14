@@ -11,6 +11,7 @@ final class DeveloperSafeMode {
     SafeCapability capability, {
     bool syntheticTarget = false,
     bool testMutationAuthorized = false,
+    bool userAuthorizedManagedTarget = false,
   }) {
     if (!enabled) return true;
     switch (capability) {
@@ -25,7 +26,8 @@ final class DeveloperSafeMode {
       case SafeCapability.deleteRealData:
       case SafeCapability.moveRealData:
       case SafeCapability.renameRealData:
-        return syntheticTarget && testMutationAuthorized;
+        return (syntheticTarget && testMutationAuthorized) ||
+            userAuthorizedManagedTarget;
       case SafeCapability.systemChanges:
         return false;
     }
