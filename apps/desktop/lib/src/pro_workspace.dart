@@ -11,6 +11,8 @@ import 'package:picklogic_system_insight_core/picklogic_system_insight_core.dart
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 import 'pro_pdf_reader.dart';
+import 'pro_translation.dart';
+import 'workspace_controller.dart';
 
 const Set<String> proWorkspaceSections = {'literature', 'research', 'system'};
 
@@ -59,22 +61,28 @@ final class ProWorkspaceRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(_routeTitle(context, section))),
-    body: Column(
-      children: [
-        const Align(alignment: Alignment.centerLeft, child: SafeModeBanner()),
-        Expanded(
-          child: ProWorkspaceView(
-            section: section,
-            pdfReaderBuilder: pdfReaderBuilder,
-            libraryStore: libraryStore,
-            pdfPicker: pdfPicker,
-            pdfMultiPicker: pdfMultiPicker,
-            pdfSourceBuilder: pdfSourceBuilder,
-            literaturePdfReaderBuilder: literaturePdfReaderBuilder,
+    appBar: AppBar(
+      title: Text(_routeTitle(context, section)),
+      actions: [
+        Tooltip(
+          message: Localizations.localeOf(context).languageCode == 'zh'
+              ? '未授权位置只读；测试工作区和已管理目录可按操作预览整理'
+              : 'Unauthorized locations are read-only; Test Workspace and managed folders use operation previews',
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Icon(Icons.verified_user_outlined, size: 20),
           ),
         ),
       ],
+    ),
+    body: ProWorkspaceView(
+      section: section,
+      pdfReaderBuilder: pdfReaderBuilder,
+      libraryStore: libraryStore,
+      pdfPicker: pdfPicker,
+      pdfMultiPicker: pdfMultiPicker,
+      pdfSourceBuilder: pdfSourceBuilder,
+      literaturePdfReaderBuilder: literaturePdfReaderBuilder,
     ),
   );
 }
@@ -140,6 +148,11 @@ final class LiteratureManagerLiteView extends StatefulWidget {
 
 final class _LiteratureManagerLiteViewState
     extends State<LiteratureManagerLiteView> {
+  late final WindowsOpenAiCompatibleTranslationProvider _translationProvider =
+      WindowsOpenAiCompatibleTranslationProvider();
+  late final WindowsWorkspaceController _workspaceController =
+      WindowsWorkspaceController();
+  late final Future<WindowsBrowseRoot> _workspaceReady;
   late final Future<LiteratureLibraryStore> _storeFuture;
   Future<void> _saveTail = Future<void>.value();
   List<LiteratureLibraryEntry> _entries = const <LiteratureLibraryEntry>[];
@@ -157,6 +170,7 @@ final class _LiteratureManagerLiteViewState
     _storeFuture = widget.libraryStore == null
         ? _createDefaultStore()
         : Future<LiteratureLibraryStore>.value(widget.libraryStore);
+    _workspaceReady = _workspaceController.initialize();
     unawaited(_loadLibrary());
   }
 
@@ -557,14 +571,16 @@ final class _LiteratureManagerLiteViewState
   Future<void> _showRenamePreview(
     LiteratureLibraryEntry entry,
     _LiteratureStrings strings,
-  ) {
+  ) async {
     final preview = const LiteratureNaming().previewRename(
       record: entry.record,
       originalFileName: entry.fileName,
     );
-    return showDialog<void>(
+    final access = _workspaceController.accessFor(entry.localPath);
+    final mayRename = access != WorkspaceAccessLevel.browseOnly;
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         key: const Key('literature-rename-preview-dialog'),
         title: Text(strings.renamePreview),
         content: ConstrainedBox(
@@ -579,18 +595,149 @@ final class _LiteratureManagerLiteViewState
                 value: preview.proposedFileName,
               ),
               const SizedBox(height: 8),
-              Text(strings.previewOnly),
+              Text(
+                mayRename
+                    ? strings.renameAuthorized(
+                        access == WorkspaceAccessLevel.testWorkspace,
+                      )
+                    : strings.previewOnly,
+              ),
             ],
           ),
         ),
         actions: [
+          if (!mayRename)
+            OutlinedButton.icon(
+              key: const Key('literature-authorize-folder-action'),
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _workspaceReady;
+                final selected = await _workspaceController
+                    .authorizeManagedFolder(chinese: strings.isChinese);
+                if (selected != null && mounted) {
+                  await _showRenamePreview(entry, strings);
+                }
+              },
+              icon: const Icon(Icons.folder_shared_outlined),
+              label: Text(strings.authorizeFolder),
+            ),
+          if (mayRename)
+            FilledButton.icon(
+              key: const Key('literature-confirm-rename-action'),
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _executeLiteratureRename(
+                  entry,
+                  preview.proposedFileName,
+                  strings,
+                );
+              },
+              icon: const Icon(Icons.drive_file_rename_outline),
+              label: Text(strings.confirmRename),
+            ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: Text(strings.close),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _executeLiteratureRename(
+    LiteratureLibraryEntry entry,
+    String proposedName,
+    _LiteratureStrings strings,
+  ) async {
+    OperationResult? result;
+    try {
+      final previewed = await _workspaceController.previewRename(
+        entry.localPath,
+        proposedName,
+      );
+      result = await _workspaceController.execute(
+        previewed.transitionTo(OperationStatus.confirmed),
+      );
+      if (!result.success || result.plan.destination == null) {
+        throw StateError(result.message);
+      }
+      final destination = result.plan.destination!.value;
+      final renamedEntry = LiteratureLibraryEntry(
+        record: entry.record,
+        localPath: destination,
+        fileName: File(destination).uri.pathSegments.last,
+        addedAt: entry.addedAt,
+        currentPage: entry.currentPage,
+        totalPages: entry.totalPages,
+      );
+      final index = _entries.indexWhere(
+        (candidate) => candidate.id == entry.id,
+      );
+      if (index < 0) throw StateError('The literature entry no longer exists.');
+      final updated = List<LiteratureLibraryEntry>.of(_entries);
+      updated[index] = renamedEntry;
+      final snapshot = List<LiteratureLibraryEntry>.unmodifiable(updated);
+      try {
+        await _enqueueSave(snapshot);
+      } on Object {
+        await _workspaceController.undo(result.plan);
+        rethrow;
+      }
+      if (!mounted) return;
+      setState(() => _entries = snapshot);
+      final completedPlan = result.plan;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(strings.renameCompleted),
+          action: SnackBarAction(
+            label: strings.undo,
+            onPressed: () => unawaited(
+              _undoLiteratureRename(
+                original: entry,
+                renamed: renamedEntry,
+                completedPlan: completedPlan,
+                strings: strings,
+              ),
+            ),
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${strings.renameFailed}: $error')),
+      );
+    }
+  }
+
+  Future<void> _undoLiteratureRename({
+    required LiteratureLibraryEntry original,
+    required LiteratureLibraryEntry renamed,
+    required OperationPlan completedPlan,
+    required _LiteratureStrings strings,
+  }) async {
+    try {
+      final undo = await _workspaceController.undo(completedPlan);
+      if (!undo.success) throw StateError(undo.message);
+      final index = _entries.indexWhere(
+        (candidate) => candidate.id == renamed.id,
+      );
+      if (index < 0) return;
+      final updated = List<LiteratureLibraryEntry>.of(_entries);
+      updated[index] = original;
+      final snapshot = List<LiteratureLibraryEntry>.unmodifiable(updated);
+      await _enqueueSave(snapshot);
+      if (!mounted) return;
+      setState(() => _entries = snapshot);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.renameUndone)));
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${strings.undoFailed}: $error')));
+    }
   }
 
   @override
@@ -806,6 +953,10 @@ final class _LiteratureManagerLiteViewState
           initialPageNumber: selected.currentPage,
           onPositionChanged: (currentPage, totalPages) =>
               _recordPosition(selected.id, currentPage, totalPages),
+          translationProvider: _translationProvider,
+          onConfigureTranslation: () => unawaited(
+            showTranslationConfigurationDialog(context, _translationProvider),
+          ),
         );
     return Card(
       margin: EdgeInsets.zero,
@@ -1336,8 +1487,24 @@ final class _LiteratureStrings {
   String get current => isChinese ? '当前文件名' : 'Current';
   String get preview => isChinese ? '预览名称' : 'Preview';
   String get previewOnly => isChinese
-      ? '仅预览 · 未创建 OperationPlan · 未执行重命名'
-      : 'Preview only · no OperationPlan created · no rename executed';
+      ? '仅预览 · 当前位置为只读。可授权其所在目录后，再通过 OperationPlan 确认重命名。'
+      : 'Preview only · this location is read-only. Authorize its folder before confirming a rename through OperationPlan.';
+  String renameAuthorized(bool testWorkspace) => isChinese
+      ? (testWorkspace
+            ? '测试工作区 · 将先创建 OperationPlan，再由你确认执行。'
+            : '已管理目录 · 将先创建 OperationPlan，再由你确认执行。')
+      : (testWorkspace
+            ? 'Test Workspace · an OperationPlan will be created before your confirmation.'
+            : 'Managed folder · an OperationPlan will be created before your confirmation.');
+  String get authorizeFolder => isChinese ? '授权目录' : 'Authorize folder';
+  String get confirmRename => isChinese ? '确认重命名' : 'Confirm rename';
+  String get renameCompleted => isChinese
+      ? '文献已重命名，书库引用已更新。'
+      : 'Literature renamed and the library reference was updated.';
+  String get renameFailed => isChinese ? '重命名失败' : 'Rename failed';
+  String get undo => isChinese ? '撤销' : 'Undo';
+  String get renameUndone => isChinese ? '重命名已撤销。' : 'Rename undone.';
+  String get undoFailed => isChinese ? '撤销失败' : 'Undo failed';
   String get libraryPrivacy => isChinese
       ? '列表仅保存本地引用和阅读状态；不会扫描文献目录、上传 PDF 或改动原文件。'
       : 'The library stores only local references and reading state; it never scans literature folders, uploads PDFs, or changes source files.';

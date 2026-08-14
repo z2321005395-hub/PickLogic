@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 typedef LiteratureReadingPositionChanged =
@@ -19,6 +20,8 @@ final class ProLocalPdfReader extends StatelessWidget {
     required this.initialPageNumber,
     required this.onPositionChanged,
     this.viewerBuilder,
+    this.translationProvider = const DisabledTranslationProvider(),
+    this.onConfigureTranslation,
   });
 
   final String path;
@@ -26,6 +29,8 @@ final class ProLocalPdfReader extends StatelessWidget {
   final int initialPageNumber;
   final LiteratureReadingPositionChanged onPositionChanged;
   final WidgetBuilder? viewerBuilder;
+  final TranslationProvider translationProvider;
+  final VoidCallback? onConfigureTranslation;
 
   @override
   Widget build(BuildContext context) => _ProPdfReader(
@@ -34,6 +39,8 @@ final class ProLocalPdfReader extends StatelessWidget {
     initialPageNumber: initialPageNumber,
     onPositionChanged: onPositionChanged,
     viewerBuilder: viewerBuilder,
+    translationProvider: translationProvider,
+    onConfigureTranslation: onConfigureTranslation,
   );
 }
 
@@ -47,6 +54,7 @@ final class ProSyntheticPdfReader extends StatelessWidget {
     sourceName: 'picklogic-synthetic-literature-v1.pdf',
     initialPageNumber: 1,
     onPositionChanged: _ignorePosition,
+    translationProvider: const DisabledTranslationProvider(),
   );
 
   static void _ignorePosition(int currentPage, int totalPages) {}
@@ -60,6 +68,8 @@ final class _ProPdfReader extends StatefulWidget {
     required this.initialPageNumber,
     required this.onPositionChanged,
     this.viewerBuilder,
+    required this.translationProvider,
+    this.onConfigureTranslation,
   }) : assert((filePath == null) != (documentBytes == null));
 
   final String? filePath;
@@ -68,6 +78,8 @@ final class _ProPdfReader extends StatefulWidget {
   final int initialPageNumber;
   final LiteratureReadingPositionChanged onPositionChanged;
   final WidgetBuilder? viewerBuilder;
+  final TranslationProvider translationProvider;
+  final VoidCallback? onConfigureTranslation;
 
   bool get isSynthetic => documentBytes != null;
 
@@ -88,6 +100,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   bool _loadSucceeded = false;
   bool _positionRestored = false;
   bool _pageJumpInvalid = false;
+  String _selectedText = '';
+  bool _selectionLoading = false;
+  bool _translationBusy = false;
 
   @override
   void initState() {
@@ -176,6 +191,95 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     _searcher?.pageTextMatchPaintCallback(canvas, pageRect, page);
   }
 
+  Future<void> _onTextSelectionChanged(PdfTextSelection selection) async {
+    if (!selection.hasSelectedText || !selection.isCopyAllowed) {
+      if (mounted && _selectedText.isNotEmpty) {
+        setState(() => _selectedText = '');
+      }
+      return;
+    }
+    if (mounted) setState(() => _selectionLoading = true);
+    try {
+      final text = (await selection.getSelectedText()).trim();
+      if (mounted) setState(() => _selectedText = text);
+    } on Object {
+      if (mounted) setState(() => _selectedText = '');
+    } finally {
+      if (mounted) setState(() => _selectionLoading = false);
+    }
+  }
+
+  Future<void> _copySelection() async {
+    if (!_viewerController.isReady) return;
+    final copied = await _viewerController.textSelectionDelegate
+        .copyTextSelection();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          copied
+              ? _PdfReaderStrings.of(context).selectionCopied
+              : _PdfReaderStrings.of(context).selectionCopyUnavailable,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _translateSelection() async {
+    final strings = _PdfReaderStrings.of(context);
+    final source = _selectedText.trim();
+    if (source.isEmpty || _translationBusy) return;
+    final configured = await widget.translationProvider.isConfigured();
+    if (!mounted) return;
+    if (!configured) {
+      widget.onConfigureTranslation?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.translationNeedsConfiguration)),
+      );
+      return;
+    }
+    setState(() => _translationBusy = true);
+    try {
+      final result = await widget.translationProvider.translateSelectedText(
+        source,
+        targetLanguage: strings.isChinese ? 'Simplified Chinese' : 'English',
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const Key('pdf-translation-result-dialog'),
+          title: Text(strings.translationResult),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640, maxHeight: 520),
+            child: SingleChildScrollView(
+              child: SelectableText(result.translatedText),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () =>
+                  Clipboard.setData(ClipboardData(text: result.translatedText)),
+              icon: const Icon(Icons.copy_outlined),
+              label: Text(strings.copyTranslation),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(strings.close),
+            ),
+          ],
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${strings.translationFailed}: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _translationBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = _PdfReaderStrings.of(context);
@@ -225,6 +329,37 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                   strings.localRendering,
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
+                if (_selectionLoading)
+                  const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                if (_selectedText.isNotEmpty) ...[
+                  Chip(
+                    key: const Key('pdf-selection-status'),
+                    avatar: const Icon(Icons.text_fields, size: 16),
+                    label: Text(
+                      strings.selectedCharacters(_selectedText.length),
+                    ),
+                  ),
+                  TextButton.icon(
+                    key: const Key('pdf-copy-selection-action'),
+                    onPressed: _copySelection,
+                    icon: const Icon(Icons.copy_outlined),
+                    label: Text(strings.copySelection),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const Key('pdf-translate-selection-action'),
+                    onPressed: _translationBusy ? null : _translateSelection,
+                    icon: _translationBusy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.translate),
+                    label: Text(strings.translateSelection),
+                  ),
+                ],
                 const SizedBox(width: 4),
                 SizedBox(
                   width: 220,
@@ -427,6 +562,11 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       maxImageBytesCachedOnMemory: _cacheLimitBytes,
       horizontalCacheExtent: 0.5,
       verticalCacheExtent: 0.5,
+      textSelectionParams: PdfTextSelectionParams(
+        enabled: true,
+        showContextMenuAutomatically: true,
+        onTextSelectionChange: _onTextSelectionChanged,
+      ),
       pagePaintCallbacks: [_paintSearchMatches],
       onDocumentChanged: (value) {
         if (mounted) setState(() => _document = value);
@@ -522,6 +662,21 @@ final class _PdfReaderStrings {
   String pageRange(int totalPages) => isChinese
       ? '页码应为 1–$totalPages'
       : 'Page must be between 1 and $totalPages';
+  String selectedCharacters(int count) =>
+      isChinese ? '已选择 $count 个字符' : '$count characters selected';
+  String get copySelection => isChinese ? '复制' : 'Copy';
+  String get translateSelection => isChinese ? '翻译' : 'Translate';
+  String get selectionCopied =>
+      isChinese ? '选中文字已复制。' : 'Selected text copied.';
+  String get selectionCopyUnavailable =>
+      isChinese ? '此 PDF 不允许复制文字。' : 'This PDF does not allow text copying.';
+  String get translationNeedsConfiguration => isChinese
+      ? '翻译默认关闭；请先配置 Provider。复制仍可使用。'
+      : 'Translation is disabled until a provider is configured. Copy remains available.';
+  String get translationResult => isChinese ? '翻译结果' : 'Translation result';
+  String get copyTranslation => isChinese ? '复制译文' : 'Copy translation';
+  String get translationFailed => isChinese ? '翻译失败' : 'Translation failed';
+  String get close => isChinese ? '关闭' : 'Close';
   String get openError => isChinese
       ? '无法只读打开此 PDF。请确认文件仍存在、未损坏且未受不支持的密码保护。'
       : 'This PDF could not be opened read-only. Confirm that it still exists, is not damaged, and is not protected by an unsupported password.';
