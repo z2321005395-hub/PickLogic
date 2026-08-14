@@ -67,6 +67,153 @@ abstract interface class MobileRepository {
   Future<void> close();
 }
 
+/// Optional viewer capabilities stay out of [MobileRepository] so test doubles
+/// and alternate metadata repositories do not need to implement platform I/O.
+extension MobileRepositoryViewerCapabilities on MobileRepository {
+  PicklogicAndroidBridge? get _viewerBridge => this is AndroidMobileRepository
+      ? (this as AndroidMobileRepository).bridge
+      : null;
+
+  Future<AndroidPreviewImage?> loadPreviewImage(FileRecord record) async =>
+      _viewerBridge?.loadPreviewImage(record.locator.value);
+
+  Future<AndroidTextPreview> loadTextPreview(FileRecord record) async =>
+      await _viewerBridge?.loadTextPreview(record.locator.value) ??
+      AndroidTextPreview(
+        text: 'Synthetic read-only preview for ${record.displayName}',
+        truncated: false,
+      );
+
+  Future<AndroidArchiveListing> listArchive(FileRecord record) async =>
+      await _viewerBridge?.listArchive(record.locator.value) ??
+      const AndroidArchiveListing(
+        entries: <AndroidArchiveEntry>[],
+        totalEntries: 0,
+        truncated: false,
+      );
+
+  Future<AndroidApkDetails?> inspectApk(FileRecord record) async =>
+      _viewerBridge?.inspectApk(record.locator.value);
+
+  Future<AndroidPdfInfo?> getPdfInfo(FileRecord record) async =>
+      _viewerBridge?.getPdfInfo(record.locator.value);
+
+  Future<AndroidOfficePreview?> inspectOffice(FileRecord record) async =>
+      _viewerBridge?.inspectOffice(
+        record.locator.value,
+        extension: record.extension.toLowerCase(),
+      );
+
+  Future<AndroidPreviewImage?> renderPdfPage(
+    FileRecord record, {
+    required int pageIndex,
+    required int maxWidth,
+    required int maxHeight,
+  }) async => _viewerBridge?.renderPdfPage(
+    record.locator.value,
+    pageIndex: pageIndex,
+    maxWidth: maxWidth,
+    maxHeight: maxHeight,
+  );
+
+  Future<int> loadGridColumns(String key, {int fallback = 3}) async =>
+      ((await _viewerBridge?.readIntPreference(key)) ?? fallback).clamp(2, 6);
+
+  Future<void> saveGridColumns(String key, int value) async {
+    await _viewerBridge?.writeIntPreference(key, value.clamp(2, 6));
+  }
+
+  Future<int> loadPdfRecentPage(FileRecord record) async =>
+      (await _viewerBridge?.readIntPreference(
+        _pdfPagePreferenceKey(record.id),
+      ))?.clamp(0, 100000) ??
+      0;
+
+  Future<void> savePdfRecentPage(FileRecord record, int page) async {
+    await _viewerBridge?.writeIntPreference(
+      _pdfPagePreferenceKey(record.id),
+      page.clamp(0, 100000),
+    );
+  }
+
+  Future<AndroidWorkspaceState> loadTestWorkspace() async =>
+      await _viewerBridge?.getTestWorkspaceState() ??
+      const AndroidWorkspaceState(
+        authorized: false,
+        treeUri: null,
+        entries: <AndroidWorkspaceEntry>[],
+        undoAvailable: false,
+      );
+
+  Future<AndroidWorkspaceState?> chooseTestWorkspace() =>
+      _viewerBridge?.pickTestWorkspaceTree() ??
+      Future<AndroidWorkspaceState?>.value();
+
+  Future<AndroidWorkspaceState?> importTestCopies() =>
+      _viewerBridge?.importTestWorkspaceCopies() ??
+      Future<AndroidWorkspaceState?>.value();
+
+  Future<AndroidWorkspaceState> createTestFolder(
+    String name, {
+    String? parentUri,
+  }) async =>
+      await _viewerBridge?.createTestWorkspaceFolder(
+        parentUri: parentUri,
+        name: name,
+      ) ??
+      await loadTestWorkspace();
+
+  Future<AndroidWorkspaceState> renameTestItem(
+    AndroidWorkspaceEntry entry,
+    String name,
+  ) async =>
+      await _viewerBridge?.renameTestWorkspaceItem(
+        documentUri: entry.documentUri,
+        name: name,
+      ) ??
+      await loadTestWorkspace();
+
+  Future<AndroidWorkspaceState> moveTestItem(
+    AndroidWorkspaceEntry entry,
+    String targetParentUri,
+  ) async =>
+      await _viewerBridge?.moveTestWorkspaceItem(
+        documentUri: entry.documentUri,
+        sourceParentUri: entry.parentUri,
+        targetParentUri: targetParentUri,
+      ) ??
+      await loadTestWorkspace();
+
+  Future<AndroidWorkspaceState> trashTestItem(
+    AndroidWorkspaceEntry entry,
+  ) async =>
+      await _viewerBridge?.trashTestWorkspaceItem(
+        documentUri: entry.documentUri,
+        sourceParentUri: entry.parentUri,
+      ) ??
+      await loadTestWorkspace();
+
+  Future<AndroidWorkspaceState> undoTestOperation([
+    String? operationId,
+  ]) async =>
+      await _viewerBridge?.undoTestWorkspaceOperation(
+        operationId: operationId,
+      ) ??
+      await loadTestWorkspace();
+
+  Future<bool> requestSystemTrash(FileRecord record) async =>
+      await _viewerBridge?.requestSystemTrash(<String>[record.locator.value]) ??
+      false;
+}
+
+String _pdfPagePreferenceKey(String id) {
+  var hash = 0x811c9dc5;
+  for (final unit in id.codeUnits) {
+    hash = ((hash ^ unit) * 0x01000193) & 0x7fffffff;
+  }
+  return 'pdfRecentPage-${hash.toRadixString(16)}';
+}
+
 final class AndroidMobileRepository implements MobileRepository {
   AndroidMobileRepository({
     PicklogicAndroidBridge bridge = const PicklogicAndroidBridge(),

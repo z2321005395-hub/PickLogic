@@ -57,6 +57,114 @@ class MockPicklogicAndroidBridgePlatform
   @override
   Future<bool> openContentUri(String contentUri) async =>
       contentUri.startsWith('content://');
+
+  @override
+  Future<AndroidPreviewImage?> loadPreviewImage(String contentUri) async =>
+      AndroidPreviewImage(bytes: Uint8List.fromList(<int>[1, 2, 3]));
+
+  @override
+  Future<AndroidTextPreview> loadTextPreview(String contentUri) async =>
+      const AndroidTextPreview(text: 'preview', truncated: false);
+
+  @override
+  Future<AndroidArchiveListing> listArchive(String contentUri) async =>
+      const AndroidArchiveListing(
+        entries: <AndroidArchiveEntry>[],
+        totalEntries: 0,
+        truncated: false,
+      );
+
+  @override
+  Future<AndroidApkDetails> inspectApk(String contentUri) async =>
+      const AndroidApkDetails(
+        applicationName: 'PickLogic test',
+        packageName: 'io.picklogic.test',
+        versionName: '1',
+        versionCode: 1,
+        signed: true,
+        installed: false,
+      );
+
+  @override
+  Future<AndroidPdfInfo> getPdfInfo(String contentUri) async =>
+      const AndroidPdfInfo(pageCount: 2);
+
+  @override
+  Future<AndroidOfficePreview> inspectOffice(
+    String contentUri, {
+    required String extension,
+  }) async => const AndroidOfficePreview(
+    kind: 'docx',
+    title: 'Fixture',
+    sections: <String>['Bounded preview'],
+    gridRows: <List<String>>[],
+    imageCount: 1,
+    itemCount: 2,
+    truncated: false,
+  );
+
+  @override
+  Future<AndroidPreviewImage> renderPdfPage(
+    String contentUri, {
+    required int pageIndex,
+    required int maxWidth,
+    required int maxHeight,
+  }) async => AndroidPreviewImage(bytes: Uint8List.fromList(<int>[4, 5, 6]));
+
+  @override
+  Future<int?> readIntPreference(String key) async => 4;
+
+  @override
+  Future<void> writeIntPreference(String key, int value) async {}
+
+  static const workspace = AndroidWorkspaceState(
+    authorized: true,
+    treeUri: 'content://tree/workspace',
+    entries: <AndroidWorkspaceEntry>[],
+    undoAvailable: false,
+  );
+
+  @override
+  Future<AndroidWorkspaceState> getTestWorkspaceState() async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState?> pickTestWorkspaceTree() async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState?> importTestWorkspaceCopies() async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState> createTestWorkspaceFolder({
+    String? parentUri,
+    required String name,
+  }) async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState> renameTestWorkspaceItem({
+    required String documentUri,
+    required String name,
+  }) async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState> moveTestWorkspaceItem({
+    required String documentUri,
+    required String sourceParentUri,
+    required String targetParentUri,
+  }) async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState> trashTestWorkspaceItem({
+    required String documentUri,
+    required String sourceParentUri,
+  }) async => workspace;
+
+  @override
+  Future<AndroidWorkspaceState> undoTestWorkspaceOperation({
+    String? operationId,
+  }) async => workspace;
+
+  @override
+  Future<bool> requestSystemTrash(List<String> contentUris) async => true;
 }
 
 void main() {

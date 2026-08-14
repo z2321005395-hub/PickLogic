@@ -143,6 +143,213 @@ final class AndroidThumbnail {
   final Uint8List bytes;
 }
 
+final class AndroidPreviewImage {
+  const AndroidPreviewImage({required this.bytes});
+
+  factory AndroidPreviewImage.fromBytes(Uint8List bytes) {
+    if (bytes.isEmpty || bytes.lengthInBytes > 8 * 1024 * 1024) {
+      throw const FormatException('Android returned an invalid preview image.');
+    }
+    return AndroidPreviewImage(bytes: bytes);
+  }
+
+  final Uint8List bytes;
+}
+
+final class AndroidTextPreview {
+  const AndroidTextPreview({required this.text, required this.truncated});
+
+  factory AndroidTextPreview.fromMap(Map<Object?, Object?> map) =>
+      AndroidTextPreview(
+        text: map['text']! as String,
+        truncated: map['truncated']! as bool,
+      );
+
+  final String text;
+  final bool truncated;
+}
+
+final class AndroidArchiveEntry {
+  const AndroidArchiveEntry({
+    required this.name,
+    required this.directory,
+    required this.sizeBytes,
+    required this.compressedBytes,
+  });
+
+  factory AndroidArchiveEntry.fromMap(Map<Object?, Object?> map) =>
+      AndroidArchiveEntry(
+        name: map['name']! as String,
+        directory: map['directory']! as bool,
+        sizeBytes: map['sizeBytes']! as int,
+        compressedBytes: map['compressedBytes']! as int,
+      );
+
+  final String name;
+  final bool directory;
+  final int sizeBytes;
+  final int compressedBytes;
+}
+
+final class AndroidArchiveListing {
+  const AndroidArchiveListing({
+    required this.entries,
+    required this.totalEntries,
+    required this.truncated,
+  });
+
+  factory AndroidArchiveListing.fromMap(Map<Object?, Object?> map) =>
+      AndroidArchiveListing(
+        entries: (map['entries']! as List<Object?>)
+            .cast<Map<Object?, Object?>>()
+            .map(AndroidArchiveEntry.fromMap)
+            .toList(growable: false),
+        totalEntries: map['totalEntries']! as int,
+        truncated: map['truncated']! as bool,
+      );
+
+  final List<AndroidArchiveEntry> entries;
+  final int totalEntries;
+  final bool truncated;
+}
+
+final class AndroidApkDetails {
+  const AndroidApkDetails({
+    required this.applicationName,
+    required this.packageName,
+    required this.versionName,
+    required this.versionCode,
+    required this.signed,
+    required this.installed,
+    this.iconBytes,
+  });
+
+  factory AndroidApkDetails.fromMap(Map<Object?, Object?> map) =>
+      AndroidApkDetails(
+        applicationName: map['applicationName']! as String,
+        packageName: map['packageName']! as String,
+        versionName: map['versionName']! as String,
+        versionCode: map['versionCode']! as int,
+        signed: map['signed']! as bool,
+        installed: map['installed']! as bool,
+        iconBytes: map['iconBytes'] as Uint8List?,
+      );
+
+  final String applicationName;
+  final String packageName;
+  final String versionName;
+  final int versionCode;
+  final bool signed;
+  final bool installed;
+  final Uint8List? iconBytes;
+}
+
+final class AndroidPdfInfo {
+  const AndroidPdfInfo({required this.pageCount});
+
+  factory AndroidPdfInfo.fromMap(Map<Object?, Object?> map) =>
+      AndroidPdfInfo(pageCount: map['pageCount']! as int);
+
+  final int pageCount;
+}
+
+final class AndroidOfficePreview {
+  const AndroidOfficePreview({
+    required this.kind,
+    required this.title,
+    required this.sections,
+    required this.gridRows,
+    required this.imageCount,
+    required this.itemCount,
+    required this.truncated,
+  });
+
+  factory AndroidOfficePreview.fromMap(Map<Object?, Object?> map) =>
+      AndroidOfficePreview(
+        kind: map['kind']! as String,
+        title: map['title']! as String,
+        sections: (map['sections']! as List<Object?>).cast<String>(),
+        gridRows: (map['gridRows']! as List<Object?>)
+            .map((row) => (row! as List<Object?>).cast<String>())
+            .toList(growable: false),
+        imageCount: map['imageCount']! as int,
+        itemCount: map['itemCount']! as int,
+        truncated: map['truncated']! as bool,
+      );
+
+  final String kind;
+  final String title;
+  final List<String> sections;
+  final List<List<String>> gridRows;
+  final int imageCount;
+  final int itemCount;
+  final bool truncated;
+}
+
+final class AndroidWorkspaceEntry {
+  const AndroidWorkspaceEntry({
+    required this.documentUri,
+    required this.parentUri,
+    required this.displayName,
+    required this.mimeType,
+    required this.directory,
+    required this.sizeBytes,
+    required this.modifiedAt,
+    required this.depth,
+  });
+
+  factory AndroidWorkspaceEntry.fromMap(Map<Object?, Object?> map) =>
+      AndroidWorkspaceEntry(
+        documentUri: map['documentUri']! as String,
+        parentUri: map['parentUri']! as String,
+        displayName: map['displayName']! as String,
+        mimeType: map['mimeType']! as String,
+        directory: map['directory']! as bool,
+        sizeBytes: map['sizeBytes']! as int,
+        modifiedAt: DateTime.fromMillisecondsSinceEpoch(
+          map['modifiedAtMillis']! as int,
+        ),
+        depth: map['depth']! as int,
+      );
+
+  final String documentUri;
+  final String parentUri;
+  final String displayName;
+  final String mimeType;
+  final bool directory;
+  final int sizeBytes;
+  final DateTime modifiedAt;
+  final int depth;
+}
+
+final class AndroidWorkspaceState {
+  const AndroidWorkspaceState({
+    required this.authorized,
+    required this.treeUri,
+    required this.entries,
+    required this.undoAvailable,
+    this.operationId,
+  });
+
+  factory AndroidWorkspaceState.fromMap(Map<Object?, Object?> map) =>
+      AndroidWorkspaceState(
+        authorized: map['authorized']! as bool,
+        treeUri: map['treeUri'] as String?,
+        entries: (map['entries']! as List<Object?>)
+            .cast<Map<Object?, Object?>>()
+            .map(AndroidWorkspaceEntry.fromMap)
+            .toList(growable: false),
+        undoAvailable: map['undoAvailable']! as bool,
+        operationId: map['operationId'] as String?,
+      );
+
+  final bool authorized;
+  final String? treeUri;
+  final List<AndroidWorkspaceEntry> entries;
+  final bool undoAvailable;
+  final String? operationId;
+}
+
 final class AndroidMediaPage {
   const AndroidMediaPage({
     required this.items,

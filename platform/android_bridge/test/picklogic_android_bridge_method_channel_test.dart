@@ -61,6 +61,51 @@ void main() {
               'synthetic-private/picklogic-index.sqlite3',
             'pickDocumentTree' => 'content://tree/test',
             'openContentUri' => true,
+            'loadPreviewImage' => Uint8List.fromList(<int>[1, 2, 3]),
+            'loadTextPreview' => <String, Object>{
+              'text': 'bounded text',
+              'truncated': false,
+            },
+            'listArchive' => <String, Object>{
+              'entries': <Object>[
+                <String, Object>{
+                  'name': 'folder/readme.txt',
+                  'directory': false,
+                  'sizeBytes': 20,
+                  'compressedBytes': 12,
+                },
+              ],
+              'totalEntries': 1,
+              'truncated': false,
+            },
+            'inspectApk' => <String, Object>{
+              'applicationName': 'Fixture',
+              'packageName': 'io.picklogic.fixture',
+              'versionName': '1.0',
+              'versionCode': 1,
+              'signed': true,
+              'installed': false,
+            },
+            'getPdfInfo' => <String, Object>{'pageCount': 3},
+            'inspectOffice' => <String, Object>{
+              'kind': 'docx',
+              'title': 'Fixture',
+              'sections': <String>['Bounded preview'],
+              'gridRows': <Object>[],
+              'imageCount': 1,
+              'itemCount': 2,
+              'truncated': false,
+            },
+            'renderPdfPage' => Uint8List.fromList(<int>[4, 5, 6]),
+            'readIntPreference' => 4,
+            'writeIntPreference' => null,
+            'getTestWorkspaceState' => <String, Object?>{
+              'authorized': true,
+              'treeUri': 'content://tree/workspace',
+              'entries': <Object>[],
+              'undoAvailable': false,
+            },
+            'requestSystemTrash' => true,
             _ => null,
           };
         });
@@ -121,6 +166,51 @@ void main() {
     expect(
       await platform.getPrivateIndexDatabasePath(),
       endsWith('picklogic-index.sqlite3'),
+    );
+  });
+
+  test('parses internal viewers and SAF workspace state', () async {
+    expect((await platform.loadPreviewImage('content://media/1'))?.bytes, <int>[
+      1,
+      2,
+      3,
+    ]);
+    expect(
+      (await platform.loadTextPreview('content://media/1')).text,
+      'bounded text',
+    );
+    expect(
+      (await platform.listArchive(
+        'content://media/1',
+      )).entries.single.compressedBytes,
+      12,
+    );
+    expect(
+      (await platform.inspectApk('content://media/1')).packageName,
+      'io.picklogic.fixture',
+    );
+    expect((await platform.getPdfInfo('content://media/1')).pageCount, 3);
+    expect(
+      (await platform.inspectOffice(
+        'content://media/1',
+        extension: 'docx',
+      )).title,
+      'Fixture',
+    );
+    expect(
+      (await platform.renderPdfPage(
+        'content://media/1',
+        pageIndex: 0,
+        maxWidth: 800,
+        maxHeight: 1000,
+      )).bytes,
+      <int>[4, 5, 6],
+    );
+    expect(await platform.readIntPreference('photoGridColumns'), 4);
+    expect((await platform.getTestWorkspaceState()).authorized, isTrue);
+    expect(
+      await platform.requestSystemTrash(<String>['content://media/1']),
+      isTrue,
     );
   });
 }

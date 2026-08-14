@@ -10,12 +10,10 @@ import 'package:picklogic_mobile/src/mobile_repository.dart';
 import 'package:picklogic_mobile/src/screenshot_grouping.dart';
 
 void main() {
-  testWidgets('mobile has three focused primary destinations and safe mode', (
-    tester,
-  ) async {
+  testWidgets('mobile has three focused primary destinations', (tester) async {
     await tester.pumpWidget(const PickLogicMobileApp());
     await tester.pumpAndSettle();
-    expect(find.text('开发者安全模式：已开启，真实文件只读'), findsOneWidget);
+    expect(find.textContaining('开发者安全模式'), findsNothing);
     for (final label in ['分类', '最近', '整理']) {
       expect(find.text(label), findsWidgets);
     }
