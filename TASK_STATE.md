@@ -1,6 +1,6 @@
 # Task State
 
-Updated: 2026-08-15
+Updated: 2026-08-16
 
 ## Goal
 
@@ -201,3 +201,15 @@ The nubia Z70 is not currently listed by ADB. After USB connection and the user'
 ## Next action
 
 Run the quick repository gate, push the focused CI fix, require a green PR, merge it into `develop`, and retain the Z70 USB/RSA/media/SAF validation as the only physical-device gate.
+
+## Actions storage optimization
+
+- Audited 144 Actions artifacts with run, branch, commit, size, creation, and expiry metadata: 6,458,827,405 bytes total. The local user-test-3 Standard, Pro, and ARM64 packages were re-hashed successfully before cleanup.
+- Deleted only those 144 Actions artifacts through the artifact REST endpoint; the follow-up list reports 0 artifacts and 0 bytes. Commits, branches, tags, PRs, Issues, workflow definitions, workflow runs, and Private Draft Release assets were preserved.
+- Repository artifact/log retention is now 3 days instead of 90 days. Routine push/PR CI keeps quality and platform verification but uploads no packages; manual candidate runs and `v*` tags may upload packages for 3 days.
+- CI skips the duplicate heavy `develop -> main` PR run when the same SHA is verified by the `develop` push, cancels superseded routine runs per event/ref, and limits `labeled` reruns to the `device-validation` path.
+- Changed files: `.github/workflows/ci.yml`, `.github/AGENTS.md`, `docs/development-log.md`, and `TASK_STATE.md`. Validation: workflow policy assertions passed, `git diff --check` passed, and privacy findings were 0.
+
+## Next action
+
+Commit the scoped CI-only change, push its Private feature branch, open one PR to `develop`, require green CI with no routine artifacts, merge, and verify local/remote synchronization.
