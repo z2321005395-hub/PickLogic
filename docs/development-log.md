@@ -2,6 +2,10 @@
 
 Git commits and pull requests are the canonical engineering history. This file records only major milestones.
 
+## 2026-08-16
+
+- Actions artifact storage was cleared without deleting run history; routine CI stopped uploading installable packages and candidate retention was reduced to three days.
+
 ## 2026-08-13
 
 - Windows Standard, Windows Pro, and Android user-test targets reached local read-only usability.

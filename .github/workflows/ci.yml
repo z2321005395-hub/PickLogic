@@ -3,15 +3,24 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
   pull_request:
+    branches: [main, develop]
     types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      upload_candidates:
+        description: Upload the verified Windows and Android candidate packages
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   FLUTTER_VERSION: 3.44.9
@@ -19,6 +28,7 @@ env:
 jobs:
   quality:
     name: Format, analyze, tests, audits
+    if: ${{ github.event.action != 'labeled' && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -73,6 +83,7 @@ jobs:
 
   android:
     name: Android debug build
+    if: ${{ (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') && (github.event.action != 'labeled' || github.event.label.name == 'device-validation') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -94,6 +105,7 @@ jobs:
           flutter config --no-analytics
           flutter pub get
       - name: Build installable arm64 debug APK
+        if: github.event.action != 'labeled'
         working-directory: apps/mobile
         shell: bash
         run: |
@@ -107,16 +119,16 @@ jobs:
             echo "Retrying Android debug build in ${delay}s after a transient tool download failure."
             sleep "$delay"
           done
-      - name: Preserve debug APK
+      - name: Measure installable arm64 debug APK
+        if: github.event.action != 'labeled'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ci_artifacts/android
-          cp apps/mobile/build/app/outputs/flutter-apk/app-debug.apk \
-            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-debug-arm64.apk
+          apk=apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
           stat --printf='ANDROID_DEBUG_ARM64_APK_BYTES=%s\n' \
-            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-debug-arm64.apk
+            "$apk"
       - name: Build unsigned arm64 release APK for size gate
+        if: github.event_name != 'pull_request'
         working-directory: apps/mobile
         shell: bash
         run: |
@@ -130,27 +142,38 @@ jobs:
             echo "Retrying Android release build in ${delay}s after a transient tool download failure."
             sleep "$delay"
           done
-      - name: Preserve and measure unsigned release APK
+      - name: Measure unsigned release APK
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          cp apps/mobile/build/app/outputs/flutter-apk/app-release.apk \
-            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-release-unsigned-arm64.apk
-          bytes=$(stat --printf='%s' \
-            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-release-unsigned-arm64.apk)
+          apk=apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+          bytes=$(stat --printf='%s' "$apk")
           printf 'ANDROID_RELEASE_UNSIGNED_ARM64_APK_BYTES=%s\n' "$bytes"
           if (( bytes > 40 * 1024 * 1024 )); then
             echo 'Android arm64 release APK exceeds the 40 MB base budget.' >&2
             exit 1
           fi
+          sha256sum "$apk"
+      - name: Stage Android candidate packages
+        if: (github.event_name == 'workflow_dispatch' && inputs.upload_candidates) || startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci_artifacts/android
+          cp apps/mobile/build/app/outputs/flutter-apk/app-debug.apk \
+            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-debug-arm64.apk
+          cp apps/mobile/build/app/outputs/flutter-apk/app-release.apk \
+            ci_artifacts/android/picklogic-mobile-v0.1.0-alpha-release-unsigned-arm64.apk
           (cd ci_artifacts/android && sha256sum *.apk > SHA256SUMS.txt)
-      - name: Upload Android alpha packages
+      - name: Upload Android candidate packages
+        if: (github.event_name == 'workflow_dispatch' && inputs.upload_candidates) || startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: picklogic-android-alpha
+          name: picklogic-android-candidate
           path: ci_artifacts/android
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
       - name: Build opt-in x86_64 emulator Debug APK
         if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'device-validation')
@@ -170,15 +193,12 @@ jobs:
             echo "Retrying x86_64 emulator build in ${delay}s after a transient tool download failure."
             sleep "$delay"
           done
-      - name: Preserve x86_64 emulator APK
+      - name: Validate x86_64 emulator APK
         if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'device-validation')
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ci_artifacts/android-emulator-x64
-          cp apps/mobile/build/app/outputs/flutter-apk/app-debug.apk \
-            ci_artifacts/android-emulator-x64/picklogic-mobile-v0.1.0-alpha-debug-x86_64.apk
-          apk=ci_artifacts/android-emulator-x64/picklogic-mobile-v0.1.0-alpha-debug-x86_64.apk
+          apk=apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
           native_paths=$(unzip -Z1 "$apk" | grep '^lib/' || true)
           if [[ -z "$native_paths" ]] || \
              grep -qv '^lib/x86_64/' <<<"$native_paths" || \
@@ -189,18 +209,11 @@ jobs:
           fi
           stat --printf='ANDROID_DEBUG_X86_64_APK_BYTES=%s\n' \
             "$apk"
-          (cd ci_artifacts/android-emulator-x64 && sha256sum *.apk > SHA256SUMS.txt)
-      - name: Upload x86_64 emulator validation package
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'device-validation')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: picklogic-android-emulator-x64
-          path: ci_artifacts/android-emulator-x64
-          if-no-files-found: error
-          retention-days: 3
+          sha256sum "$apk"
 
   windows:
     name: Windows Standard and Pro builds
+    if: ${{ github.event.action != 'labeled' && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -234,13 +247,10 @@ jobs:
             Write-Output 'Retrying Standard build in 15s after a transient native-asset failure.'
             Start-Sleep -Seconds 15
           }
-      - name: Preserve and measure Standard
+      - name: Verify and measure Standard
         shell: pwsh
         run: |
-          $source = 'apps/desktop/build/windows/x64/runner/Release'
-          $target = 'ci_artifacts/windows-standard'
-          New-Item -ItemType Directory -Path $target -Force | Out-Null
-          Copy-Item -Path "$source/*" -Destination $target -Recurse
+          $target = 'apps/desktop/build/windows/x64/runner/Release'
           dart run tools/package_pdfium_notices.dart --build-directory $target
           $runtimeBytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_STANDARD_RUNTIME_BYTES=$runtimeBytes"
@@ -248,6 +258,14 @@ jobs:
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_STANDARD_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 80MB) { throw 'Windows Standard exceeds the 80 MB base budget.' }
+      - name: Stage Standard candidate package
+        if: (github.event_name == 'workflow_dispatch' && inputs.upload_candidates) || startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $source = 'apps/desktop/build/windows/x64/runner/Release'
+          $target = 'ci_artifacts/windows-standard'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path "$source/*" -Destination $target -Recurse
       - name: Clean shared desktop output
         working-directory: apps/desktop
         run: flutter clean
@@ -278,13 +296,10 @@ jobs:
           $process = Start-Process -FilePath $exe -ArgumentList '--synthetic-pdf-smoke' -WorkingDirectory $release -Wait -PassThru
           Write-Output "PRO_PDF_ENGINE_SMOKE_EXIT=$($process.ExitCode)"
           if ($process.ExitCode -ne 0) { throw 'Packaged Pro PDF engine smoke failed.' }
-      - name: Preserve and measure Pro
+      - name: Verify and measure Pro
         shell: pwsh
         run: |
-          $source = 'apps/desktop/build/windows/x64/runner/Release'
-          $target = 'ci_artifacts/windows-pro'
-          New-Item -ItemType Directory -Path $target -Force | Out-Null
-          Copy-Item -Path "$source/*" -Destination $target -Recurse
+          $target = 'apps/desktop/build/windows/x64/runner/Release'
           dart run tools/package_pdfium_notices.dart --build-directory $target
           $runtimeBytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_PRO_RUNTIME_BYTES=$runtimeBytes"
@@ -292,7 +307,16 @@ jobs:
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_PRO_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 130MB) { throw 'Windows Pro exceeds the 130 MB base budget.' }
+      - name: Stage Pro candidate package
+        if: (github.event_name == 'workflow_dispatch' && inputs.upload_candidates) || startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $source = 'apps/desktop/build/windows/x64/runner/Release'
+          $target = 'ci_artifacts/windows-pro'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path "$source/*" -Destination $target -Recurse
       - name: Package Windows alpha bundles
+        if: (github.event_name == 'workflow_dispatch' && inputs.upload_candidates) || startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           Compress-Archive -Path 'ci_artifacts/windows-standard/*' -DestinationPath 'ci_artifacts/picklogic-windows-standard-v0.1.0-alpha.zip' -CompressionLevel Optimal
@@ -306,12 +330,13 @@ jobs:
           foreach ($package in $packages) {
             Write-Output "WINDOWS_PACKAGE name=$($package.Name) bytes=$($package.Length)"
           }
-      - name: Upload Windows alpha packages
+      - name: Upload Windows candidate packages
+        if: (github.event_name == 'workflow_dispatch' && inputs.upload_candidates) || startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: picklogic-windows-alpha
+          name: picklogic-windows-candidate
           path: |
             ci_artifacts/*.zip
             ci_artifacts/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
