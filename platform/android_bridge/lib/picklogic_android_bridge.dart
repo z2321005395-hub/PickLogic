@@ -33,6 +33,21 @@ final class PicklogicAndroidBridge {
   Future<String?> pickDocumentTree() =>
       PicklogicAndroidBridgePlatform.instance.pickDocumentTree();
 
+  Future<List<AndroidBrowseRoot>> getBrowseRoots() =>
+      PicklogicAndroidBridgePlatform.instance.getBrowseRoots();
+
+  Future<AndroidBrowsePage> listBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+    int offset = 0,
+    int limit = 200,
+  }) => PicklogicAndroidBridgePlatform.instance.listBrowseDirectory(
+    treeUri: treeUri,
+    directoryUri: directoryUri,
+    offset: offset,
+    limit: limit,
+  );
+
   Future<bool> openContentUri(String contentUri) =>
       PicklogicAndroidBridgePlatform.instance.openContentUri(contentUri);
 

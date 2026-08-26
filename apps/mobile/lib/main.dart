@@ -8,6 +8,7 @@ import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'src/incremental_index_queue.dart';
+import 'src/mobile_file_browser.dart';
 import 'src/mobile_internal_viewer.dart';
 import 'src/mobile_localizations.dart';
 import 'src/mobile_repository.dart';
@@ -17,9 +18,6 @@ import 'src/screenshot_grouping.dart';
 
 void main() =>
     runApp(PickLogicMobileApp(repository: AndroidMobileRepository()));
-
-final Set<String> _sessionFavoriteIds = <String>{};
-final Set<String> _sessionReviewIds = <String>{};
 
 final class PickLogicMobileApp extends StatefulWidget {
   const PickLogicMobileApp({
@@ -502,7 +500,12 @@ final class _RecentPageState extends State<_RecentPage> {
                 '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
                 '${_durationLabel(record)}',
               ),
-              onTap: () => _showMediaItem(context, record, widget.repository),
+              onTap: () => _showMediaItem(
+                context,
+                record,
+                widget.repository,
+                records: records,
+              ),
             );
           },
         );
@@ -693,6 +696,7 @@ final class _FilesPageState extends State<_FilesPage> {
   PagedMediaController<FileRecord>? _pager;
   late Map<AndroidMediaKind, Future<int>> _counts;
   Future<List<FileRecord>>? _sourceRecords;
+  late Future<List<AndroidBrowseRoot>> _browseRoots;
 
   @override
   void initState() {
@@ -723,6 +727,7 @@ final class _FilesPageState extends State<_FilesPage> {
   }
 
   void _loadHomeData() {
+    _browseRoots = widget.repository.loadBrowseRoots();
     _counts = <AndroidMediaKind, Future<int>>{
       for (final kind in const <AndroidMediaKind>[
         AndroidMediaKind.images,
@@ -796,6 +801,27 @@ final class _FilesPageState extends State<_FilesPage> {
     _resetPager(kind);
   }
 
+  Future<void> _addBrowseRoot() async {
+    final selected = await widget.repository.chooseDocumentTree();
+    if (!mounted || selected == null) return;
+    setState(() => _browseRoots = widget.repository.loadBrowseRoots());
+    final roots = await _browseRoots;
+    if (!mounted) return;
+    final root = roots.where((item) => item.treeUri == selected).firstOrNull;
+    _openFolderBrowser(root);
+  }
+
+  void _openFolderBrowser([AndroidBrowseRoot? root]) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => MobileFileBrowserPage(
+          repository: widget.repository,
+          initialRoot: root,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = MobileLocalizations.of(context);
@@ -826,6 +852,71 @@ final class _FilesPageState extends State<_FilesPage> {
             hintText: strings.text('homeSearchHint'),
             border: InputBorder.none,
             filled: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          key: const Key('mobile-folder-browser-entry'),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListTile(
+                  key: const Key('mobile-folder-browser-open'),
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.folder_copy_outlined, size: 42),
+                  title: Text(
+                    strings.locale.languageCode == 'zh'
+                        ? '文件夹浏览'
+                        : 'Folder browser',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  subtitle: Text(
+                    strings.locale.languageCode == 'zh'
+                        ? '逐层打开已授权文件夹，照片、视频和文档可直接在 PickLogic 中打开。'
+                        : 'Browse authorized folders hierarchically and open photos, videos, and documents directly in PickLogic.',
+                  ),
+                  trailing: IconButton.filled(
+                    tooltip: strings.locale.languageCode == 'zh'
+                        ? '添加文件夹'
+                        : 'Add folder',
+                    onPressed: _addBrowseRoot,
+                    icon: const Icon(Icons.add),
+                  ),
+                  onTap: _openFolderBrowser,
+                ),
+                FutureBuilder<List<AndroidBrowseRoot>>(
+                  future: _browseRoots,
+                  builder: (context, snapshot) {
+                    final roots = snapshot.data ?? const <AndroidBrowseRoot>[];
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const LinearProgressIndicator();
+                    }
+                    if (roots.isEmpty) {
+                      return Text(
+                        strings.locale.languageCode == 'zh'
+                            ? '点击＋添加 Downloads、Documents 或任意允许访问的文件夹。'
+                            : 'Tap + to add Downloads, Documents, or another accessible folder.',
+                      );
+                    }
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final root in roots)
+                          ActionChip(
+                            avatar: const Icon(Icons.folder_outlined, size: 18),
+                            label: Text(root.displayName),
+                            onPressed: () => _openFolderBrowser(root),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -1034,7 +1125,8 @@ final class _MobileCollectionView extends StatelessWidget {
               '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
               '${_durationLabel(record)}',
             ),
-            onTap: () => _showMediaItem(context, record, repository),
+            onTap: () =>
+                _showMediaItem(context, record, repository, records: records),
           ),
         _LoadMoreFooter(pager: pager!, onLoadMore: onLoadMore!),
       ],
@@ -1322,7 +1414,12 @@ void _showSourceSheet(
                   subtitle: Text(
                     '${_categoryLabel(strings, record.category)} · ${_formatBytes(record.sizeBytes)}',
                   ),
-                  onTap: () => _showMediaItem(context, record, repository),
+                  onTap: () => _showMediaItem(
+                    context,
+                    record,
+                    repository,
+                    records: records,
+                  ),
                 );
               },
             ),
@@ -1948,6 +2045,7 @@ final class _PhotosPageState extends State<_PhotosPage> {
                               context,
                               record,
                               widget.repository,
+                              records: records,
                             ),
                             child: Semantics(
                               label: record.displayName,
@@ -2677,269 +2775,15 @@ String _localizedSourceHint(MobileLocalizations strings, String sourceHint) {
 void _showMediaItem(
   BuildContext context,
   FileRecord record,
-  MobileRepository repository,
-) {
+  MobileRepository repository, {
+  List<FileRecord>? records,
+}) {
   Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
-      builder: (context) =>
-          _MobileFileDetailPage(record: record, repository: repository),
-    ),
-  );
-}
-
-final class _MobileFileDetailPage extends StatefulWidget {
-  const _MobileFileDetailPage({required this.record, required this.repository});
-
-  final FileRecord record;
-  final MobileRepository repository;
-
-  @override
-  State<_MobileFileDetailPage> createState() => _MobileFileDetailPageState();
-}
-
-final class _MobileFileDetailPageState extends State<_MobileFileDetailPage> {
-  FileRecord get record => widget.record;
-  MobileRepository get repository => widget.repository;
-
-  Future<void> _showReadOnlyMessage(
-    BuildContext context,
-    String message,
-  ) async {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _openInternalViewer() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => Scaffold(
-          appBar: AppBar(title: Text(record.displayName)),
-          body: MobileInternalViewer(record: record, repository: repository),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showMore(MobileLocalizations strings) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.open_in_new),
-              title: Text(strings.text('openWithOtherApp')),
-              onTap: () async {
-                Navigator.pop(sheetContext);
-                final opened = await repository.open(record);
-                if (!mounted) return;
-                _showReadOnlyMessage(
-                  context,
-                  strings.text(opened ? 'opened' : 'noViewer'),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy_outlined),
-              title: Text(strings.text('copyLocation')),
-              onTap: () async {
-                await Clipboard.setData(
-                  ClipboardData(text: record.locator.value),
-                );
-                if (!mounted || !sheetContext.mounted) return;
-                Navigator.pop(sheetContext);
-                _showReadOnlyMessage(context, strings.text('locationCopied'));
-              },
-            ),
-            if (record.sourceKind == SourceKind.mediaStore &&
-                record.locator.value.startsWith('content://'))
-              ListTile(
-                leading: Icon(
-                  Icons.delete_outline,
-                  color: Theme.of(sheetContext).colorScheme.error,
-                ),
-                title: Text(strings.text('systemTrash')),
-                subtitle: Text(strings.text('systemTrashConfirmDetail')),
-                onTap: () async {
-                  Navigator.pop(sheetContext);
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (dialogContext) => AlertDialog(
-                      title: Text(strings.text('systemTrash')),
-                      content: Text(strings.text('systemTrashConfirmDetail')),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(dialogContext, false),
-                          child: Text(strings.text('cancel')),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(dialogContext, true),
-                          child: Text(strings.text('continueAction')),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed != true || !mounted) return;
-                  final trashed = await repository.requestSystemTrash(record);
-                  if (!mounted) return;
-                  _showReadOnlyMessage(
-                    context,
-                    strings.text(
-                      trashed ? 'systemTrashDone' : 'systemTrashCancelled',
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = MobileLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(record.displayName)),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(
-                  PickLogicTokens.radiusLarge,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: MobileInternalViewer(
-                record: record,
-                repository: repository,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ListTile(
-              key: const Key('media-item-details'),
-              contentPadding: EdgeInsets.zero,
-              title: Text(record.displayName),
-              subtitle: Text(
-                '${record.mimeType} · ${_formatBytes(record.sizeBytes)} · '
-                '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
-                '${_durationLabel(record)}',
-              ),
-            ),
-          ),
-          Expanded(flex: 5, child: _MobileInsightPanel(record: record)),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _DetailAction(
-                icon: Icons.fullscreen,
-                label: strings.text('fullScreenPreview'),
-                primary: true,
-                onTap: supportsMobileInternalViewer(record)
-                    ? _openInternalViewer
-                    : () => _showReadOnlyMessage(
-                        context,
-                        strings.text('noViewer'),
-                      ),
-              ),
-              _DetailAction(
-                icon: _sessionFavoriteIds.contains(record.id)
-                    ? Icons.favorite
-                    : Icons.favorite_border,
-                label: strings.text('favorites'),
-                onTap: () {
-                  setState(() {
-                    if (!_sessionFavoriteIds.add(record.id)) {
-                      _sessionFavoriteIds.remove(record.id);
-                    }
-                  });
-                  _showReadOnlyMessage(context, strings.text('favoriteLocal'));
-                },
-              ),
-              _DetailAction(
-                icon: Icons.my_location_outlined,
-                label: strings.text('locate'),
-                onTap: () => _showReadOnlyMessage(
-                  context,
-                  _recordLocation(record) ?? strings.text('unknownSource'),
-                ),
-              ),
-              _DetailAction(
-                icon: _sessionReviewIds.contains(record.id)
-                    ? Icons.rule_folder
-                    : Icons.rule_folder_outlined,
-                label: strings.text('reviewQueue'),
-                onTap: () {
-                  setState(() => _sessionReviewIds.add(record.id));
-                  _showReadOnlyMessage(context, strings.text('reviewQueued'));
-                },
-              ),
-              _DetailAction(
-                icon: Icons.more_horiz,
-                label: strings.text('more'),
-                onTap: () => _showMore(strings),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-final class _DetailAction extends StatelessWidget {
-  const _DetailAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.primary = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool primary;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 68,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: primary ? Theme.of(context).colorScheme.primary : null,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ],
-        ),
+      builder: (context) => MobileViewerPage(
+        records: records ?? <FileRecord>[record],
+        initialRecord: record,
+        repository: repository,
       ),
     ),
   );
@@ -3029,12 +2873,24 @@ void _showScreenshotItem(
             SizedBox(
               height: 160,
               width: double.infinity,
-              child: _OnDemandThumbnail(
-                repository: repository,
-                record: record,
-                maxWidth: 320,
-                maxHeight: 240,
-                fallbackIcon: Icons.screenshot_monitor_outlined,
+              child: InkWell(
+                key: const Key('screenshot-open-viewer-thumbnail'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showMediaItem(
+                    context,
+                    record,
+                    repository,
+                    records: group.records,
+                  );
+                },
+                child: _OnDemandThumbnail(
+                  repository: repository,
+                  record: record,
+                  maxWidth: 320,
+                  maxHeight: 240,
+                  fallbackIcon: Icons.screenshot_monitor_outlined,
+                ),
               ),
             ),
             Padding(
@@ -3106,18 +2962,17 @@ void _showScreenshotItem(
                       label: Text(strings.text('deleteReview')),
                     ),
                     TextButton.icon(
-                      onPressed: () async {
-                        final opened = await repository.open(record);
-                        if (!sheetContext.mounted) return;
-                        ScaffoldMessenger.of(sheetContext).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              strings.text(opened ? 'opened' : 'noViewer'),
-                            ),
-                          ),
+                      key: const Key('screenshot-open-internal-viewer'),
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _showMediaItem(
+                          context,
+                          record,
+                          repository,
+                          records: group.records,
                         );
                       },
-                      icon: const Icon(Icons.open_in_new),
+                      icon: const Icon(Icons.fullscreen),
                       label: Text(strings.text('open')),
                     ),
                   ],

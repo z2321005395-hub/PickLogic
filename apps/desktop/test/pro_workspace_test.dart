@@ -126,6 +126,119 @@ void main() {
     expect(find.textContaining('Metadata saved'), findsOneWidget);
   });
 
+  testWidgets('Literature search, tags, and portable citation export work', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final tagged = _entry();
+    final store = _MemoryLiteratureStore([
+      LiteratureLibraryEntry(
+        record: LiteratureRecord(
+          id: tagged.record.id,
+          localFileId: tagged.record.localFileId,
+          doi: tagged.record.doi,
+          title: tagged.record.title,
+          authors: tagged.record.authors,
+          year: tagged.record.year,
+          tags: const ['methods'],
+          metadataConfidence: tagged.record.metadataConfidence,
+        ),
+        localPath: tagged.localPath,
+        fileName: tagged.fileName,
+        addedAt: tagged.addedAt,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: ProWorkspaceRoute(
+          section: 'literature',
+          libraryStore: store,
+          annotationStore: InMemoryLiteratureAnnotationStore(),
+          literaturePdfReaderBuilder: (_, _, _) => const SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('methods'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('literature-library-search')),
+      'no matching title',
+    );
+    await tester.pump();
+    expect(find.text('No matching literature.'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('literature-library-search')),
+      'synthetic',
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('literature-entry-lit-synthetic')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('literature-citation-action')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('literature-citation-dialog')), findsOneWidget);
+    await tester.tap(find.text('BibTeX'));
+    await tester.pump();
+    expect(find.textContaining('@article{'), findsOneWidget);
+    expect(find.textContaining('10.5555/picklogic.synthetic'), findsOneWidget);
+  });
+
+  testWidgets('PDF annotation panel exposes page-linked local notes', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final createdAt = DateTime.utc(2026, 8, 27);
+    var deletedId = '';
+
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: ProLocalPdfReader(
+            path: r'X:\synthetic\reader.pdf',
+            fileName: 'reader.pdf',
+            initialPageNumber: 1,
+            onPositionChanged: (_, _) {},
+            viewerBuilder: (_) => const SizedBox.expand(),
+            literatureId: 'lit-synthetic',
+            annotations: [
+              LiteratureAnnotation(
+                id: 'annotation-1',
+                literatureId: 'lit-synthetic',
+                pageNumber: 3,
+                kind: LiteratureAnnotationKind.highlight,
+                selectedText: 'Evidence-linked annotation',
+                note: 'Use in methods.',
+                colorName: 'yellow',
+                createdAt: createdAt,
+                updatedAt: createdAt,
+              ),
+            ],
+            onSaveAnnotation: (_) async {},
+            onDeleteAnnotation: (id) async => deletedId = id,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('pdf-toggle-annotations-action')));
+    await tester.pump();
+    expect(find.byKey(const Key('pdf-annotation-panel')), findsOneWidget);
+    expect(find.text('Evidence-linked annotation'), findsOneWidget);
+    expect(find.textContaining('Page 3'), findsOneWidget);
+    await tester.tap(find.byTooltip('Delete annotation'));
+    await tester.pump();
+    expect(deletedId, 'annotation-1');
+  });
+
   testWidgets(
     'all three Pro workspaces switch between pure Chinese and English',
     (tester) async {

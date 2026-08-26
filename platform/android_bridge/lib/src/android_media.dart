@@ -350,6 +350,91 @@ final class AndroidWorkspaceState {
   final String? operationId;
 }
 
+/// One persisted, user-selected SAF directory exposed as a read-only root.
+final class AndroidBrowseRoot {
+  const AndroidBrowseRoot({
+    required this.treeUri,
+    required this.documentUri,
+    required this.displayName,
+  });
+
+  factory AndroidBrowseRoot.fromMap(Map<Object?, Object?> map) =>
+      AndroidBrowseRoot(
+        treeUri: map['treeUri']! as String,
+        documentUri: map['documentUri']! as String,
+        displayName: map['displayName']! as String,
+      );
+
+  final String treeUri;
+  final String documentUri;
+  final String displayName;
+}
+
+/// A direct child of a SAF directory. This never implies write access.
+final class AndroidBrowseEntry {
+  const AndroidBrowseEntry({
+    required this.documentUri,
+    required this.parentUri,
+    required this.displayName,
+    required this.mimeType,
+    required this.directory,
+    required this.sizeBytes,
+    required this.modifiedAt,
+  });
+
+  factory AndroidBrowseEntry.fromMap(Map<Object?, Object?> map) =>
+      AndroidBrowseEntry(
+        documentUri: map['documentUri']! as String,
+        parentUri: map['parentUri']! as String,
+        displayName: map['displayName']! as String,
+        mimeType: map['mimeType']! as String,
+        directory: map['directory']! as bool,
+        sizeBytes: map['sizeBytes']! as int,
+        modifiedAt: DateTime.fromMillisecondsSinceEpoch(
+          map['modifiedAtMillis']! as int,
+        ),
+      );
+
+  final String documentUri;
+  final String parentUri;
+  final String displayName;
+  final String mimeType;
+  final bool directory;
+  final int sizeBytes;
+  final DateTime modifiedAt;
+}
+
+final class AndroidBrowsePage {
+  const AndroidBrowsePage({
+    required this.treeUri,
+    required this.directoryUri,
+    required this.directoryName,
+    required this.items,
+    required this.offset,
+    required this.hasMore,
+  });
+
+  factory AndroidBrowsePage.fromMap(Map<Object?, Object?> map) =>
+      AndroidBrowsePage(
+        treeUri: map['treeUri']! as String,
+        directoryUri: map['directoryUri']! as String,
+        directoryName: map['directoryName']! as String,
+        items: (map['items']! as List<Object?>)
+            .cast<Map<Object?, Object?>>()
+            .map(AndroidBrowseEntry.fromMap)
+            .toList(growable: false),
+        offset: map['offset']! as int,
+        hasMore: map['hasMore']! as bool,
+      );
+
+  final String treeUri;
+  final String directoryUri;
+  final String directoryName;
+  final List<AndroidBrowseEntry> items;
+  final int offset;
+  final bool hasMore;
+}
+
 final class AndroidMediaPage {
   const AndroidMediaPage({
     required this.items,

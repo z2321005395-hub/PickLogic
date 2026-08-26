@@ -42,7 +42,7 @@ void main() {
   });
 
   testWidgets(
-    'Standard panels navigate independently and selection opens context',
+    'Standard panels navigate independently and details stay opt-in',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1800, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -102,6 +102,9 @@ void main() {
       tester
           .widget<InkWell>(find.byKey(const ValueKey('pane-0-entry-report')))
           .onTap!();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('detail-pane')), findsNothing);
+      await tester.tap(find.byKey(const Key('insight-tool')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('detail-pane')), findsOneWidget);
       expect(find.text('预览与知件'), findsOneWidget);

@@ -213,3 +213,17 @@ Run the quick repository gate, push the focused CI fix, require a green PR, merg
 ## Next action
 
 Commit the scoped CI-only change, push its Private feature branch, open one PR to `develop`, require green CI with no routine artifacts, merge, and verify local/remote synchronization.
+
+## Mature file and literature workflows
+
+- Goal: make Desktop and Mobile content-first file browsers and converge Pro on the most valued local Zotero/ReadCube/EndNote/小绿鲸 workflows without copying proprietary UI or weakening Safe Mode.
+- Mobile: added a persisted user-authorized SAF hierarchy browser, direct full-screen internal viewers, visible-only folder thumbnails, swipe-through media, Insight facts, and app-local favorite/deletion-review marks. Real media remains read-only.
+- Desktop: single-click selection no longer opens Preview/Insight; double-click/Enter opens internally, and Backspace/F2/Escape/Ctrl+Shift+I provide predictable file-manager shortcuts under existing authorization gates.
+- Pro: added library search/tag filters, fuller metadata editing, local page-linked annotations, BibTeX/RIS/quick citation copy, selection/current-page translation, and user-confirmed cancellable full-document translation in a bilingual pane. PDF bytes are never uploaded.
+- Contracts: added bridge-only SAF browse DTOs plus additive citation/annotation/translation helpers; existing `FileRecord` and `LiteratureRecord` serialization remains compatible.
+- Verification: repository full gate passed (11 quick + 6 remaining modules), dependency license findings 0, privacy findings 0, Android Bridge 12/12, Mobile UI 15/15, Pro UI 7/7, and ARM64 Debug APK compilation succeeded.
+- Blocker: nubia Z70 is connected but ADB remains unauthorized pending the maintainer's RSA confirmation. Windows source build from the canonical Chinese path hit the known Flutter/MSBuild path-decoding defect; package from an isolated ASCII worktree after the checkpoint commit.
+
+## Next action
+
+Commit this coherent checkpoint, build and smoke-test Standard/Pro from an ASCII-path worktree, install the rebuilt APK after Z70 RSA authorization, then push one Private PR and require green CI before the authorized Public conversion/release gate.

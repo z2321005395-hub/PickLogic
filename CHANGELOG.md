@@ -8,6 +8,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Added
 
+- Android hierarchical read-only SAF folder browsing with visible-only thumbnails and first-class internal photo, video, audio, PDF, text, archive, APK, and Office viewers.
+- Pro literature-library search and tags, page-linked local annotations, BibTeX/RIS/text citation copy, current-page bilingual reading, and explicitly confirmed full-document translation.
 - Desktop image, PDF, bounded-text, folder, and metadata preview in one Preview/Insight context panel.
 - Android compact file-type, smart-collection, app/source, screenshot-filter, and read-only storage-facet navigation.
 - Shared PickLogic SVG file-type visuals and real bounded image/media thumbnails.
@@ -33,6 +35,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- Desktop file selection now stays focused on dual-pane organization; Preview/Insight opens only on request, while keyboard navigation supports Enter, Backspace, F2, Escape, and Ctrl+Shift+I.
+- Mobile media and screenshot items now open content-first full-screen viewers; metadata, Insight, favorite, and non-destructive deletion-review marks are secondary actions.
 - Unified Desktop navigation and contextual details across Standard and Pro without duplicating the shell.
 - Simplified the Mobile Files home around type, source, time, smart collection, and phone-storage entry points.
 - Made every accessible Mobile screenshot browsable in date order through bounded pagination rather than a latest-items cap.

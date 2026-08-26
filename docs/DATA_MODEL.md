@@ -36,6 +36,10 @@ Evidence entries distinguish `fact`, `ruleInference`, `lowConfidenceGuess`, and 
 
 `id`, `localFileId`, optional `doi`, `title`, `authors`, `journal`, optional `year`, `volume`, `issue`, `pages`, `abstract`, `keywords`, `tags`, `readingProgress`, `lastOpenedAt`, `metadataSource`, and `metadataConfidence`.
 
+## LiteratureAnnotation
+
+App-owned annotation state contains `id`, `literatureId`, `pageNumber`, `kind`, `selectedText`, `note`, `colorName`, `createdAt`, and `updatedAt`. It is stored beside the local catalog, links back to a PDF page, and never implies writing into the source PDF.
+
 ## ScreenshotGroup
 
 `groupId`, `sourceHint`, `timeRange`, `memberIds`, `duplicateConfidence`, `contentHint`, `ocrState`, `reviewState`, and `protectedCount`.
@@ -55,7 +59,7 @@ Evidence entries distinguish `fact`, `ruleInference`, `lowConfidenceGuess`, and 
 - `InsightEngine`: creates structured, evidence-bearing explanations.
 - `StorageAnalyzer`: reports accessible, estimated, and restricted storage separately.
 - `LiteratureMetadataProvider`: resolves identifiers without uploading a document.
-- `TranslationProvider`: translates only explicit text selections.
+- `TranslationProvider`: translates only text from an explicitly requested selection, current page, or document scope; PDF bytes are never passed to it.
 - `OcrProvider`: performs on-demand or bounded queued OCR.
 - `IntelligenceProvider`: optional; absence is a supported state.
 
@@ -64,3 +68,7 @@ Evidence entries distinguish `fact`, `ruleInference`, `lowConfidenceGuess`, and 
 Additive optional fields are backward compatible. Renames, removals, required-field additions, enum semantic changes, or locator changes are breaking and require migration notes plus Lead approval.
 
 The Android bridge's additive private-index-path method is not a `FileLocator` and does not alter shared model serialization. It returns only a fixed app-private database location; the shared Dart SQLite implementation retains schema and search ownership.
+
+`AndroidBrowseRoot`, `AndroidBrowseEntry`, and `AndroidBrowsePage` are additive SAF bridge DTOs for user-authorized read-only hierarchy traversal. Files are converted to normal `FileRecord` values with opaque `content://` locators; existing MediaStore contracts are unchanged.
+
+`LiteratureAnnotation`, citation formatters, and bounded translation chunking are additive Pro contracts. Existing `LiteratureRecord` serialization is unchanged, existing catalogs need no migration, and callers that do not provide an annotation store retain the prior read-only reader behavior.

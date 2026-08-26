@@ -204,6 +204,23 @@ extension MobileRepositoryViewerCapabilities on MobileRepository {
   Future<bool> requestSystemTrash(FileRecord record) async =>
       await _viewerBridge?.requestSystemTrash(<String>[record.locator.value]) ??
       false;
+
+  Future<List<AndroidBrowseRoot>> loadBrowseRoots() async =>
+      await _viewerBridge?.getBrowseRoots() ?? const <AndroidBrowseRoot>[];
+
+  Future<AndroidBrowsePage?> loadBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+    int offset = 0,
+    int limit = 200,
+  }) =>
+      _viewerBridge?.listBrowseDirectory(
+        treeUri: treeUri,
+        directoryUri: directoryUri,
+        offset: offset,
+        limit: limit,
+      ) ??
+      Future<AndroidBrowsePage?>.value();
 }
 
 String _pdfPagePreferenceKey(String id) {

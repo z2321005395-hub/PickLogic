@@ -55,6 +55,30 @@ class MockPicklogicAndroidBridgePlatform
   Future<String?> pickDocumentTree() async => 'content://tree/test';
 
   @override
+  Future<List<AndroidBrowseRoot>> getBrowseRoots() async => const [
+    AndroidBrowseRoot(
+      treeUri: 'content://tree/test',
+      documentUri: 'content://tree/test/document/test',
+      displayName: 'Test folder',
+    ),
+  ];
+
+  @override
+  Future<AndroidBrowsePage> listBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+    int offset = 0,
+    int limit = 200,
+  }) async => AndroidBrowsePage(
+    treeUri: treeUri,
+    directoryUri: directoryUri ?? 'content://tree/test/document/test',
+    directoryName: 'Test folder',
+    items: const <AndroidBrowseEntry>[],
+    offset: offset,
+    hasMore: false,
+  );
+
+  @override
   Future<bool> openContentUri(String contentUri) async =>
       contentUri.startsWith('content://');
 
@@ -204,6 +228,11 @@ void main() {
       ),
     );
     final tree = await bridge.pickDocumentTree();
+    final roots = await bridge.getBrowseRoots();
+    final directory = await bridge.listBrowseDirectory(
+      treeUri: roots.single.treeUri,
+      directoryUri: roots.single.documentUri,
+    );
     final opened = await bridge.openContentUri('content://media/1');
 
     expect(state.canReadVisualMedia, isFalse);
@@ -213,6 +242,8 @@ void main() {
     expect(indexPath, endsWith('picklogic-index.sqlite3'));
     expect(thumbnail?.bytes, <int>[1, 2, 3]);
     expect(tree, 'content://tree/test');
+    expect(roots.single.displayName, 'Test folder');
+    expect(directory.directoryName, 'Test folder');
     expect(opened, isTrue);
   });
 

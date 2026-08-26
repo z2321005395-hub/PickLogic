@@ -3,6 +3,7 @@ import 'dart:io' show File, Platform;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_research_core/picklogic_research_core.dart';
@@ -49,6 +50,7 @@ final class ProWorkspaceRoute extends StatelessWidget {
     this.pdfMultiPicker,
     this.pdfSourceBuilder,
     this.literaturePdfReaderBuilder,
+    this.annotationStore,
   });
 
   final String section;
@@ -58,6 +60,7 @@ final class ProWorkspaceRoute extends StatelessWidget {
   final LiteraturePdfMultiPicker? pdfMultiPicker;
   final LiteraturePdfSourceBuilder? pdfSourceBuilder;
   final LiteraturePdfReaderBuilder? literaturePdfReaderBuilder;
+  final LiteratureAnnotationStore? annotationStore;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -83,6 +86,7 @@ final class ProWorkspaceRoute extends StatelessWidget {
       pdfMultiPicker: pdfMultiPicker,
       pdfSourceBuilder: pdfSourceBuilder,
       literaturePdfReaderBuilder: literaturePdfReaderBuilder,
+      annotationStore: annotationStore,
     ),
   );
 }
@@ -97,6 +101,7 @@ final class ProWorkspaceView extends StatelessWidget {
     this.pdfMultiPicker,
     this.pdfSourceBuilder,
     this.literaturePdfReaderBuilder,
+    this.annotationStore,
   });
 
   final String section;
@@ -106,6 +111,7 @@ final class ProWorkspaceView extends StatelessWidget {
   final LiteraturePdfMultiPicker? pdfMultiPicker;
   final LiteraturePdfSourceBuilder? pdfSourceBuilder;
   final LiteraturePdfReaderBuilder? literaturePdfReaderBuilder;
+  final LiteratureAnnotationStore? annotationStore;
 
   @override
   Widget build(BuildContext context) => switch (section) {
@@ -116,6 +122,7 @@ final class ProWorkspaceView extends StatelessWidget {
       pdfMultiPicker: pdfMultiPicker,
       pdfSourceBuilder: pdfSourceBuilder,
       literaturePdfReaderBuilder: literaturePdfReaderBuilder,
+      annotationStore: annotationStore,
     ),
     'research' => const ResearchBucketsView(),
     'system' => const SystemInsightReadOnlyView(),
@@ -132,6 +139,7 @@ final class LiteratureManagerLiteView extends StatefulWidget {
     this.pdfMultiPicker,
     this.pdfSourceBuilder,
     this.literaturePdfReaderBuilder,
+    this.annotationStore,
   });
 
   final WidgetBuilder? pdfReaderBuilder;
@@ -140,6 +148,7 @@ final class LiteratureManagerLiteView extends StatefulWidget {
   final LiteraturePdfMultiPicker? pdfMultiPicker;
   final LiteraturePdfSourceBuilder? pdfSourceBuilder;
   final LiteraturePdfReaderBuilder? literaturePdfReaderBuilder;
+  final LiteratureAnnotationStore? annotationStore;
 
   @override
   State<LiteratureManagerLiteView> createState() =>
@@ -154,9 +163,14 @@ final class _LiteratureManagerLiteViewState
       WindowsWorkspaceController();
   late final Future<WindowsBrowseRoot> _workspaceReady;
   late final Future<LiteratureLibraryStore> _storeFuture;
+  late final Future<LiteratureAnnotationStore> _annotationStoreFuture;
+  final TextEditingController _librarySearchController =
+      TextEditingController();
   Future<void> _saveTail = Future<void>.value();
   List<LiteratureLibraryEntry> _entries = const <LiteratureLibraryEntry>[];
+  final Map<String, List<LiteratureAnnotation>> _annotations = {};
   String? _selectedId;
+  String? _tagFilter;
   _LiteratureStatus? _status;
   bool _loading = true;
   bool _adding = false;
@@ -170,8 +184,17 @@ final class _LiteratureManagerLiteViewState
     _storeFuture = widget.libraryStore == null
         ? _createDefaultStore()
         : Future<LiteratureLibraryStore>.value(widget.libraryStore);
+    _annotationStoreFuture = widget.annotationStore == null
+        ? _createDefaultAnnotationStore()
+        : Future<LiteratureAnnotationStore>.value(widget.annotationStore);
     _workspaceReady = _workspaceController.initialize();
     unawaited(_loadLibrary());
+  }
+
+  @override
+  void dispose() {
+    _librarySearchController.dispose();
+    super.dispose();
   }
 
   Future<LiteratureLibraryStore> _createDefaultStore() async {
@@ -192,6 +215,14 @@ final class _LiteratureManagerLiteViewState
     return sqliteStore;
   }
 
+  Future<LiteratureAnnotationStore> _createDefaultAnnotationStore() async {
+    final supportDirectory = await const PicklogicWindowsBridge()
+        .getApplicationSupportDirectory();
+    final sqlitePath =
+        '$supportDirectory${Platform.pathSeparator}literature_catalog_v1.db';
+    return SqliteLiteratureAnnotationStore(sqlitePath);
+  }
+
   Future<void> _loadLibrary() async {
     try {
       final store = await _storeFuture;
@@ -202,6 +233,8 @@ final class _LiteratureManagerLiteViewState
         _selectedId = entries.firstOrNull?.id;
         _loading = false;
       });
+      final selectedId = entries.firstOrNull?.id;
+      if (selectedId != null) unawaited(_loadAnnotations(selectedId));
     } on Object {
       if (!mounted) return;
       setState(() {
@@ -210,6 +243,40 @@ final class _LiteratureManagerLiteViewState
         _status = _LiteratureStatus.catalogUnavailable;
       });
     }
+  }
+
+  Future<void> _loadAnnotations(String literatureId) async {
+    try {
+      final store = await _annotationStoreFuture;
+      final annotations = await store.loadFor(literatureId);
+      if (!mounted) return;
+      setState(() => _annotations[literatureId] = annotations);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_LiteratureStrings.of(context).annotationLoadFailed),
+          ),
+        );
+      }
+    }
+  }
+
+  void _selectEntry(String id) {
+    setState(() => _selectedId = id);
+    if (!_annotations.containsKey(id)) unawaited(_loadAnnotations(id));
+  }
+
+  Future<void> _saveAnnotation(LiteratureAnnotation annotation) async {
+    final store = await _annotationStoreFuture;
+    await store.upsert(annotation);
+    await _loadAnnotations(annotation.literatureId);
+  }
+
+  Future<void> _deleteAnnotation(String literatureId, String id) async {
+    final store = await _annotationStoreFuture;
+    await store.delete(id);
+    await _loadAnnotations(literatureId);
   }
 
   Future<void> _addLiterature() async {
@@ -369,6 +436,121 @@ final class _LiteratureManagerLiteViewState
   LiteratureLibraryEntry? get _selectedEntry =>
       _entries.where((entry) => entry.id == _selectedId).firstOrNull;
 
+  List<LiteratureLibraryEntry> get _visibleEntries {
+    final query = _librarySearchController.text.trim().toLowerCase();
+    return _entries
+        .where((entry) {
+          final record = entry.record;
+          if (_tagFilter != null && !record.tags.contains(_tagFilter)) {
+            return false;
+          }
+          if (query.isEmpty) return true;
+          final searchable = <String>[
+            record.title,
+            ...record.authors,
+            record.journal,
+            record.doi ?? '',
+            ...record.tags,
+            ...record.keywords,
+            entry.fileName,
+          ].join('\n').toLowerCase();
+          return searchable.contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  List<String> get _availableTags {
+    final tags =
+        <String>{
+          for (final entry in _entries) ...entry.record.tags,
+        }.toList(growable: false)..sort(
+          (left, right) => left.toLowerCase().compareTo(right.toLowerCase()),
+        );
+    return tags;
+  }
+
+  Future<void> _showCitation(
+    LiteratureLibraryEntry entry,
+    _LiteratureStrings strings,
+  ) async {
+    const formatter = LiteratureCitationFormatter();
+    var format = CitationExportFormat.plainText;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final output = formatter.format(entry.record, format: format);
+          return AlertDialog(
+            key: const Key('literature-citation-dialog'),
+            title: Text(strings.citationExport),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680, maxHeight: 560),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SegmentedButton<CitationExportFormat>(
+                    segments: const [
+                      ButtonSegment(
+                        value: CitationExportFormat.plainText,
+                        label: Text('Text'),
+                      ),
+                      ButtonSegment(
+                        value: CitationExportFormat.bibtex,
+                        label: Text('BibTeX'),
+                      ),
+                      ButtonSegment(
+                        value: CitationExportFormat.ris,
+                        label: Text('RIS'),
+                      ),
+                    ],
+                    selected: <CitationExportFormat>{format},
+                    onSelectionChanged: (value) =>
+                        setDialogState(() => format = value.single),
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        output,
+                        key: const Key('literature-citation-output'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    strings.citationPortability,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                key: const Key('literature-copy-intext-action'),
+                onPressed: () => Clipboard.setData(
+                  ClipboardData(text: formatter.inText(entry.record)),
+                ),
+                icon: const Icon(Icons.format_quote_outlined),
+                label: Text(strings.copyInText),
+              ),
+              FilledButton.tonalIcon(
+                key: const Key('literature-copy-citation-action'),
+                onPressed: () => Clipboard.setData(ClipboardData(text: output)),
+                icon: const Icon(Icons.copy_outlined),
+                label: Text(strings.copyCitation),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(strings.close),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showMetadata(
     LiteratureLibraryEntry entry,
     _LiteratureStrings strings,
@@ -442,6 +624,12 @@ final class _LiteratureManagerLiteViewState
     );
     final journalController = TextEditingController(text: entry.record.journal);
     final doiController = TextEditingController(text: entry.record.doi ?? '');
+    final volumeController = TextEditingController(text: entry.record.volume);
+    final issueController = TextEditingController(text: entry.record.issue);
+    final pagesController = TextEditingController(text: entry.record.pages);
+    final tagsController = TextEditingController(
+      text: entry.record.tags.join('; '),
+    );
     final yearController = TextEditingController(
       text: entry.record.year?.toString() ?? '',
     );
@@ -482,6 +670,37 @@ final class _LiteratureManagerLiteViewState
                     controller: yearController,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(labelText: strings.year),
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: volumeController,
+                          decoration: InputDecoration(
+                            labelText: strings.volume,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: issueController,
+                          decoration: InputDecoration(labelText: strings.issue),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: pagesController,
+                          decoration: InputDecoration(labelText: strings.pages),
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextField(
+                    key: const Key('literature-tags-field'),
+                    controller: tagsController,
+                    decoration: InputDecoration(labelText: strings.tagsHint),
                   ),
                   const SizedBox(height: 12),
                   Text(strings.manualMetadataNotice),
@@ -525,12 +744,17 @@ final class _LiteratureManagerLiteViewState
             .toList(growable: false),
         journal: journalController.text.trim(),
         year: year,
-        volume: record.volume,
-        issue: record.issue,
-        pages: record.pages,
+        volume: volumeController.text.trim(),
+        issue: issueController.text.trim(),
+        pages: pagesController.text.trim(),
         abstractText: record.abstractText,
         keywords: record.keywords,
-        tags: record.tags,
+        tags: tagsController.text
+            .split(RegExp(r'[;,]'))
+            .map((tag) => tag.trim())
+            .where((tag) => tag.isNotEmpty)
+            .toSet()
+            .toList(growable: false),
         readingProgress: record.readingProgress,
         lastOpenedAt: record.lastOpenedAt,
         metadataSource: 'manual local edit',
@@ -564,6 +788,10 @@ final class _LiteratureManagerLiteViewState
       authorsController.dispose();
       journalController.dispose();
       doiController.dispose();
+      volumeController.dispose();
+      issueController.dispose();
+      pagesController.dispose();
+      tagsController.dispose();
       yearController.dispose();
     }
   }
@@ -882,56 +1110,123 @@ final class _LiteratureManagerLiteViewState
     );
   }
 
-  Widget _buildLibraryList(_LiteratureStrings strings) => Card(
-    margin: EdgeInsets.zero,
-    clipBehavior: Clip.antiAlias,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Text(
-            strings.persistentLibrary,
-            style: Theme.of(context).textTheme.titleMedium,
+  Widget _buildLibraryList(_LiteratureStrings strings) {
+    final entries = _visibleEntries;
+    final tags = _availableTags;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  strings.persistentLibrary,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const Key('literature-library-search'),
+                  controller: _librarySearchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: strings.searchLibrary,
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _librarySearchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: strings.clearSearch,
+                            onPressed: () {
+                              _librarySearchController.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close),
+                          ),
+                  ),
+                ),
+                if (tags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          label: Text(strings.allTags),
+                          selected: _tagFilter == null,
+                          onSelected: (_) => setState(() => _tagFilter = null),
+                        ),
+                        for (final tag in tags) ...[
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: Text(tag),
+                            selected: _tagFilter == tag,
+                            onSelected: (_) => setState(() => _tagFilter = tag),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.separated(
-            key: const Key('literature-library-list'),
-            itemCount: _entries.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final entry = _entries[index];
-              final record = entry.record;
-              return ListTile(
-                key: Key('literature-entry-${entry.id}'),
-                selected: entry.id == _selectedId,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                leading: const Icon(Icons.picture_as_pdf_outlined),
-                title: Text(
-                  record.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  '${record.authors.isEmpty ? strings.authorUnknown : record.authors.first} · '
-                  '${record.year?.toString() ?? strings.yearUnknown}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: Text('${(record.readingProgress * 100).round()}%'),
-                onTap: () => setState(() => _selectedId = entry.id),
-              );
-            },
+          const Divider(height: 1),
+          Expanded(
+            child: entries.isEmpty
+                ? Center(child: Text(strings.noLibraryMatches))
+                : ListView.separated(
+                    key: const Key('literature-library-list'),
+                    itemCount: entries.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final entry = entries[index];
+                      final record = entry.record;
+                      final annotationCount =
+                          _annotations[entry.id]?.length ?? 0;
+                      return ListTile(
+                        key: Key('literature-entry-${entry.id}'),
+                        selected: entry.id == _selectedId,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        leading: const Icon(Icons.picture_as_pdf_outlined),
+                        title: Text(
+                          record.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '${record.authors.isEmpty ? strings.authorUnknown : record.authors.first} · '
+                          '${record.year?.toString() ?? strings.yearUnknown}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('${(record.readingProgress * 100).round()}%'),
+                            if (annotationCount > 0)
+                              Text(
+                                strings.annotationCount(annotationCount),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                          ],
+                        ),
+                        onTap: () => _selectEntry(entry.id),
+                      );
+                    },
+                  ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   Widget _buildReaderPane(
     LiteratureLibraryEntry selected,
@@ -957,6 +1252,11 @@ final class _LiteratureManagerLiteViewState
           onConfigureTranslation: () => unawaited(
             showTranslationConfigurationDialog(context, _translationProvider),
           ),
+          literatureId: selected.id,
+          annotations:
+              _annotations[selected.id] ?? const <LiteratureAnnotation>[],
+          onSaveAnnotation: _saveAnnotation,
+          onDeleteAnnotation: (id) => _deleteAnnotation(selected.id, id),
         );
     return Card(
       margin: EdgeInsets.zero,
@@ -1005,6 +1305,12 @@ final class _LiteratureManagerLiteViewState
                       onPressed: () => _showRenamePreview(selected, strings),
                       icon: const Icon(Icons.drive_file_rename_outline),
                       label: Text(strings.previewAction),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('literature-citation-action'),
+                      onPressed: () => _showCitation(selected, strings),
+                      icon: const Icon(Icons.format_quote_outlined),
+                      label: Text(strings.citationAction),
                     ),
                   ],
                 ),
@@ -1439,12 +1745,28 @@ final class _LiteratureStrings {
       : 'No literature yet. Choose Add literature or drop PDFs here; no directory will be scanned.';
   String get persistentLibrary =>
       isChinese ? '文献列表 · 持久保存' : 'Library · Persistent';
+  String get searchLibrary => isChinese
+      ? '搜索标题、作者、期刊、DOI 或标签'
+      : 'Search title, author, journal, DOI, or tag';
+  String get clearSearch => isChinese ? '清除搜索' : 'Clear search';
+  String get allTags => isChinese ? '全部' : 'All';
+  String get noLibraryMatches =>
+      isChinese ? '没有匹配的文献。' : 'No matching literature.';
+  String annotationCount(int count) =>
+      isChinese ? '$count 条批注' : '$count notes';
   String get authorUnknown => isChinese ? '作者未知' : 'Author unknown';
   String get yearUnknown => isChinese ? '年份未知' : 'Year unknown';
   String get doiNotFound => isChinese ? '未发现 DOI' : 'DOI not found';
   String get literatureMetadata => isChinese ? '文献元数据' : 'Literature metadata';
   String get metadataAction => isChinese ? '元数据' : 'Metadata';
   String get previewAction => isChinese ? '重命名预览' : 'Rename preview';
+  String get citationAction => isChinese ? '引用' : 'Cite';
+  String get citationExport => isChinese ? '引用与导出' : 'Citation and export';
+  String get copyCitation => isChinese ? '复制引用' : 'Copy citation';
+  String get copyInText => isChinese ? '复制文内引用' : 'Copy in-text citation';
+  String get citationPortability => isChinese
+      ? 'BibTeX 与 RIS 可导入 Zotero、EndNote、ReadCube Papers 等支持标准交换格式的工具。快速文本不是完整 CSL 排版。'
+      : 'BibTeX and RIS can be imported into tools that support standard exchange formats, including Zotero, EndNote, and ReadCube Papers. Quick text is not full CSL formatting.';
   String get selectLiterature => isChinese ? '选择一篇文献' : 'Select literature';
   String get selectLiteratureHint => isChinese
       ? '从左侧列表选择 PDF 后即可继续阅读。'
@@ -1458,6 +1780,10 @@ final class _LiteratureStrings {
       isChinese ? '作者（用分号分隔）' : 'Authors (semicolon separated)';
   String get journal => isChinese ? '期刊' : 'Journal';
   String get year => isChinese ? '年份' : 'Year';
+  String get volume => isChinese ? '卷' : 'Volume';
+  String get issue => isChinese ? '期' : 'Issue';
+  String get pages => isChinese ? '页码' : 'Pages';
+  String get tagsHint => isChinese ? '标签（用分号分隔）' : 'Tags (semicolon separated)';
   String get notFound => isChinese ? '未发现' : 'Not found';
   String get editMetadata => isChinese ? '编辑元数据' : 'Edit metadata';
   String get save => isChinese ? '保存' : 'Save';
@@ -1508,6 +1834,9 @@ final class _LiteratureStrings {
   String get libraryPrivacy => isChinese
       ? '列表仅保存本地引用和阅读状态；不会扫描文献目录、上传 PDF 或改动原文件。'
       : 'The library stores only local references and reading state; it never scans literature folders, uploads PDFs, or changes source files.';
+  String get annotationLoadFailed => isChinese
+      ? '无法读取本地批注；PDF 仍以只读方式打开。'
+      : 'Local annotations could not be loaded; the PDF remains open read-only.';
 
   String status(_LiteratureStatus status, {int count = 0}) => switch (status) {
     _LiteratureStatus.catalogUnavailable =>
