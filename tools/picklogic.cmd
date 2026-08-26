@@ -95,10 +95,23 @@ popd
 exit /b %RESULT%
 
 :android_user_test
-set "ORG_GRADLE_PROJECT_picklogicUserTest=true"
 pushd apps\mobile
-call "%FLUTTER%" build apk --profile --target-platform android-arm64 --split-per-abi
+call "%FLUTTER%" clean
+if errorlevel 1 (
+  set "RESULT=%ERRORLEVEL%"
+  popd
+  exit /b %RESULT%
+)
+call "%FLUTTER%" pub get
+if errorlevel 1 (
+  set "RESULT=%ERRORLEVEL%"
+  popd
+  exit /b %RESULT%
+)
+pushd android
+call gradlew.bat :app:assembleProfile -PpicklogicUserTest=true -Ptarget-platform=android-arm64 -Psplit-per-abi=true --no-daemon
 set "RESULT=%ERRORLEVEL%"
+popd
 popd
 exit /b %RESULT%
 
