@@ -9,10 +9,13 @@ environment:
 resolution: workspace
 
 dependencies:
+  archive: 4.0.9
+  desktop_drop: 0.7.1
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  pdfrx: 2.4.7
   picklogic_classification_rules:
     path: ../../packages/classification_rules
   picklogic_core_models:
@@ -39,6 +42,7 @@ dependencies:
     path: ../../packages/system_insight_core
   picklogic_windows_bridge:
     path: ../../platform/windows_bridge
+  video_player_win: 3.2.2
 
 dev_dependencies:
   flutter_lints: ^6.0.0

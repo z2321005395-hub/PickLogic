@@ -33,6 +33,28 @@ abstract class PicklogicWindowsBridgePlatform extends PlatformInterface {
     throw UnimplementedError('pickDirectory() has not been implemented.');
   }
 
+  Future<String?> pickPdfFile({String? title}) {
+    throw UnimplementedError('pickPdfFile() has not been implemented.');
+  }
+
+  Future<List<String>> pickPdfFiles({String? title}) {
+    throw UnimplementedError('pickPdfFiles() has not been implemented.');
+  }
+
+  Future<List<String>> pickFiles({String? title}) {
+    throw UnimplementedError('pickFiles() has not been implemented.');
+  }
+
+  Future<String> getApplicationSupportDirectory() {
+    throw UnimplementedError(
+      'getApplicationSupportDirectory() has not been implemented.',
+    );
+  }
+
+  Future<List<WindowsBrowseRoot>> getBrowseRoots() {
+    throw UnimplementedError('getBrowseRoots() has not been implemented.');
+  }
+
   Future<bool> openItem(String path) {
     throw UnimplementedError('openItem() has not been implemented.');
   }
@@ -48,6 +70,40 @@ abstract class PicklogicWindowsBridgePlatform extends PlatformInterface {
   Future<WindowsStorageSummary> getSystemDriveSummary() {
     throw UnimplementedError(
       'getSystemDriveSummary() has not been implemented.',
+    );
+  }
+
+  Future<WindowsShellThumbnail?> loadShellThumbnail(
+    String path, {
+    required int size,
+  }) {
+    throw UnimplementedError('loadShellThumbnail() has not been implemented.');
+  }
+
+  Future<WindowsRecycleResult> recycleItem(
+    String path, {
+    required String operationId,
+  }) {
+    throw UnimplementedError('recycleItem() has not been implemented.');
+  }
+
+  Future<bool> restoreRecycledItem(String operationId) {
+    throw UnimplementedError('restoreRecycledItem() has not been implemented.');
+  }
+
+  Future<void> writeProtectedSecret(String name, String value) {
+    throw UnimplementedError(
+      'writeProtectedSecret() has not been implemented.',
+    );
+  }
+
+  Future<String?> readProtectedSecret(String name) {
+    throw UnimplementedError('readProtectedSecret() has not been implemented.');
+  }
+
+  Future<void> deleteProtectedSecret(String name) {
+    throw UnimplementedError(
+      'deleteProtectedSecret() has not been implemented.',
     );
   }
 }

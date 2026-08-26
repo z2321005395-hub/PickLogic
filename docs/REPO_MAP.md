@@ -1,9 +1,16 @@
 # Repository Map
 
+- `DEPENDENCIES.md` — reviewed dependency, provenance, version, platform, and reuse-decision ledger.
+- `THIRD_PARTY_NOTICES.md` — redistribution notice index and pinned-binary provenance summary.
+- `DEPENDENCY_BUDGET.md` — measured runtime/package size decisions and lighter alternatives.
+
 - `AGENTS.md` — global operating, safety, dependency, and verification rules.
 - `TASK_STATE.md` — interruption-safe current state, evidence, blockers, and next action.
 - `apps/desktop/` — shared Windows app with Standard and Pro entrypoints.
+- `apps/desktop/lib/src/file_preview.dart` — bounded image, PDFium, text, folder, and fallback preview surfaces.
 - `apps/mobile/` — Android mobile UI and target composition.
+- `apps/mobile/lib/src/mobile_file_browser.dart` — user-authorized hierarchical SAF browser with visible-only thumbnails and direct viewers.
+- `apps/mobile/lib/src/mobile_index_persistence.dart` — shared-SQLite Mobile metadata, checkpoint, and persistent-search adapter.
 - `packages/core_models/` — stable locators, records, enums, provider interfaces, and safe-mode policy.
 - `packages/file_index/` — SQLite index, incremental scan state, and batch persistence.
 - `packages/search_index/` — local query parsing and ranked metadata search.
@@ -12,18 +19,29 @@
 - `packages/insight_engine/` — evidence-bearing structured Insight generation.
 - `packages/operation_planner/` — plan lifecycle, warnings, execution gate, and rollback metadata.
 - `packages/preview_core/` — bounded preview and thumbnail cache contracts.
-- `packages/literature_core/` — DOI extraction, metadata providers, reading state, and rename previews.
+- `packages/literature_core/` — DOI/metadata, reading state, local annotations, citation export, bounded translation, and rename previews.
 - `packages/research_core/` — virtual research workspace skeleton.
 - `packages/system_insight_core/` — read-only Windows storage/system explanations.
 - `packages/shared_ui/` — design tokens, localization, safe-mode banner, shared widgets.
-- `platform/windows_bridge/` — Windows scan/open/reveal/trash and read-only system adapters.
-- `platform/android_bridge/` — MediaStore, SAF, WorkManager, OCR, and storage restriction adapters.
+- `platform/windows_bridge/` — Windows directory picker, open/reveal, attributes, and read-only storage adapters.
+- `platform/android_bridge/` — MediaStore, read-only SAF hierarchy, bounded thumbnails, permissions, and storage restriction adapters.
 - `test_fixtures/` — synthetic-only public data and generator manifest.
 - `tools/` — local environment, fixture, license, privacy, size, and release checks.
 - `tools/picklogic.cmd` — local policy-safe launcher that prefers the TTDT toolchain.
 - `tools/privacy_check.dart` — committed-source privacy and secret pattern gate.
 - `tools/dependency_license_check.dart` — resolved external-package license gate.
+- `tools/package_pdfium_notices.dart` — verifies pinned PDFium hashes and packages all binary notices.
+- `tools/native_asset_io.dart` — shared bounded download and SHA-256 verification for build assets.
+- `tools/pdfium_artifact.dart` — pinned Windows/Linux PDFium source, hash, retry, and extraction contract.
+- `tools/prepare_pdfium_native_asset.dart` — retries, verifies, and pre-seeds pinned PDFium for native builds.
+- `tools/sqlite_native_asset.dart` — official SQLite 3.5.1 Windows/Linux asset names and hashes.
+- `tools/prepare_sqlite_native_asset.dart` — pre-seeds the verified SQLite build-hook cache.
+- `tools/run_module_tests.dart` — concise success / detailed failure module-test orchestrator.
 - `docs/DATA_MODEL.md` — canonical cross-target data/interface contract.
+- `docs/INSTALLATION.md` — private alpha installation and package-type instructions.
+- `docs/KNOWN_ISSUES.md` — current capability, signing, permission, and local-toolchain limits.
+- `docs/PRIVACY_REPORT.md` — v0.1 data-flow and real-data validation boundary.
+- `docs/RELEASE_NOTES_v0.1.0-alpha.md` — truthful draft release scope and limitations.
 - `docs/decisions/` — concise architecture decision records.
 - `.github/workflows/` — format, analysis, tests, builds, license, and secret checks.
 - `.github/workflows/ci.yml` — pinned quality, Android, and Windows jobs.

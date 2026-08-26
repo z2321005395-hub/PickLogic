@@ -3,6 +3,37 @@ import 'dart:convert';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+final class IncrementalScanSession {
+  const IncrementalScanSession({
+    required this.rootKey,
+    required this.generation,
+  });
+
+  final String rootKey;
+  final int generation;
+}
+
+final class IncrementalBatchResult {
+  const IncrementalBatchResult({
+    required this.insertedCount,
+    required this.updatedCount,
+    required this.unchangedCount,
+  });
+
+  final int insertedCount;
+  final int updatedCount;
+  final int unchangedCount;
+
+  int get changedCount => insertedCount + updatedCount;
+}
+
+final class IncrementalScanCompletion {
+  IncrementalScanCompletion({required Iterable<String> removedIds})
+    : removedIds = List<String>.unmodifiable(removedIds);
+
+  final List<String> removedIds;
+}
+
 final class SqliteFileIndex implements SearchIndexer {
   factory SqliteFileIndex.open(String path) =>
       SqliteFileIndex._(sqlite3.open(path));
@@ -18,6 +49,7 @@ final class SqliteFileIndex implements SearchIndexer {
   bool _closed = false;
 
   void _migrate() {
+    _database.execute('PRAGMA foreign_keys = ON');
     _database.execute('''
       CREATE TABLE IF NOT EXISTS file_records (
         id TEXT PRIMARY KEY,
@@ -56,14 +88,50 @@ final class SqliteFileIndex implements SearchIndexer {
       ON file_records(size_bytes, sha256)
     ''');
     _database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_file_records_name
+      ON file_records(display_name)
+    ''');
+    _database.execute('''
       CREATE TABLE IF NOT EXISTS scan_state (
         root_key TEXT PRIMARY KEY,
         cursor TEXT,
         scanned_count INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL
+        updated_at_ms INTEGER NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 0,
+        is_complete INTEGER NOT NULL DEFAULT 1
       )
     ''');
-    _database.execute('PRAGMA user_version = 1');
+    final scanStateColumns = _database
+        .select('PRAGMA table_info(scan_state)')
+        .map((row) => row['name'] as String)
+        .toSet();
+    if (!scanStateColumns.contains('generation')) {
+      _database.execute(
+        'ALTER TABLE scan_state '
+        'ADD COLUMN generation INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!scanStateColumns.contains('is_complete')) {
+      _database.execute(
+        'ALTER TABLE scan_state '
+        'ADD COLUMN is_complete INTEGER NOT NULL DEFAULT 1',
+      );
+    }
+    _database.execute('''
+      CREATE TABLE IF NOT EXISTS scan_membership (
+        root_key TEXT NOT NULL,
+        file_id TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        seen_generation INTEGER NOT NULL,
+        PRIMARY KEY(root_key, file_id),
+        FOREIGN KEY(file_id) REFERENCES file_records(id) ON DELETE CASCADE
+      )
+    ''');
+    _database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_scan_membership_file
+      ON scan_membership(file_id)
+    ''');
+    _database.execute('PRAGMA user_version = 2');
   }
 
   @override
@@ -97,32 +165,247 @@ final class SqliteFileIndex implements SearchIndexer {
     }
   }
 
+  IncrementalScanSession beginIncrementalScan({required String rootKey}) {
+    _ensureOpen();
+    if (rootKey.trim().isEmpty) {
+      throw ArgumentError.value(rootKey, 'rootKey', 'A root key is required.');
+    }
+    _database.execute('BEGIN IMMEDIATE');
+    try {
+      final existing = _database.select(
+        'SELECT generation FROM scan_state WHERE root_key = ?',
+        [rootKey],
+      );
+      final generation = existing.isEmpty
+          ? 1
+          : (existing.single['generation'] as int) + 1;
+      _database.execute(
+        '''
+        INSERT INTO scan_state(
+          root_key, cursor, scanned_count, updated_at_ms,
+          generation, is_complete
+        ) VALUES (?, NULL, 0, ?, ?, 0)
+        ON CONFLICT(root_key) DO UPDATE SET
+          cursor = NULL,
+          scanned_count = 0,
+          updated_at_ms = excluded.updated_at_ms,
+          generation = excluded.generation,
+          is_complete = 0
+        ''',
+        [rootKey, DateTime.now().toUtc().millisecondsSinceEpoch, generation],
+      );
+      _database.execute('COMMIT');
+      return IncrementalScanSession(rootKey: rootKey, generation: generation);
+    } catch (_) {
+      _database.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  Future<IncrementalBatchResult> upsertIncrementalBatch({
+    required IncrementalScanSession session,
+    required List<FileRecord> records,
+    required String? cursor,
+    required int scannedCount,
+  }) async {
+    _ensureOpen();
+    if (scannedCount < 0) {
+      throw ArgumentError.value(
+        scannedCount,
+        'scannedCount',
+        'The scanned count cannot be negative.',
+      );
+    }
+    _database.execute('BEGIN IMMEDIATE');
+    try {
+      final state = _requireActiveSession(session);
+      if (scannedCount < (state['scanned_count'] as int)) {
+        throw StateError('The scan count cannot move backwards.');
+      }
+      var insertedCount = 0;
+      var updatedCount = 0;
+      var unchangedCount = 0;
+      for (final record in records) {
+        final fingerprint = _scanFingerprint(record);
+        final membership = _database.select(
+          '''
+          SELECT fingerprint FROM scan_membership
+          WHERE root_key = ? AND file_id = ?
+          ''',
+          [session.rootKey, record.id],
+        );
+        if (membership.isNotEmpty &&
+            membership.single['fingerprint'] == fingerprint) {
+          _database.execute(
+            '''
+            UPDATE scan_membership SET seen_generation = ?
+            WHERE root_key = ? AND file_id = ?
+            ''',
+            [session.generation, session.rootKey, record.id],
+          );
+          unchangedCount += 1;
+          continue;
+        }
+
+        final existed = _database.select(
+          'SELECT 1 FROM file_records WHERE id = ? LIMIT 1',
+          [record.id],
+        ).isNotEmpty;
+        _database.execute(_upsertSql, _recordParameters(record));
+        _database.execute(
+          '''
+          INSERT INTO scan_membership(
+            root_key, file_id, fingerprint, seen_generation
+          ) VALUES (?, ?, ?, ?)
+          ON CONFLICT(root_key, file_id) DO UPDATE SET
+            fingerprint = excluded.fingerprint,
+            seen_generation = excluded.seen_generation
+          ''',
+          [session.rootKey, record.id, fingerprint, session.generation],
+        );
+        if (existed) {
+          updatedCount += 1;
+        } else {
+          insertedCount += 1;
+        }
+      }
+      _database.execute(
+        '''
+        UPDATE scan_state SET
+          cursor = ?, scanned_count = ?, updated_at_ms = ?
+        WHERE root_key = ? AND generation = ?
+        ''',
+        [
+          cursor,
+          scannedCount,
+          DateTime.now().toUtc().millisecondsSinceEpoch,
+          session.rootKey,
+          session.generation,
+        ],
+      );
+      _database.execute('COMMIT');
+      return IncrementalBatchResult(
+        insertedCount: insertedCount,
+        updatedCount: updatedCount,
+        unchangedCount: unchangedCount,
+      );
+    } catch (_) {
+      _database.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  IncrementalScanCompletion completeIncrementalScan(
+    IncrementalScanSession session,
+  ) {
+    _ensureOpen();
+    _database.execute('BEGIN IMMEDIATE');
+    try {
+      _requireActiveSession(session);
+      final staleIds = _database
+          .select(
+            '''
+            SELECT file_id FROM scan_membership
+            WHERE root_key = ? AND seen_generation <> ?
+            ORDER BY file_id
+            ''',
+            [session.rootKey, session.generation],
+          )
+          .map((row) => row['file_id'] as String)
+          .toList(growable: false);
+      _database.execute(
+        '''
+        DELETE FROM scan_membership
+        WHERE root_key = ? AND seen_generation <> ?
+        ''',
+        [session.rootKey, session.generation],
+      );
+      final removedIds = <String>[];
+      for (final id in staleIds) {
+        final stillOwned = _database.select(
+          'SELECT 1 FROM scan_membership WHERE file_id = ? LIMIT 1',
+          [id],
+        ).isNotEmpty;
+        if (!stillOwned) {
+          _database.execute('DELETE FROM file_records WHERE id = ?', [id]);
+          removedIds.add(id);
+        }
+      }
+      _database.execute(
+        '''
+        UPDATE scan_state SET is_complete = 1, updated_at_ms = ?
+        WHERE root_key = ? AND generation = ?
+        ''',
+        [
+          DateTime.now().toUtc().millisecondsSinceEpoch,
+          session.rootKey,
+          session.generation,
+        ],
+      );
+      _database.execute('COMMIT');
+      return IncrementalScanCompletion(removedIds: removedIds);
+    } catch (_) {
+      _database.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
   @override
   Future<List<FileRecord>> search(String query, {int limit = 100}) async {
     _ensureOpen();
     if (limit <= 0) return const [];
-    final normalized = query.trim().toLowerCase();
-    final rows = normalized.isEmpty
-        ? _database.select(
-            'SELECT * FROM file_records ORDER BY modified_at_ms DESC LIMIT ?',
-            [limit],
-          )
-        : _database.select(
-            '''
-            SELECT * FROM file_records
-            WHERE lower(display_name) LIKE ?
-               OR lower(extension) LIKE ?
-               OR lower(mime_type) LIKE ?
-               OR lower(category) LIKE ?
-               OR lower(tags_json) LIKE ?
-            ORDER BY modified_at_ms DESC
-            LIMIT ?
-            ''',
-            <Object?>[
-              for (var index = 0; index < 5; index++) '%$normalized%',
-              limit,
-            ],
-          );
+    final terms = _searchTerms(query);
+    if (terms.isEmpty) {
+      final rows = _database.select(
+        '''
+        SELECT * FROM file_records
+        ORDER BY modified_at_ms DESC, id ASC
+        LIMIT ?
+        ''',
+        [limit],
+      );
+      return rows.map(_recordFromRow).toList(growable: false);
+    }
+
+    final scoreParts = <String>[];
+    final whereParts = <String>[];
+    final scoreParameters = <Object?>[];
+    final whereParameters = <Object?>[];
+    for (final term in terms) {
+      final escaped = _escapeLike(term);
+      final contains = '%$escaped%';
+      final prefix = '$escaped%';
+      scoreParts.add('''
+        CASE
+          WHEN lower(display_name) = ? THEN 100
+          WHEN lower(display_name) LIKE ? ESCAPE '\\' THEN 60
+          WHEN lower(display_name) LIKE ? ESCAPE '\\' THEN 40
+          WHEN lower(extension) = ? OR lower(category) = ? THEN 25
+          ELSE 10
+        END
+      ''');
+      scoreParameters.addAll([term, prefix, contains, term, term]);
+      whereParts.add('''
+        (
+          lower(display_name) LIKE ? ESCAPE '\\'
+          OR lower(extension) LIKE ? ESCAPE '\\'
+          OR lower(mime_type) LIKE ? ESCAPE '\\'
+          OR lower(category) LIKE ? ESCAPE '\\'
+          OR lower(tags_json) LIKE ? ESCAPE '\\'
+        )
+      ''');
+      whereParameters.addAll(List<Object?>.filled(5, contains));
+    }
+    final rows = _database.select(
+      '''
+      SELECT *, (${scoreParts.join(' + ')}) AS rank_score
+      FROM file_records
+      WHERE ${whereParts.join(' AND ')}
+      ORDER BY rank_score DESC, modified_at_ms DESC, id ASC
+      LIMIT ?
+      ''',
+      [...scoreParameters, ...whereParameters, limit],
+    );
     return rows.map(_recordFromRow).toList(growable: false);
   }
 
@@ -161,6 +444,22 @@ final class SqliteFileIndex implements SearchIndexer {
       cursor: rows.single['cursor'] as String?,
       scannedCount: rows.single['scanned_count'] as int,
     );
+  }
+
+  Row _requireActiveSession(IncrementalScanSession session) {
+    final rows = _database.select(
+      '''
+      SELECT generation, is_complete, scanned_count
+      FROM scan_state WHERE root_key = ?
+      ''',
+      [session.rootKey],
+    );
+    if (rows.isEmpty ||
+        rows.single['generation'] != session.generation ||
+        rows.single['is_complete'] == 1) {
+      throw StateError('The incremental scan session is not active.');
+    }
+    return rows.single;
   }
 
   int get count {
@@ -297,3 +596,40 @@ final class SqliteFileIndex implements SearchIndexer {
       ? null
       : DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true);
 }
+
+String _scanFingerprint(FileRecord record) => jsonEncode([
+  record.locator.value,
+  record.locator.sourceKind.name,
+  record.locator.platform.name,
+  record.displayName,
+  record.extension,
+  record.mimeType,
+  record.sizeBytes,
+  record.createdAt?.toUtc().millisecondsSinceEpoch,
+  record.modifiedAt.toUtc().millisecondsSinceEpoch,
+  record.parentLocator?.value,
+  record.parentLocator?.sourceKind.name,
+  record.parentLocator?.platform.name,
+  record.sourceKind.name,
+  record.platform.name,
+  record.isHidden,
+  record.isSystem,
+  record.isAccessible,
+  record.isProtected,
+  record.category.name,
+  record.tags,
+]);
+
+List<String> _searchTerms(String query) {
+  final seen = <String>{};
+  return query
+      .toLowerCase()
+      .split(RegExp(r'[^\p{L}\p{N}_-]+', unicode: true))
+      .where((term) => term.isNotEmpty && seen.add(term))
+      .toList(growable: false);
+}
+
+String _escapeLike(String value) => value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('%', '\\%')
+    .replaceAll('_', '\\_');

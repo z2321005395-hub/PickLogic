@@ -1,0 +1,1372 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pdfrx/pdfrx.dart';
+import 'package:picklogic_literature_core/picklogic_literature_core.dart';
+import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
+
+typedef LiteratureReadingPositionChanged =
+    void Function(int currentPage, int totalPages);
+typedef LiteratureAnnotationSaved =
+    Future<void> Function(LiteratureAnnotation annotation);
+typedef LiteratureAnnotationDeleted = Future<void> Function(String id);
+
+/// Reads one explicitly selected local PDF without modifying it.
+final class ProLocalPdfReader extends StatelessWidget {
+  const ProLocalPdfReader({
+    super.key,
+    required this.path,
+    required this.fileName,
+    required this.initialPageNumber,
+    required this.onPositionChanged,
+    this.viewerBuilder,
+    this.translationProvider = const DisabledTranslationProvider(),
+    this.onConfigureTranslation,
+    this.literatureId = '',
+    this.annotations = const <LiteratureAnnotation>[],
+    this.onSaveAnnotation,
+    this.onDeleteAnnotation,
+  });
+
+  final String path;
+  final String fileName;
+  final int initialPageNumber;
+  final LiteratureReadingPositionChanged onPositionChanged;
+  final WidgetBuilder? viewerBuilder;
+  final TranslationProvider translationProvider;
+  final VoidCallback? onConfigureTranslation;
+  final String literatureId;
+  final List<LiteratureAnnotation> annotations;
+  final LiteratureAnnotationSaved? onSaveAnnotation;
+  final LiteratureAnnotationDeleted? onDeleteAnnotation;
+
+  @override
+  Widget build(BuildContext context) => _ProPdfReader(
+    filePath: path,
+    sourceName: fileName,
+    initialPageNumber: initialPageNumber,
+    onPositionChanged: onPositionChanged,
+    viewerBuilder: viewerBuilder,
+    translationProvider: translationProvider,
+    onConfigureTranslation: onConfigureTranslation,
+    literatureId: literatureId,
+    annotations: annotations,
+    onSaveAnnotation: onSaveAnnotation,
+    onDeleteAnnotation: onDeleteAnnotation,
+  );
+}
+
+/// Generated-fixture reader retained for tests and packaged engine smoke.
+final class ProSyntheticPdfReader extends StatelessWidget {
+  const ProSyntheticPdfReader({super.key});
+
+  @override
+  Widget build(BuildContext context) => _ProPdfReader(
+    documentBytes: buildSyntheticLiteraturePdf(),
+    sourceName: 'picklogic-synthetic-literature-v1.pdf',
+    initialPageNumber: 1,
+    onPositionChanged: _ignorePosition,
+    translationProvider: const DisabledTranslationProvider(),
+  );
+
+  static void _ignorePosition(int currentPage, int totalPages) {}
+}
+
+final class _ProPdfReader extends StatefulWidget {
+  const _ProPdfReader({
+    this.filePath,
+    this.documentBytes,
+    required this.sourceName,
+    required this.initialPageNumber,
+    required this.onPositionChanged,
+    this.viewerBuilder,
+    required this.translationProvider,
+    this.onConfigureTranslation,
+    this.literatureId = '',
+    this.annotations = const <LiteratureAnnotation>[],
+    this.onSaveAnnotation,
+    this.onDeleteAnnotation,
+  }) : assert((filePath == null) != (documentBytes == null));
+
+  final String? filePath;
+  final Uint8List? documentBytes;
+  final String sourceName;
+  final int initialPageNumber;
+  final LiteratureReadingPositionChanged onPositionChanged;
+  final WidgetBuilder? viewerBuilder;
+  final TranslationProvider translationProvider;
+  final VoidCallback? onConfigureTranslation;
+  final String literatureId;
+  final List<LiteratureAnnotation> annotations;
+  final LiteratureAnnotationSaved? onSaveAnnotation;
+  final LiteratureAnnotationDeleted? onDeleteAnnotation;
+
+  bool get isSynthetic => documentBytes != null;
+
+  @override
+  State<_ProPdfReader> createState() => _ProPdfReaderState();
+}
+
+final class _ProPdfReaderState extends State<_ProPdfReader> {
+  static const _cacheLimitBytes = 24 * 1024 * 1024;
+
+  final PdfViewerController _viewerController = PdfViewerController();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _pageController = TextEditingController();
+  PdfTextSearcher? _searcher;
+  PdfDocument? _document;
+  int _pageNumber = 1;
+  double? _zoom;
+  bool _loadSucceeded = false;
+  bool _positionRestored = false;
+  bool _pageJumpInvalid = false;
+  String _selectedText = '';
+  bool _selectionLoading = false;
+  bool _translationBusy = false;
+  bool _annotationBusy = false;
+  bool _annotationsVisible = false;
+  final Map<int, String> _pageTranslations = <int, String>{};
+  bool _bilingualVisible = false;
+  bool _documentTranslationBusy = false;
+  bool _cancelDocumentTranslation = false;
+  int _translationProgress = 0;
+  int _translationTotal = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageNumber = widget.initialPageNumber < 1 ? 1 : widget.initialPageNumber;
+    _pageController.text = '$_pageNumber';
+    _viewerController.addListener(_onViewerTransformChanged);
+  }
+
+  @override
+  void dispose() {
+    _viewerController.removeListener(_onViewerTransformChanged);
+    _searcher?.dispose();
+    _searchController.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onViewerReady(PdfDocument document, PdfViewerController controller) {
+    _searcher?.dispose();
+    final searcher = PdfTextSearcher(controller)..addListener(_onSearchChanged);
+    if (!mounted) {
+      searcher.dispose();
+      return;
+    }
+    setState(() {
+      _document = document;
+      _searcher = searcher;
+    });
+    unawaited(_restoreReadingPosition(document, controller));
+  }
+
+  Future<void> _restoreReadingPosition(
+    PdfDocument document,
+    PdfViewerController controller,
+  ) async {
+    final target = widget.initialPageNumber.clamp(1, document.pages.length);
+    if (target != 1) {
+      await controller.goToPage(pageNumber: target, duration: Duration.zero);
+    }
+    if (!mounted) return;
+    setState(() {
+      _positionRestored = true;
+      _pageNumber = target;
+      _pageController.text = '$target';
+      _zoom = controller.currentZoom;
+    });
+    widget.onPositionChanged(target, document.pages.length);
+  }
+
+  void _onSearchChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onViewerTransformChanged() {
+    if (!mounted || !_viewerController.isReady) return;
+    final zoom = _viewerController.currentZoom;
+    if (_zoom == zoom) return;
+    setState(() => _zoom = zoom);
+  }
+
+  void _startSearch() {
+    final searcher = _searcher;
+    if (searcher == null) return;
+    searcher.startTextSearch(
+      _searchController.text.trim(),
+      searchImmediately: true,
+    );
+  }
+
+  Future<void> _jumpToPage() async {
+    final document = _document;
+    final page = int.tryParse(_pageController.text.trim());
+    if (document == null ||
+        page == null ||
+        page < 1 ||
+        page > document.pages.length) {
+      setState(() => _pageJumpInvalid = true);
+      return;
+    }
+    setState(() => _pageJumpInvalid = false);
+    await _viewerController.goToPage(pageNumber: page);
+  }
+
+  void _paintSearchMatches(ui.Canvas canvas, Rect pageRect, PdfPage page) {
+    _searcher?.pageTextMatchPaintCallback(canvas, pageRect, page);
+  }
+
+  Future<void> _onTextSelectionChanged(PdfTextSelection selection) async {
+    if (!selection.hasSelectedText || !selection.isCopyAllowed) {
+      if (mounted && _selectedText.isNotEmpty) {
+        setState(() => _selectedText = '');
+      }
+      return;
+    }
+    if (mounted) setState(() => _selectionLoading = true);
+    try {
+      final text = (await selection.getSelectedText()).trim();
+      if (mounted) setState(() => _selectedText = text);
+    } on Object {
+      if (mounted) setState(() => _selectedText = '');
+    } finally {
+      if (mounted) setState(() => _selectionLoading = false);
+    }
+  }
+
+  Future<void> _copySelection() async {
+    if (!_viewerController.isReady) return;
+    final copied = await _viewerController.textSelectionDelegate
+        .copyTextSelection();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          copied
+              ? _PdfReaderStrings.of(context).selectionCopied
+              : _PdfReaderStrings.of(context).selectionCopyUnavailable,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _translateSelection() async {
+    final strings = _PdfReaderStrings.of(context);
+    final source = _selectedText.trim();
+    if (source.isEmpty || _translationBusy) return;
+    final configured = await widget.translationProvider.isConfigured();
+    if (!mounted) return;
+    if (!configured) {
+      widget.onConfigureTranslation?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.translationNeedsConfiguration)),
+      );
+      return;
+    }
+    setState(() => _translationBusy = true);
+    try {
+      final result = await widget.translationProvider.translateSelectedText(
+        source,
+        targetLanguage: strings.isChinese ? 'Simplified Chinese' : 'English',
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const Key('pdf-translation-result-dialog'),
+          title: Text(strings.translationResult),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640, maxHeight: 520),
+            child: SingleChildScrollView(
+              child: SelectableText(result.translatedText),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () =>
+                  Clipboard.setData(ClipboardData(text: result.translatedText)),
+              icon: const Icon(Icons.copy_outlined),
+              label: Text(strings.copyTranslation),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(strings.close),
+            ),
+          ],
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${strings.translationFailed}: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _translationBusy = false);
+    }
+  }
+
+  Future<bool> _ensureTranslationConfigured(_PdfReaderStrings strings) async {
+    final configured = await widget.translationProvider.isConfigured();
+    if (!mounted) return false;
+    if (configured) return true;
+    widget.onConfigureTranslation?.call();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(strings.translationNeedsConfiguration)),
+    );
+    return false;
+  }
+
+  Future<String?> _extractPageText(int pageNumber) async {
+    final document = _document;
+    if (document == null ||
+        pageNumber < 1 ||
+        pageNumber > document.pages.length) {
+      return null;
+    }
+    final text = await document.pages[pageNumber - 1].loadStructuredText();
+    final value = text.fullText.trim();
+    return value.isEmpty ? null : value;
+  }
+
+  Future<void> _translateCurrentPage() async {
+    final strings = _PdfReaderStrings.of(context);
+    if (_translationBusy || _documentTranslationBusy) return;
+    if (!await _ensureTranslationConfigured(strings)) return;
+    setState(() {
+      _translationBusy = true;
+      _bilingualVisible = true;
+    });
+    try {
+      await _translatePage(_pageNumber, strings);
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${strings.pageTranslationFailed}: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _translationBusy = false);
+    }
+  }
+
+  Future<bool> _translatePage(int pageNumber, _PdfReaderStrings strings) async {
+    if (_pageTranslations.containsKey(pageNumber)) return true;
+    final source = await _extractPageText(pageNumber);
+    if (source == null) {
+      if (mounted && pageNumber == _pageNumber) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(strings.noExtractablePageText)));
+      }
+      return false;
+    }
+    final result = await widget.translationProvider
+        .translateExplicitTextInChunks(
+          source,
+          targetLanguage: strings.isChinese ? 'Simplified Chinese' : 'English',
+        );
+    if (!mounted) return false;
+    setState(() => _pageTranslations[pageNumber] = result.translatedText);
+    return true;
+  }
+
+  Future<void> _translateDocument() async {
+    final document = _document;
+    final strings = _PdfReaderStrings.of(context);
+    if (document == null || _documentTranslationBusy || _translationBusy) {
+      return;
+    }
+    if (!await _ensureTranslationConfigured(strings)) return;
+    if (!mounted) return;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('pdf-translate-document-confirmation'),
+        title: Text(strings.translateDocument),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Text(
+            strings.translateDocumentDisclosure(document.pages.length),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            key: const Key('pdf-confirm-translate-document-action'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(strings.startTranslation),
+          ),
+        ],
+      ),
+    );
+    if (approved != true || !mounted) return;
+    setState(() {
+      _documentTranslationBusy = true;
+      _cancelDocumentTranslation = false;
+      _translationProgress = 0;
+      _translationTotal = document.pages.length;
+      _bilingualVisible = true;
+    });
+    var translated = 0;
+    try {
+      for (var page = 1; page <= document.pages.length; page++) {
+        if (_cancelDocumentTranslation) break;
+        if (await _translatePage(page, strings)) translated++;
+        if (!mounted) return;
+        setState(() => _translationProgress = page);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _cancelDocumentTranslation
+                ? strings.documentTranslationStopped(
+                    translated,
+                    document.pages.length,
+                  )
+                : strings.documentTranslationComplete(
+                    translated,
+                    document.pages.length,
+                  ),
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${strings.documentTranslationFailed}: $error'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _documentTranslationBusy = false;
+          _cancelDocumentTranslation = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveSelectionAsAnnotation() async {
+    final save = widget.onSaveAnnotation;
+    final source = _selectedText.trim();
+    if (save == null || widget.literatureId.isEmpty || source.isEmpty) return;
+    final strings = _PdfReaderStrings.of(context);
+    final noteController = TextEditingController();
+    LiteratureAnnotationKind kind = LiteratureAnnotationKind.highlight;
+    try {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            key: const Key('pdf-annotation-editor'),
+            title: Text(strings.saveAnnotation),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(source, maxLines: 5, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 12),
+                  SegmentedButton<LiteratureAnnotationKind>(
+                    segments: [
+                      ButtonSegment(
+                        value: LiteratureAnnotationKind.highlight,
+                        icon: const Icon(Icons.highlight_outlined),
+                        label: Text(strings.highlight),
+                      ),
+                      ButtonSegment(
+                        value: LiteratureAnnotationKind.note,
+                        icon: const Icon(Icons.note_alt_outlined),
+                        label: Text(strings.note),
+                      ),
+                    ],
+                    selected: <LiteratureAnnotationKind>{kind},
+                    onSelectionChanged: (value) =>
+                        setDialogState(() => kind = value.single),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const Key('pdf-annotation-note-field'),
+                    controller: noteController,
+                    minLines: 2,
+                    maxLines: 5,
+                    decoration: InputDecoration(
+                      labelText: strings.annotationNote,
+                      hintText: strings.annotationNoteHint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(strings.cancel),
+              ),
+              FilledButton(
+                key: const Key('pdf-save-annotation-action'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(strings.save),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (accepted != true || !mounted) return;
+      setState(() => _annotationBusy = true);
+      final now = DateTime.now().toUtc();
+      await save(
+        LiteratureAnnotation(
+          id: 'annotation-${now.microsecondsSinceEpoch}',
+          literatureId: widget.literatureId,
+          pageNumber: _pageNumber,
+          kind: kind,
+          selectedText: source,
+          note: noteController.text.trim(),
+          colorName: 'yellow',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      if (!mounted) return;
+      setState(() => _annotationsVisible = true);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.annotationSaved)));
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${strings.annotationSaveFailed}: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _annotationBusy = false);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      noteController.dispose();
+    }
+  }
+
+  Future<void> _deleteAnnotation(LiteratureAnnotation annotation) async {
+    final remove = widget.onDeleteAnnotation;
+    if (remove == null || _annotationBusy) return;
+    final strings = _PdfReaderStrings.of(context);
+    setState(() => _annotationBusy = true);
+    try {
+      await remove(annotation.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.annotationDeleted)));
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${strings.annotationDeleteFailed}: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _annotationBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = _PdfReaderStrings.of(context);
+    final document = _document;
+    final searcher = _searcher;
+    final matchLabel = searcher == null
+        ? strings.searchPreparing
+        : searcher.isSearching
+        ? strings.searching(
+            searcher.searchingPageNumber ?? 0,
+            searcher.totalPageCount ?? 0,
+          )
+        : searcher.matches.isEmpty
+        ? strings.noMatches
+        : strings.matches(
+            (searcher.currentIndex ?? 0) + 1,
+            searcher.matches.length,
+          );
+    final zoomLabel = _zoom == null
+        ? strings.zoomPreparing
+        : '${(_zoom! * 100).round()}%';
+
+    return Column(
+      key: const Key('pro-pdf-reader'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          widget.isSynthetic
+              ? strings.syntheticDescription
+              : strings.localDescription,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 6),
+        Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  strings.localRendering,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                if (_selectionLoading)
+                  const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                if (_selectedText.isNotEmpty) ...[
+                  Chip(
+                    key: const Key('pdf-selection-status'),
+                    avatar: const Icon(Icons.text_fields, size: 16),
+                    label: Text(
+                      strings.selectedCharacters(_selectedText.length),
+                    ),
+                  ),
+                  TextButton.icon(
+                    key: const Key('pdf-copy-selection-action'),
+                    onPressed: _copySelection,
+                    icon: const Icon(Icons.copy_outlined),
+                    label: Text(strings.copySelection),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const Key('pdf-translate-selection-action'),
+                    onPressed: _translationBusy ? null : _translateSelection,
+                    icon: _translationBusy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.translate),
+                    label: Text(strings.translateSelection),
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('pdf-annotate-selection-action'),
+                    onPressed:
+                        widget.onSaveAnnotation == null || _annotationBusy
+                        ? null
+                        : _saveSelectionAsAnnotation,
+                    icon: const Icon(Icons.highlight_outlined),
+                    label: Text(strings.saveAnnotation),
+                  ),
+                ],
+                if (widget.annotations.isNotEmpty ||
+                    widget.onSaveAnnotation != null)
+                  TextButton.icon(
+                    key: const Key('pdf-toggle-annotations-action'),
+                    onPressed: () => setState(
+                      () => _annotationsVisible = !_annotationsVisible,
+                    ),
+                    icon: Icon(
+                      _annotationsVisible ? Icons.notes : Icons.notes_outlined,
+                    ),
+                    label: Text(strings.annotations(widget.annotations.length)),
+                  ),
+                OutlinedButton.icon(
+                  key: const Key('pdf-bilingual-toggle-action'),
+                  onPressed: () =>
+                      setState(() => _bilingualVisible = !_bilingualVisible),
+                  icon: const Icon(Icons.chrome_reader_mode_outlined),
+                  label: Text(strings.bilingualReading),
+                ),
+                FilledButton.tonalIcon(
+                  key: const Key('pdf-translate-page-action'),
+                  onPressed:
+                      document == null ||
+                          _translationBusy ||
+                          _documentTranslationBusy
+                      ? null
+                      : _translateCurrentPage,
+                  icon: _translationBusy
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.translate_outlined),
+                  label: Text(strings.translateCurrentPage),
+                ),
+                if (_documentTranslationBusy) ...[
+                  Chip(
+                    key: const Key('pdf-document-translation-progress'),
+                    label: Text(
+                      strings.translationProgress(
+                        _translationProgress,
+                        _translationTotal,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    key: const Key('pdf-stop-document-translation-action'),
+                    onPressed: () =>
+                        setState(() => _cancelDocumentTranslation = true),
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: Text(strings.stopTranslation),
+                  ),
+                ] else
+                  TextButton.icon(
+                    key: const Key('pdf-translate-document-action'),
+                    onPressed: document == null ? null : _translateDocument,
+                    icon: const Icon(Icons.auto_stories_outlined),
+                    label: Text(strings.translateDocument),
+                  ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 220,
+                  child: TextField(
+                    key: const Key('pdf-search-field'),
+                    controller: _searchController,
+                    enabled: searcher != null,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      labelText: strings.searchPdfText,
+                      hintText: strings.searchHint,
+                      prefixIcon: const Icon(Icons.search),
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _startSearch(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-search-action'),
+                  tooltip: strings.search,
+                  onPressed: searcher == null ? null : _startSearch,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                Text(matchLabel, key: const Key('pdf-search-status')),
+                IconButton(
+                  tooltip: strings.previousMatch,
+                  onPressed: searcher?.hasMatches == true
+                      ? () => searcher!.goToPrevMatch()
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_up),
+                ),
+                IconButton(
+                  tooltip: strings.nextMatch,
+                  onPressed: searcher?.hasMatches == true
+                      ? () => searcher!.goToNextMatch()
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_down),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  key: const Key('pdf-zoom-out'),
+                  tooltip: strings.zoomOut,
+                  onPressed: _viewerController.isReady
+                      ? () => _viewerController.zoomDown()
+                      : null,
+                  icon: const Icon(Icons.zoom_out),
+                ),
+                Text(zoomLabel, key: const Key('pdf-zoom-status')),
+                IconButton(
+                  key: const Key('pdf-zoom-in'),
+                  tooltip: strings.zoomIn,
+                  onPressed: _viewerController.isReady
+                      ? () => _viewerController.zoomUp()
+                      : null,
+                  icon: const Icon(Icons.zoom_in),
+                ),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 86,
+                  child: TextField(
+                    key: const Key('pdf-page-jump-field'),
+                    controller: _pageController,
+                    enabled: document != null,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      labelText: strings.jumpToPage,
+                    ),
+                    onSubmitted: (_) => _jumpToPage(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-page-jump-action'),
+                  tooltip: strings.jump,
+                  onPressed: document == null ? null : _jumpToPage,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                Text(
+                  document == null
+                      ? (_loadSucceeded
+                            ? strings.preparingPages
+                            : strings.loadingPdf)
+                      : strings.pagePosition(
+                          _pageNumber,
+                          document.pages.length,
+                        ),
+                  key: const Key('pdf-page-status'),
+                ),
+                if (_pageJumpInvalid)
+                  Text(
+                    strings.pageRange(document?.pages.length ?? 1),
+                    key: const Key('pdf-page-jump-error'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: Row(
+            children: [
+              SizedBox(
+                width: 76,
+                child: document == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                        key: const Key('pdf-thumbnail-list'),
+                        itemCount: document.pages.length,
+                        itemBuilder: (context, index) {
+                          final page = index + 1;
+                          final selected = page == _pageNumber;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              key: Key('pdf-thumbnail-$page'),
+                              onTap: () =>
+                                  _viewerController.goToPage(pageNumber: page),
+                              child: Container(
+                                height: 96,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: selected
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context).dividerColor,
+                                    width: selected ? 2 : 1,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: PdfPageView(
+                                        document: document,
+                                        pageNumber: page,
+                                        maximumDpi: 96,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 2,
+                                      bottom: 2,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.65,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 2,
+                                          ),
+                                          child: Text(
+                                            '$page',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(color: Colors.white),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              const VerticalDivider(width: 10),
+              if (_annotationsVisible) ...[
+                SizedBox(width: 240, child: _buildAnnotationPanel(strings)),
+                const VerticalDivider(width: 10),
+              ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: _buildViewer(),
+                      ),
+                    ),
+                    if (_bilingualVisible) ...[
+                      const VerticalDivider(width: 10),
+                      Expanded(child: _buildTranslationPanel(strings)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnnotationPanel(_PdfReaderStrings strings) {
+    final annotations = widget.annotations;
+    return Material(
+      key: const Key('pdf-annotation-panel'),
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.annotations(annotations.length),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  tooltip: strings.close,
+                  onPressed: () => setState(() => _annotationsVisible = false),
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: annotations.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        strings.noAnnotations,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: annotations.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final annotation = annotations[index];
+                      return ListTile(
+                        key: Key('pdf-annotation-${annotation.id}'),
+                        dense: true,
+                        leading: Icon(
+                          annotation.kind == LiteratureAnnotationKind.highlight
+                              ? Icons.highlight_outlined
+                              : Icons.note_alt_outlined,
+                        ),
+                        title: Text(
+                          annotation.selectedText.isEmpty
+                              ? annotation.note
+                              : annotation.selectedText,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          annotation.note.isEmpty
+                              ? strings.page(annotation.pageNumber)
+                              : '${strings.page(annotation.pageNumber)} · ${annotation.note}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: widget.onDeleteAnnotation == null
+                            ? null
+                            : IconButton(
+                                tooltip: strings.deleteAnnotation,
+                                onPressed: _annotationBusy
+                                    ? null
+                                    : () => _deleteAnnotation(annotation),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                ),
+                              ),
+                        onTap: _viewerController.isReady
+                            ? () => _viewerController.goToPage(
+                                pageNumber: annotation.pageNumber,
+                              )
+                            : null,
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTranslationPanel(_PdfReaderStrings strings) {
+    final translation = _pageTranslations[_pageNumber];
+    return Material(
+      key: const Key('pdf-bilingual-panel'),
+      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.translatedPage(_pageNumber),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  tooltip: strings.close,
+                  onPressed: () => setState(() => _bilingualVisible = false),
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: translation == null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            strings.pageNotTranslated,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.tonalIcon(
+                            onPressed:
+                                _translationBusy || _documentTranslationBusy
+                                ? null
+                                : _translateCurrentPage,
+                            icon: const Icon(Icons.translate_outlined),
+                            label: Text(strings.translateCurrentPage),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : SelectionArea(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(18),
+                      child: Text(
+                        translation,
+                        key: const Key('pdf-page-translation-text'),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyLarge?.copyWith(height: 1.65),
+                      ),
+                    ),
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            child: Text(
+              strings.translationPrivacy,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewer() {
+    final viewerBuilder = widget.viewerBuilder;
+    if (viewerBuilder != null) return viewerBuilder(context);
+    final strings = _PdfReaderStrings.of(context);
+    final params = PdfViewerParams(
+      limitRenderingCache: true,
+      maxImageBytesCachedOnMemory: _cacheLimitBytes,
+      horizontalCacheExtent: 0.5,
+      verticalCacheExtent: 0.5,
+      textSelectionParams: PdfTextSelectionParams(
+        enabled: true,
+        showContextMenuAutomatically: true,
+        onTextSelectionChange: _onTextSelectionChanged,
+      ),
+      pagePaintCallbacks: [_paintSearchMatches],
+      onDocumentChanged: (value) {
+        if (mounted) setState(() => _document = value);
+      },
+      onViewerReady: _onViewerReady,
+      onPageChanged: (value) {
+        final document = _document;
+        if (!mounted || value == null) return;
+        setState(() {
+          _pageNumber = value;
+          _pageController.text = '$value';
+        });
+        if (_positionRestored && document != null) {
+          widget.onPositionChanged(value, document.pages.length);
+        }
+      },
+      onDocumentLoadFinished: (_, succeeded) {
+        if (mounted) setState(() => _loadSucceeded = succeeded);
+      },
+      errorBannerBuilder: (context, error, stackTrace, documentRef) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            strings.openError,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
+      ),
+    );
+    final bytes = widget.documentBytes;
+    if (bytes != null) {
+      return PdfViewer.data(
+        bytes,
+        sourceName: widget.sourceName,
+        controller: _viewerController,
+        params: params,
+      );
+    }
+    return PdfViewer.file(
+      widget.filePath!,
+      controller: _viewerController,
+      params: params,
+    );
+  }
+}
+
+final class _PdfReaderStrings {
+  const _PdfReaderStrings(this.isChinese);
+
+  factory _PdfReaderStrings.of(BuildContext context) => _PdfReaderStrings(
+    PickLogicLocalizations.of(context).locale.languageCode == 'zh',
+  );
+
+  final bool isChinese;
+
+  String get searchPreparing => isChinese ? '搜索器准备中' : 'Search is preparing';
+  String searching(int page, int totalPages) =>
+      isChinese ? '正在搜索 $page/$totalPages' : 'Searching $page/$totalPages';
+  String get noMatches => isChinese ? '0 个匹配' : '0 matches';
+  String matches(int current, int total) =>
+      isChinese ? '$current/$total 个匹配' : '$current/$total matches';
+  String get zoomPreparing => isChinese ? '缩放准备中' : 'Zoom is preparing';
+  String get syntheticPdf => isChinese ? '合成 PDF' : 'SYNTHETIC PDF';
+  String get localPdf => isChinese ? '本地 PDF' : 'LOCAL PDF';
+  String get localRendering => isChinese ? '本地渲染' : 'Local rendering';
+  String get capabilities =>
+      isChinese ? '滚动 / 缩放 / 选择 / 复制' : 'Scroll / zoom / select / copy';
+  String cacheLimit(int mebibytes) =>
+      isChinese ? '缓存上限 $mebibytes MiB' : 'Cache limit $mebibytes MiB';
+  String get syntheticDescription => isChinese
+      ? '运行时生成的合成 PDF；未读取、上传或修改真实文献。'
+      : 'Runtime-generated synthetic PDF; no real literature was read, uploaded, or modified.';
+  String get localDescription => isChinese
+      ? '只读打开所选本地 PDF；不上传、不改写、不自动重命名。'
+      : 'Opens the selected local PDF read-only; no upload, rewrite, or automatic rename.';
+  String get searchPdfText => isChinese ? '搜索 PDF 文本' : 'Search PDF text';
+  String get searchHint => isChinese ? '输入关键词' : 'Enter keywords';
+  String get search => isChinese ? '搜索' : 'Search';
+  String get previousMatch => isChinese ? '上一个匹配' : 'Previous match';
+  String get nextMatch => isChinese ? '下一个匹配' : 'Next match';
+  String get zoomOut => isChinese ? '缩小' : 'Zoom out';
+  String get zoomIn => isChinese ? '放大' : 'Zoom in';
+  String get jumpToPage => isChinese ? '跳至页' : 'Go to page';
+  String get jump => isChinese ? '跳转' : 'Go';
+  String get preparingPages => isChinese ? '正在准备页面' : 'Preparing pages';
+  String get loadingPdf => isChinese ? '正在加载 PDF' : 'Loading PDF';
+  String pagePosition(int currentPage, int totalPages) => isChinese
+      ? '第 $currentPage / $totalPages 页'
+      : 'Page $currentPage of $totalPages';
+  String pageRange(int totalPages) => isChinese
+      ? '页码应为 1–$totalPages'
+      : 'Page must be between 1 and $totalPages';
+  String selectedCharacters(int count) =>
+      isChinese ? '已选择 $count 个字符' : '$count characters selected';
+  String get copySelection => isChinese ? '复制' : 'Copy';
+  String get translateSelection => isChinese ? '翻译' : 'Translate';
+  String get bilingualReading => isChinese ? '双语阅读' : 'Bilingual view';
+  String get translateCurrentPage => isChinese ? '翻译当前页' : 'Translate page';
+  String get translateDocument => isChinese ? '全文翻译' : 'Translate document';
+  String get startTranslation => isChinese ? '开始翻译' : 'Start translation';
+  String get stopTranslation => isChinese ? '停止' : 'Stop';
+  String translationProgress(int current, int total) =>
+      isChinese ? '翻译 $current/$total' : 'Translating $current/$total';
+  String translateDocumentDisclosure(int pages) => isChinese
+      ? '将按页提取这份 PDF 的文字，并依次发送给你配置的翻译 Provider（共 $pages 页）。不会上传 PDF 文件、图片或未提取内容。可能产生 Provider 费用；可随时停止。是否继续？'
+      : 'PickLogic will extract text page by page and send it to your configured translation provider ($pages pages). The PDF file, images, and unextracted content are never uploaded. Provider charges may apply, and you can stop at any time. Continue?';
+  String translatedPage(int page) =>
+      isChinese ? '译文 · 第 $page 页' : 'Translation · Page $page';
+  String get pageNotTranslated => isChinese
+      ? '当前页尚未翻译。左侧原文仍保持本地只读。'
+      : 'This page has not been translated. The original remains local and read-only.';
+  String get translationPrivacy => isChinese
+      ? '仅在你主动请求时发送提取文字；不发送 PDF。'
+      : 'Only explicitly requested extracted text is sent; the PDF is never sent.';
+  String get noExtractablePageText => isChinese
+      ? '当前页没有可提取文字，可能是扫描页。'
+      : 'This page has no extractable text and may be scanned.';
+  String get pageTranslationFailed =>
+      isChinese ? '当前页翻译失败' : 'Page translation failed';
+  String documentTranslationComplete(int translated, int total) => isChinese
+      ? '全文翻译完成：$translated/$total 页。'
+      : 'Document translation complete: $translated/$total pages.';
+  String documentTranslationStopped(int translated, int total) => isChinese
+      ? '翻译已停止：已完成 $translated/$total 页。'
+      : 'Translation stopped after $translated/$total pages.';
+  String get documentTranslationFailed =>
+      isChinese ? '全文翻译失败' : 'Document translation failed';
+  String get saveAnnotation => isChinese ? '保存批注' : 'Save annotation';
+  String annotations(int count) =>
+      isChinese ? '批注 $count' : 'Annotations $count';
+  String get highlight => isChinese ? '高亮' : 'Highlight';
+  String get note => isChinese ? '笔记' : 'Note';
+  String get annotationNote => isChinese ? '笔记（可选）' : 'Note (optional)';
+  String get annotationNoteHint =>
+      isChinese ? '记录观点、方法或引用用途' : 'Record an idea, method, or citation use';
+  String get annotationSaved =>
+      isChinese ? '批注已保存到本地书库。' : 'Annotation saved to the local library.';
+  String get annotationSaveFailed =>
+      isChinese ? '批注保存失败' : 'Could not save annotation';
+  String get annotationDeleted =>
+      isChinese ? '批注已从本地书库移除。' : 'Annotation removed from the local library.';
+  String get annotationDeleteFailed =>
+      isChinese ? '批注删除失败' : 'Could not delete annotation';
+  String get deleteAnnotation => isChinese ? '删除批注' : 'Delete annotation';
+  String get noAnnotations => isChinese
+      ? '选择 PDF 文字后可保存高亮或页码笔记。'
+      : 'Select PDF text to save a highlight or page-linked note.';
+  String page(int value) => isChinese ? '第 $value 页' : 'Page $value';
+  String get cancel => isChinese ? '取消' : 'Cancel';
+  String get save => isChinese ? '保存' : 'Save';
+  String get selectionCopied =>
+      isChinese ? '选中文字已复制。' : 'Selected text copied.';
+  String get selectionCopyUnavailable =>
+      isChinese ? '此 PDF 不允许复制文字。' : 'This PDF does not allow text copying.';
+  String get translationNeedsConfiguration => isChinese
+      ? '翻译默认关闭；请先配置 Provider。复制仍可使用。'
+      : 'Translation is disabled until a provider is configured. Copy remains available.';
+  String get translationResult => isChinese ? '翻译结果' : 'Translation result';
+  String get copyTranslation => isChinese ? '复制译文' : 'Copy translation';
+  String get translationFailed => isChinese ? '翻译失败' : 'Translation failed';
+  String get close => isChinese ? '关闭' : 'Close';
+  String get openError => isChinese
+      ? '无法只读打开此 PDF。请确认文件仍存在、未损坏且未受不支持的密码保护。'
+      : 'This PDF could not be opened read-only. Confirm that it still exists, is not damaged, and is not protected by an unsupported password.';
+}
+
+/// Builds a deterministic two-page PDF fixture without touching the file system.
+Uint8List buildSyntheticLiteraturePdf() {
+  const pageOne =
+      'BT /F1 22 Tf 72 720 Td (PickLogic synthetic literature sample) Tj '
+      '0 -36 Td /F1 12 Tf (Local-first PDF rendering and text selection.) Tj ET';
+  const pageTwo =
+      'BT /F1 22 Tf 72 720 Td (Insight evidence page) Tj '
+      '0 -36 Td /F1 12 Tf (Searchable synthetic text. No real file was read.) Tj ET';
+  final objects = <String>[
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] '
+        '/Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] '
+        '/Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
+    '<< /Length ${ascii.encode(pageOne).length} >>\nstream\n$pageOne\nendstream',
+    '<< /Length ${ascii.encode(pageTwo).length} >>\nstream\n$pageTwo\nendstream',
+  ];
+
+  final output = StringBuffer('%PDF-1.4\n');
+  final offsets = <int>[0];
+  for (var index = 0; index < objects.length; index++) {
+    offsets.add(ascii.encode(output.toString()).length);
+    output
+      ..write('${index + 1} 0 obj\n')
+      ..write(objects[index])
+      ..write('\nendobj\n');
+  }
+  final xrefOffset = ascii.encode(output.toString()).length;
+  output
+    ..write('xref\n0 ${objects.length + 1}\n')
+    ..write('0000000000 65535 f \n');
+  for (final offset in offsets.skip(1)) {
+    output.write('${offset.toString().padLeft(10, '0')} 00000 n \n');
+  }
+  output
+    ..write('trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n')
+    ..write('startxref\n$xrefOffset\n%%EOF\n');
+  return Uint8List.fromList(ascii.encode(output.toString()));
+}
+
+/// Runs against the packaged native engine and returns a process exit code.
+///
+/// This path never accepts a locator: it parses the generated fixture, extracts
+/// text, and renders one small page image entirely in memory.
+Future<int> runSyntheticPdfEngineSmoke() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  PdfDocument? document;
+  PdfImage? image;
+  try {
+    await pdfrxFlutterInitialize();
+    document = await PdfDocument.openData(
+      buildSyntheticLiteraturePdf(),
+      sourceName: 'picklogic-packaged-engine-smoke-v1.pdf',
+    );
+    if (document.pages.length != 2) return 2;
+
+    final firstText = await document.pages[0].loadStructuredText();
+    final secondText = await document.pages[1].loadStructuredText();
+    if (!firstText.fullText.contains('PickLogic') ||
+        !secondText.fullText.contains('No real file was read.')) {
+      return 3;
+    }
+
+    image = await document.pages[0].render(fullWidth: 306, fullHeight: 396);
+    if (image == null ||
+        image.width != 306 ||
+        image.height != 396 ||
+        image.pixels.length != 306 * 396 * 4) {
+      return 4;
+    }
+    return 0;
+  } on Object {
+    return 1;
+  } finally {
+    image?.dispose();
+    await document?.dispose();
+  }
+}

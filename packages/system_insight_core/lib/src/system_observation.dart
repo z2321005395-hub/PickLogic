@@ -75,18 +75,30 @@ final class SystemObservationExplainer {
           ),
         ),
         InsightEvidence(
+          kind: EvidenceKind.ruleInference,
+          statement: _why(observation.kind),
+          source: 'PickLogic deterministic system rule',
+        ),
+        InsightEvidence(
           kind: EvidenceKind.fact,
           statement: observation.isSigned
               ? 'A digital signature was observed.'
               : 'No verified digital signature was observed.',
           source: 'signature inspection',
         ),
+        const InsightEvidence(
+          kind: EvidenceKind.platformRestriction,
+          statement:
+              'This view cannot change registry, services, tasks, startup, '
+              'uninstallers, or system files.',
+          source: 'PickLogic read-only policy',
+        ),
       ],
       recommendedActions: protected || unknown
-          ? const ['View details', 'Add to review list']
+          ? const ['View read-only details', 'Add to review list']
           : const [
-              'Open related settings',
-              'View details',
+              'Open official settings',
+              'View read-only details',
               'Add to review list',
             ],
       limitations: const [

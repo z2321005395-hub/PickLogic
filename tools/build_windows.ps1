@@ -11,7 +11,23 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $appRoot = Join-Path $repoRoot 'apps\desktop'
 $flutter = Join-Path $env:PICKLOGIC_FLUTTER_ROOT 'bin\flutter.bat'
+$dart = Join-Path $env:PICKLOGIC_FLUTTER_ROOT 'bin\dart.bat'
 $target = if ($Edition -eq 'Pro') { 'lib/main_pro.dart' } else { 'lib/main_standard.dart' }
+
+Push-Location $repoRoot
+try {
+    & $dart run tools\prepare_sqlite_native_asset.dart
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Pinned SQLite native-asset preparation failed.'
+    }
+    & $dart run tools\prepare_pdfium_native_asset.dart
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Pinned PDFium native-asset preparation failed.'
+    }
+}
+finally {
+    Pop-Location
+}
 
 Push-Location $appRoot
 try {
@@ -29,6 +45,21 @@ if (-not (Test-Path -LiteralPath $releaseDirectory -PathType Container)) {
     throw 'Flutter reported success but the expected Windows release directory was not found.'
 }
 
+Push-Location $repoRoot
+try {
+    & $dart run tools\package_pdfium_notices.dart --build-directory $releaseDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw 'PDFium notice packaging failed.'
+    }
+}
+finally {
+    Pop-Location
+}
+
+$installationGuide = Join-Path $repoRoot 'docs\INSTALLATION.md'
+Copy-Item -LiteralPath $installationGuide -Destination (Join-Path $releaseDirectory 'INSTALLATION.md')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $releaseDirectory 'LICENSE')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $releaseDirectory 'THIRD_PARTY_NOTICES.md')
 $totalBytes = (Get-ChildItem -LiteralPath $releaseDirectory -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $summary = "WINDOWS_BUILD_OK edition=$Edition installed_bytes=$totalBytes"
 
@@ -43,7 +74,9 @@ if ($ExportArtifact) {
     Compress-Archive -Path (Join-Path $releaseDirectory '*') -DestinationPath $artifact -CompressionLevel Optimal
     $file = Get-Item -LiteralPath $artifact
     $hash = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash
-    $relative = [System.IO.Path]::GetRelativePath($repoRoot, $artifact)
+    # Windows PowerShell 5.1 uses a .NET runtime without Path.GetRelativePath.
+    # Artifacts are guaranteed to be created below the repository root.
+    $relative = $artifact.Substring($repoRoot.Length).TrimStart('\')
     $summary += " artifact=$relative package_bytes=$($file.Length) sha256=$hash"
 }
 

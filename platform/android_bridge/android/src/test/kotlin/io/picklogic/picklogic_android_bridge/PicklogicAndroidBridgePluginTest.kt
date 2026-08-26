@@ -1,27 +1,48 @@
 package io.picklogic.picklogic_android_bridge
 
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
-import org.mockito.Mockito
+import kotlin.test.assertFalse
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.Test
-
-/*
- * This demonstrates a simple unit test of the Kotlin portion of this plugin's implementation.
- *
- * Once you have built the plugin's example app, you can run these tests from the command
- * line by running `./gradlew testDebugUnitTest` in the `example/android/` directory, or
- * you can run them directly from IDEs that support JUnit such as Android Studio.
- */
 
 internal class PicklogicAndroidBridgePluginTest {
     @Test
-    fun onMethodCall_getPlatformVersion_returnsExpectedValue() {
-        val plugin = PicklogicAndroidBridgePlugin()
+    fun requestedAccess_acceptsFullVisualAndAudio() {
+        assertTrue(
+            hasRequestedMediaAccess(
+                35,
+                mapOf(
+                    "images" to true,
+                    "videos" to true,
+                    "audio" to true,
+                    "partialVisualAccess" to false,
+                ),
+            ),
+        )
+    }
 
-        val call = MethodCall("getPlatformVersion", null)
-        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
-        plugin.onMethodCall(call, mockResult)
+    @Test
+    fun requestedAccess_acceptsSelectedVisualOnlyWhenAudioIsGranted() {
+        val selected = mapOf(
+            "images" to false,
+            "videos" to false,
+            "audio" to true,
+            "partialVisualAccess" to true,
+        )
+        assertTrue(hasRequestedMediaAccess(35, selected))
+        assertFalse(hasRequestedMediaAccess(33, selected))
+        assertFalse(hasRequestedMediaAccess(35, selected + ("audio" to false)))
+    }
 
-        Mockito.verify(mockResult).success("Android " + android.os.Build.VERSION.RELEASE)
+    @Test
+    fun imageSortUsesDisplayedCaptureFallbackAndStableId() {
+        assertEquals(
+            "CASE WHEN datetaken > 0 THEN datetaken / 1000 ELSE date_modified END DESC, _id DESC",
+            mediaSortOrder(hasImageColumns = true),
+        )
+        assertEquals(
+            "date_modified DESC, _id DESC",
+            mediaSortOrder(hasImageColumns = false),
+        )
     }
 }

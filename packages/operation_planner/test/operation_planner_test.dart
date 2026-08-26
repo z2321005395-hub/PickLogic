@@ -44,4 +44,51 @@ void main() {
       isFalse,
     );
   });
+
+  test(
+    'batch preview rejects duplicate destinations before previewing',
+    () async {
+      final first = const OperationPlanner().planRename(
+        operationId: 'rename-1',
+        source: locator,
+        destination: const FileLocator(
+          value: 'synthetic://destination',
+          sourceKind: SourceKind.synthetic,
+          platform: PickLogicPlatform.synthetic,
+        ),
+      );
+      final second = const OperationPlanner().planMove(
+        operationId: 'move-1',
+        source: const FileLocator(
+          value: 'synthetic://other',
+          sourceKind: SourceKind.synthetic,
+          platform: PickLogicPlatform.synthetic,
+        ),
+        destination: first.destination!,
+      );
+
+      await expectLater(
+        const OperationBatchPreviewer().preview(
+          batchId: 'batch-1',
+          plans: [first, second],
+          operator: _PreviewOnlyOperator(),
+        ),
+        throwsStateError,
+      );
+    },
+  );
+}
+
+final class _PreviewOnlyOperator implements FileOperator {
+  @override
+  Future<OperationPlan> preview(OperationPlan plan) async =>
+      plan.transitionTo(OperationStatus.previewed);
+
+  @override
+  Future<OperationResult> execute(OperationPlan confirmedPlan) =>
+      throw UnsupportedError('Preview-only test operator.');
+
+  @override
+  Future<OperationResult> undo(OperationPlan completedPlan) =>
+      throw UnsupportedError('Preview-only test operator.');
 }

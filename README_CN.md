@@ -6,7 +6,7 @@
 
 拾理是一个本地优先的文件理解与整理项目。同一个 Flutter/Dart monorepo 生成 PickLogic Desktop、PickLogic Pro 和 PickLogic Mobile。**知件 · Insight** 根据证据和置信度解释选中的文件、截图、文献与存储，不把聊天机器人放在首页。
 
-> 当前状态：正在进行 pre-alpha 工程 Bootstrap，尚无公开发行版。
+> 当前状态：v0.1.0-alpha 用户测试预发行版。
 
 ## 产品目标
 
@@ -24,8 +24,10 @@
 
 ## 文档
 
-请阅读 [架构](ARCHITECTURE.md)、[产品原则](PRODUCT_PRINCIPLES.md)、[安全与隐私](SECURITY_AND_PRIVACY.md)、[路线图](ROADMAP.md) 和 [贡献指南](CONTRIBUTING.md)。
+请阅读 [架构](ARCHITECTURE.md)、[产品原则](PRODUCT_PRINCIPLES.md)、[安全与隐私](SECURITY_AND_PRIVACY.md)、[安装说明](docs/INSTALLATION.md)、[已知问题](docs/KNOWN_ISSUES.md)、[路线图](ROADMAP.md) 和 [贡献指南](CONTRIBUTING.md)。
 
 开发基线为 Flutter stable、Dart、本地 SQLite，以及范围明确的 Windows/Android 原生桥接。参考机使用 `tools\picklogic.cmd env` 和 `tools\picklogic.cmd quick`；该入口优先复用 TTDT Android 工具链，也不要求修改 PowerShell 执行策略。
 
-最终开源许可证和版权人尚待维护者确认。在完成这些决定和公开发布门禁前，仓库必须保持 Private。
+## 许可证
+
+PickLogic 采用 [BSD 3-Clause License](LICENSE) 开源，Copyright (c) 2026 Dawei Zhou。随软件分发的第三方组件保留其各自许可证，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

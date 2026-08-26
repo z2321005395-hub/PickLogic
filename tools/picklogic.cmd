@@ -65,16 +65,8 @@ call "%DART%" format --output=none --set-exit-if-changed .
 if errorlevel 1 exit /b 1
 call "%DART%" analyze
 if errorlevel 1 exit /b 1
-for %%P in (core_models classification_rules search_index duplicate_engine insight_engine operation_planner preview_core literature_core research_core system_insight_core) do (
-  pushd "packages\%%P"
-  call "%DART%" test --reporter compact
-  if errorlevel 1 exit /b 1
-  popd
-)
-pushd test_fixtures
-call "%DART%" test --reporter compact
+call "%DART%" run tools\run_module_tests.dart quick
 if errorlevel 1 exit /b 1
-popd
 call "%DART%" run tools\dependency_license_check.dart
 if errorlevel 1 exit /b 1
 call "%DART%" run tools\privacy_check.dart
@@ -85,16 +77,12 @@ exit /b 0
 :full
 call "%~f0" quick
 if errorlevel 1 exit /b 1
-pushd packages\file_index
-call "%DART%" test --reporter compact
+call "%DART%" run tools\prepare_sqlite_native_asset.dart
 if errorlevel 1 exit /b 1
-popd
-for %%P in (packages\shared_ui platform\windows_bridge platform\android_bridge apps\desktop apps\mobile) do (
-  pushd "%%P"
-  call "%FLUTTER%" test --no-pub --reporter compact
-  if errorlevel 1 exit /b 1
-  popd
-)
+call "%DART%" run tools\prepare_pdfium_native_asset.dart
+if errorlevel 1 exit /b 1
+call "%DART%" run tools\run_module_tests.dart remaining
+if errorlevel 1 exit /b 1
 echo PICKLOGIC_CHECKS_OK scope=Full
 exit /b 0
 
@@ -113,17 +101,29 @@ popd
 exit /b %RESULT%
 
 :windows_standard
+call "%DART%" run tools\prepare_sqlite_native_asset.dart
+if errorlevel 1 exit /b 1
+call "%DART%" run tools\prepare_pdfium_native_asset.dart
+if errorlevel 1 exit /b 1
 pushd apps\desktop
 call "%FLUTTER%" build windows --release --target lib\main_standard.dart
 set "RESULT=%ERRORLEVEL%"
 popd
+if "%RESULT%"=="0" call "%DART%" run tools\package_pdfium_notices.dart --build-directory "%REPO_ROOT%\apps\desktop\build\windows\x64\runner\Release"
+if errorlevel 1 set "RESULT=%ERRORLEVEL%"
 exit /b %RESULT%
 
 :windows_pro
+call "%DART%" run tools\prepare_sqlite_native_asset.dart
+if errorlevel 1 exit /b 1
+call "%DART%" run tools\prepare_pdfium_native_asset.dart
+if errorlevel 1 exit /b 1
 pushd apps\desktop
 call "%FLUTTER%" build windows --release --target lib\main_pro.dart
 set "RESULT=%ERRORLEVEL%"
 popd
+if "%RESULT%"=="0" call "%DART%" run tools\package_pdfium_notices.dart --build-directory "%REPO_ROOT%\apps\desktop\build\windows\x64\runner\Release"
+if errorlevel 1 set "RESULT=%ERRORLEVEL%"
 exit /b %RESULT%
 
 :usage

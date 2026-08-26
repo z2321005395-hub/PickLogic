@@ -6,7 +6,7 @@ Find files by what they are, not where they are.
 
 PickLogic is a local-first file understanding and organization project. One Flutter/Dart monorepo produces PickLogic Desktop, PickLogic Pro, and PickLogic Mobile. **Insight** explains selected files, screenshots, literature, and storage using evidence and confidence rather than acting as a chatbot home screen.
 
-> Status: active pre-alpha bootstrap. No public release is available yet.
+> Status: v0.1.0-alpha user-testing prerelease.
 
 ## Product targets
 
@@ -24,7 +24,7 @@ PickLogic is a local-first file understanding and organization project. One Flut
 
 ## Repository
 
-See [Architecture](ARCHITECTURE.md), [Product Principles](PRODUCT_PRINCIPLES.md), [Security and Privacy](SECURITY_AND_PRIVACY.md), and the [Roadmap](ROADMAP.md). Contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md).
+See [Architecture](ARCHITECTURE.md), [Product Principles](PRODUCT_PRINCIPLES.md), [Security and Privacy](SECURITY_AND_PRIVACY.md), [Installation](docs/INSTALLATION.md), [Known Issues](docs/KNOWN_ISSUES.md), and the [Roadmap](ROADMAP.md). Contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Chinese documentation: [README_CN.md](README_CN.md).
 
@@ -32,4 +32,6 @@ Chinese documentation: [README_CN.md](README_CN.md).
 
 The development baseline is Flutter stable and Dart with local SQLite plus narrow Windows and Android bridges. On the reference machine, use `tools\picklogic.cmd env` and `tools\picklogic.cmd quick`; this launcher prefers the existing TTDT Android toolchain and does not require changing PowerShell execution policy. Target-specific commands are documented in `docs/PROJECT_SNAPSHOT.md`.
 
-The final open-source license and copyright owner are intentionally pending maintainer confirmation. The repository must remain private until those decisions and the public-release gate are approved.
+## License
+
+PickLogic is released under the [BSD 3-Clause License](LICENSE), Copyright (c) 2026 Dawei Zhou. Bundled third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

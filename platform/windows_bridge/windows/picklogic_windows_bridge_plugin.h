@@ -8,6 +8,8 @@
 
 namespace picklogic_windows_bridge {
 
+class RecycleUndoStore;
+
 class PicklogicWindowsBridgePlugin : public flutter::Plugin {
  public:
   static void RegisterWithRegistrar(flutter::PluginRegistrarWindows *registrar);
@@ -27,6 +29,7 @@ class PicklogicWindowsBridgePlugin : public flutter::Plugin {
 
  private:
   void* parent_window_;
+  std::unique_ptr<RecycleUndoStore> recycle_undo_store_;
 };
 
 }  // namespace picklogic_windows_bridge
