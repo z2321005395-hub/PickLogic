@@ -132,23 +132,32 @@ final class BoundedPdfMetadataReader {
       math.max(0, totalBytes - tailStart),
       remainingBudget,
     );
-    final tailBytes = await _readWindow(
-      source,
-      offset: tailStart,
-      length: tailLength,
-      chunkLimit: chunkLimit,
-      windows: windows,
-    );
+    var tailWindowUnavailable = false;
+    List<int> tailBytes;
+    try {
+      tailBytes = await _readWindow(
+        source,
+        offset: tailStart,
+        length: tailLength,
+        chunkLimit: chunkLimit,
+        windows: windows,
+      );
+    } on Object {
+      tailBytes = const <int>[];
+      tailWindowUnavailable = true;
+    }
 
     final bytesRead = headBytes.length + tailBytes.length;
     final headText = latin1.decode(headBytes, allowInvalid: true);
     final tailText = latin1.decode(tailBytes, allowInvalid: true);
     final boundedText = tailText.isEmpty ? headText : '$headText\n$tailText';
-    final hasPdfHeader = headText.startsWith('%PDF-');
+    final hasPdfHeader = _hasPdfHeader(headBytes);
     final limitations = <String>[
       'Only bounded byte windows were inspected; no page was rendered.',
       if (bytesRead < totalBytes)
         'The middle of the document was not inspected.',
+      if (tailWindowUnavailable)
+        'The tail metadata window could not be read; filename fallback remains available.',
       'Compressed or encrypted object streams may hide metadata and DOI text.',
       'A PDF rendering engine remains dependency-audit gated.',
     ];
@@ -324,4 +333,20 @@ final class BoundedPdfMetadataReader {
     final match = RegExp(r'(?<!\d)(?:18|19|20|21)\d{2}(?!\d)').firstMatch(date);
     return match == null ? null : int.parse(match.group(0)!);
   }
+}
+
+bool _hasPdfHeader(List<int> bytes) {
+  const signature = <int>[0x25, 0x50, 0x44, 0x46, 0x2D];
+  final searchLength = math.min(bytes.length, 1024);
+  for (var offset = 0; offset <= searchLength - signature.length; offset++) {
+    var matches = true;
+    for (var index = 0; index < signature.length; index++) {
+      if (bytes[offset + index] != signature[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+  return false;
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 
+import 'file_size_format.dart';
+
 final class InsightPanel extends StatelessWidget {
   const InsightPanel({super.key, required this.insight});
 
@@ -28,7 +30,10 @@ final class InsightPanel extends StatelessWidget {
           value: '${(insight.confidence * 100).round()}%',
         ),
         if (insight.spaceUsageBytes != null)
-          _Detail(label: strings.bytes, value: '${insight.spaceUsageBytes}'),
+          _Detail(
+            label: strings.size,
+            value: formatFileSize(insight.spaceUsageBytes!),
+          ),
         const SizedBox(height: 12),
         ...insight.evidence.map(
           (item) => ListTile(
@@ -59,7 +64,7 @@ final class _InsightStrings {
   String get type => chinese ? '类型' : 'Type';
   String get risk => chinese ? '风险' : 'Risk';
   String get confidence => chinese ? '置信度' : 'Confidence';
-  String get bytes => chinese ? '字节数' : 'Bytes';
+  String get size => chinese ? '占用空间' : 'Size';
   String get limit => chinese ? '限制' : 'Limit';
 
   String riskName(RiskLevel risk) => switch (risk) {

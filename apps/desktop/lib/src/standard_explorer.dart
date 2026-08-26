@@ -1869,9 +1869,7 @@ final class _EntryList extends StatelessWidget {
                                         child: Text(
                                           entry.isDirectory
                                               ? '—'
-                                              : _compactEntryBytes(
-                                                  entry.sizeBytes,
-                                                ),
+                                              : formatFileSize(entry.sizeBytes),
                                         ),
                                       ),
                                       SizedBox(
@@ -2006,17 +2004,6 @@ IconData _viewModeIcon(_WorkspaceViewMode mode) => switch (mode) {
   _WorkspaceViewMode.grid => Icons.dashboard_outlined,
   _WorkspaceViewMode.dual => Icons.vertical_split_outlined,
 };
-
-String _compactEntryBytes(int bytes) {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-  if (bytes >= 1024 * 1024) {
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
-  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '$bytes B';
-}
 
 final class _DesktopHome extends StatelessWidget {
   const _DesktopHome({
@@ -2657,7 +2644,7 @@ final class _ExplorerStrings {
   String moveToTarget(int activePane) => chinese
       ? '移动到${activePane == 0 ? '右栏' : '左栏'}'
       : 'Move to ${activePane == 0 ? 'right' : 'left'} pane';
-  String bytes(int count) => chinese ? '$count 字节' : '$count bytes';
+  String bytes(int count) => formatFileSize(count);
   String metadataSummary(BrowseEntry entry) => chinese
       ? '${category(entry.category)}，${bytes(entry.sizeBytes)}'
       : '${category(entry.category)}, ${bytes(entry.sizeBytes)}';

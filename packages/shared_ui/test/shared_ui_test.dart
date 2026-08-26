@@ -5,6 +5,15 @@ import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 void main() {
+  test('file sizes use compact units without raw byte labels', () {
+    expect(formatFileSize(0), '0 KB');
+    expect(formatFileSize(512), '< 1 KB');
+    expect(formatFileSize(1024), '1.0 KB');
+    expect(formatFileSize(5 * 1024 * 1024), '5.0 MB');
+    expect(formatFileSize(3 * 1024 * 1024 * 1024), '3.0 GB');
+    expect(formatFileSize(2 * 1024 * 1024 * 1024 * 1024), '2.0 TB');
+  });
+
   testWidgets('shared visual icon renders from the package asset', (
     tester,
   ) async {
@@ -69,6 +78,7 @@ void main() {
       fileType: 'Synthetic type',
       riskLevel: RiskLevel.review,
       confidence: 0.8,
+      spaceUsageBytes: 5 * 1024 * 1024,
       limitations: ['Synthetic limitation'],
       evidence: [
         InsightEvidence(
@@ -93,6 +103,9 @@ void main() {
     expect(find.text('知件'), findsOneWidget);
     expect(find.text('类型'), findsOneWidget);
     expect(find.text('风险'), findsOneWidget);
+    expect(find.text('占用空间'), findsOneWidget);
+    expect(find.text('5.0 MB'), findsOneWidget);
+    expect(find.textContaining('字节'), findsNothing);
     expect(find.textContaining('事实: Synthetic source'), findsOneWidget);
     expect(find.textContaining('限制: Synthetic limitation'), findsOneWidget);
     expect(find.textContaining('Insight'), findsNothing);
@@ -113,6 +126,9 @@ void main() {
     expect(find.text('Insight'), findsOneWidget);
     expect(find.text('Type'), findsOneWidget);
     expect(find.text('Risk'), findsOneWidget);
+    expect(find.text('Size'), findsOneWidget);
+    expect(find.text('5.0 MB'), findsOneWidget);
+    expect(find.textContaining('Bytes'), findsNothing);
     expect(find.textContaining('Fact: Synthetic source'), findsOneWidget);
     expect(find.textContaining('Limit: Synthetic limitation'), findsOneWidget);
     expect(find.textContaining('知件'), findsNothing);

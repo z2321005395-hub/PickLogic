@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
@@ -262,15 +263,15 @@ void main() {
 
       await pump('literature', const Locale('zh'));
       expect(find.text('文献'), findsOneWidget);
-      expect(find.text('轻量文献管理'), findsOneWidget);
+      expect(find.text('文献库'), findsOneWidget);
       expect(find.text('添加文献'), findsOneWidget);
-      expect(find.text('Literature Manager Lite'), findsNothing);
+      expect(find.text('Literature Library'), findsNothing);
 
       await pump('literature', const Locale('en'));
       expect(find.text('Literature'), findsOneWidget);
-      expect(find.text('Literature Manager Lite'), findsOneWidget);
+      expect(find.text('Literature Library'), findsOneWidget);
       expect(find.text('Add literature'), findsOneWidget);
-      expect(find.text('轻量文献管理'), findsNothing);
+      expect(find.text('文献库'), findsNothing);
 
       await pump('research', const Locale('zh'));
       expect(find.text('研究'), findsOneWidget);
@@ -298,6 +299,30 @@ void main() {
       expect(find.text('系统洞察 · 只读'), findsNothing);
     },
   );
+
+  testWidgets('PDF picker failure gives an actionable recovery message', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 650));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('zh'),
+        home: ProWorkspaceRoute(
+          section: 'literature',
+          libraryStore: _MemoryLiteratureStore([]),
+          pdfMultiPicker: () async =>
+              throw PlatformException(code: 'dialog_failed'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('literature-add-action')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('若文件在云盘中，请先下载到本机后重试'), findsOneWidget);
+  });
 
   testWidgets('System Insight details remain hidden until explicitly opened', (
     tester,
