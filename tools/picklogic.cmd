@@ -39,6 +39,7 @@ if /i "%~1"=="licenses" goto licenses
 if /i "%~1"=="quick" goto quick
 if /i "%~1"=="full" goto full
 if /i "%~1"=="android-debug" goto android_debug
+if /i "%~1"=="android-user-test" goto android_user_test
 if /i "%~1"=="android-release" goto android_release
 if /i "%~1"=="windows-standard" goto windows_standard
 if /i "%~1"=="windows-pro" goto windows_pro
@@ -93,6 +94,14 @@ set "RESULT=%ERRORLEVEL%"
 popd
 exit /b %RESULT%
 
+:android_user_test
+set "ORG_GRADLE_PROJECT_picklogicUserTest=true"
+pushd apps\mobile
+call "%FLUTTER%" build apk --profile --target-platform android-arm64 --split-per-abi
+set "RESULT=%ERRORLEVEL%"
+popd
+exit /b %RESULT%
+
 :android_release
 pushd apps\mobile
 call "%FLUTTER%" build apk --release
@@ -127,5 +136,5 @@ if errorlevel 1 set "RESULT=%ERRORLEVEL%"
 exit /b %RESULT%
 
 :usage
-echo Usage: tools\picklogic.cmd ^<env^|pub-get^|privacy^|licenses^|quick^|full^|android-debug^|android-release^|windows-standard^|windows-pro^>
+echo Usage: tools\picklogic.cmd ^<env^|pub-get^|privacy^|licenses^|quick^|full^|android-debug^|android-user-test^|android-release^|windows-standard^|windows-pro^>
 exit /b 2

@@ -3,7 +3,7 @@
          Android still requires its own per-source authorization and confirmation. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
-        android:label="PickLogic"
+        android:label="${picklogicAppLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
