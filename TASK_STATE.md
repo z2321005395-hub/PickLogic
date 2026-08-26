@@ -240,3 +240,16 @@ Commit this coherent checkpoint, build and smoke-test Standard/Pro from an ASCII
 ## Next action
 
 Push this branch, require one green integration CI, merge through the canonical history, convert the same repository to Public, and publish the checksum-pinned v0.1.0-alpha prerelease. Install/launch the APK immediately after the Z70 RSA prompt is accepted.
+
+## Public v0.1.0-alpha release
+
+- PR #31 merged the mature file/literature workflows into `develop` as `a52d261`; the existing integration PR #14 then merged the complete history into `main` as `bf19c8e`.
+- PR, `develop`, `main`, and tag CI passed quality/tests/audits, Android, Windows Standard/Pro, and packaged Pro PDF smoke gates. One `main` Android setup attempt failed before compilation because the upstream Flutter download connection reset; rerunning only that failed job passed.
+- The canonical repository is Public at `https://github.com/z2321005395-hub/PickLogic` with BSD-3-Clause detected by GitHub. Existing commits, branches, tags, PRs, Issues, workflow definitions, and run history were retained.
+- Public prerelease `v0.1.0-alpha` contains the checksum-matched Standard ZIP, Pro ZIP, arm64 Profile APK, installation guide, project license, third-party notices, and checksum file. Remote asset digests equal the locally verified hashes.
+- The release tag CI left two candidate artifacts totaling 97,158,757 bytes; both use the configured three-day retention and expire on 2026-08-29. No workflow run or development history was deleted.
+- The nubia Z70 remains connected as ADB `unauthorized`. No APK replacement, media permission, or real MediaStore access was attempted without the required on-device RSA confirmation.
+
+## Next action
+
+After the user accepts the Z70 USB-debugging RSA prompt, install the published arm64 Profile APK, launch PickLogic, grant only user-selected read-only media/SAF access, and collect hands-on usability feedback. Stop new feature work until that trial.
