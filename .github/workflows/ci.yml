@@ -255,6 +255,8 @@ jobs:
           $runtimeBytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_STANDARD_RUNTIME_BYTES=$runtimeBytes"
           Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination "$target/INSTALLATION.md"
+          Copy-Item -LiteralPath 'LICENSE' -Destination "$target/LICENSE"
+          Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.md' -Destination "$target/THIRD_PARTY_NOTICES.md"
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_STANDARD_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 80MB) { throw 'Windows Standard exceeds the 80 MB base budget.' }
@@ -304,6 +306,8 @@ jobs:
           $runtimeBytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_PRO_RUNTIME_BYTES=$runtimeBytes"
           Copy-Item -LiteralPath 'docs/INSTALLATION.md' -Destination "$target/INSTALLATION.md"
+          Copy-Item -LiteralPath 'LICENSE' -Destination "$target/LICENSE"
+          Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.md' -Destination "$target/THIRD_PARTY_NOTICES.md"
           $bytes = (Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Output "WINDOWS_PRO_INSTALLED_BYTES=$bytes"
           if ($bytes -gt 130MB) { throw 'Windows Pro exceeds the 130 MB base budget.' }
