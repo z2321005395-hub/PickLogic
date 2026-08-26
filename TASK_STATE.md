@@ -227,3 +227,16 @@ Commit the scoped CI-only change, push its Private feature branch, open one PR t
 ## Next action
 
 Commit this coherent checkpoint, build and smoke-test Standard/Pro from an ASCII-path worktree, install the rebuilt APK after Z70 RSA authorization, then push one Private PR and require green CI before the authorized Public conversion/release gate.
+
+## Alpha release packaging
+
+- Added the maintainer-authorized BSD-3-Clause license with `Copyright (c) 2026 Dawei Zhou`; README, contribution guidance, Windows version resources, installation text, and known issues now agree.
+- Final local packages were rebuilt from commit `9833667` in the ASCII-path worktree. Standard is 18,710,258 B, Pro is 18,724,631 B, and the arm64 Profile APK is 31,734,970 B.
+- Both Windows ZIPs contain `LICENSE`, `THIRD_PARTY_NOTICES.md`, installation guidance, PDFium's 16 verified notice files, and the expected runtime. The Pro packaged PDF smoke exited 0.
+- The APK is arm64-v8a only and verifies with APK Signature Scheme v2. The repository dependency/license audit reports 113 external + 5 Flutter SDK packages with zero missing/restricted/unknown findings; privacy findings remain 0.
+- The Standard and Pro user-test applications were launched successfully from independent extracted directories. Windows Computer Use screenshot automation was blocked by desktop access error `0x80070005`, so no system permission was weakened or bypassed.
+- The nubia Z70 remains visible to ADB as `unauthorized`; installation is waiting only for the user's on-device RSA confirmation. No device serial, media metadata, or content was recorded.
+
+## Next action
+
+Push this branch, require one green integration CI, merge through the canonical history, convert the same repository to Public, and publish the checksum-pinned v0.1.0-alpha prerelease. Install/launch the APK immediately after the Z70 RSA prompt is accepted.

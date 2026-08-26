@@ -13,7 +13,7 @@ The current Windows candidate is portable, unsigned, and does not modify the reg
 
 ## Android Mobile
 
-- `*-debug-arm64.apk` is installable for the arm64 reference-device trial and is explicitly a debug-signed validation build.
+- `*-arm64-profile.apk` is installable for the arm64 reference-device trial and is explicitly a test-signed Profile validation build.
 - `*-release-unsigned-arm64.apk` exists only for release-size measurement and cannot be installed until the maintainer configures final signing.
 - Android asks for media/SAF access only after the user selects the corresponding action. Declining permission leaves the shell usable.
 

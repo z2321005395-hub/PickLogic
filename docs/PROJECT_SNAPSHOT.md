@@ -2,7 +2,7 @@
 
 - Product: PickLogic / 拾理; contextual explanation: 知件 / Insight.
 - Motto: Small. Local. Useful.
-- Status: mature local file/literature workflows are under final local build validation on `codex/mature-file-literature-workflows`; no public release yet.
+- Status: mature local file/literature workflows and verified v0.1.0-alpha packages are awaiting the branch's final GitHub CI/publication gate.
 - Targets: Windows Standard, Windows Pro, Android Mobile.
 - Architecture: one Flutter/Dart workspace, shared pure-Dart core, narrow Windows/Android bridges.
 - Desktop: one implementation with `main_standard.dart` and `main_pro.dart`; no duplicate app.
@@ -32,7 +32,7 @@
 - Desktop file selection no longer forces Preview/Insight open; double-click/Enter opens content and Ctrl+Shift+I opens the contextual panel on demand.
 - Native build assets: PDFium and SQLite, including opt-in Android x64 validation, are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: the same Private repository and real history remain canonical; the maintainer authorized conversion of that repository to Public after this branch passes integration and release gates.
-- Release evidence: private Draft artifacts are refreshed only from green `develop` merges and must match remote digests and budgets; the Android user-test Profile APK uses a test signature and formal signing remains gated.
+- Release evidence: final local Standard/Pro ZIPs include BSD-3-Clause and third-party notices; the arm64 Profile APK is v2 test-signed. All packages are checksum-pinned for the public alpha prerelease.
 - Current limitation: Office Open XML files have bounded structural summaries and Shell thumbnails, but an installed Office/WPS Shell Preview Handler is not embedded; no Office runtime is bundled.
 
 ## Ownership
