@@ -7,6 +7,9 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'mobile_localizations.dart';
 import 'mobile_repository.dart';
 
+final Set<String> _viewerFavoriteIds = <String>{};
+final Set<String> _viewerReviewIds = <String>{};
+
 enum MobileInternalViewerKind {
   image,
   video,
@@ -49,6 +52,329 @@ MobileInternalViewerKind mobileViewerKind(FileRecord record) {
 
 bool supportsMobileInternalViewer(FileRecord record) =>
     mobileViewerKind(record) != MobileInternalViewerKind.unsupported;
+
+/// First-class file opener used by collections and the SAF folder browser.
+///
+/// The content occupies the page; metadata and Insight are secondary actions
+/// rather than a mandatory intermediate screen. Adjacent items can be swiped
+/// without returning to the file list.
+final class MobileViewerPage extends StatefulWidget {
+  const MobileViewerPage({
+    super.key,
+    required this.records,
+    required this.initialRecord,
+    required this.repository,
+  });
+
+  final List<FileRecord> records;
+  final FileRecord initialRecord;
+  final MobileRepository repository;
+
+  @override
+  State<MobileViewerPage> createState() => _MobileViewerPageState();
+}
+
+final class _MobileViewerPageState extends State<MobileViewerPage> {
+  late final List<FileRecord> _records = widget.records.isEmpty
+      ? <FileRecord>[widget.initialRecord]
+      : List<FileRecord>.unmodifiable(widget.records);
+  late int _index = _records.indexWhere(
+    (record) => record.id == widget.initialRecord.id,
+  );
+  late final PageController _pages = PageController(
+    initialPage: _index < 0 ? 0 : _index,
+  );
+  bool _chromeVisible = true;
+
+  FileRecord get _record => _records[_index < 0 ? 0 : _index];
+  bool get _favorite => _viewerFavoriteIds.contains(_record.id);
+  bool get _inReview => _viewerReviewIds.contains(_record.id);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_index < 0) _index = 0;
+  }
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openWithOtherApp() async {
+    final strings = MobileLocalizations.of(context);
+    final opened = await widget.repository.open(_record);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(strings.text(opened ? 'opened' : 'noViewer'))),
+    );
+  }
+
+  void _toggleFavorite() {
+    setState(() {
+      if (!_viewerFavoriteIds.add(_record.id)) {
+        _viewerFavoriteIds.remove(_record.id);
+      }
+    });
+  }
+
+  void _toggleReview() {
+    setState(() {
+      if (!_viewerReviewIds.add(_record.id)) {
+        _viewerReviewIds.remove(_record.id);
+      }
+    });
+    final chinese = MobileLocalizations.of(context).locale.languageCode == 'zh';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _inReview
+              ? (chinese
+                    ? '已加入应用内删除审查；真实文件未修改。'
+                    : 'Added to the in-app deletion review; the real file was not changed.')
+              : (chinese
+                    ? '已从删除审查移除；真实文件未修改。'
+                    : 'Removed from deletion review; the real file was not changed.'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showInformation() async {
+    final strings = MobileLocalizations.of(context);
+    final record = _record;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          children: [
+            Text(
+              record.displayName,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '类型' : 'Type',
+              value: record.mimeType,
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '大小' : 'Size',
+              value: _viewerBytes(record.sizeBytes),
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '修改时间' : 'Modified',
+              value: record.modifiedAt.toLocal().toString().split('.').first,
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '位置' : 'Location',
+              value: record.parentLocator?.value ?? record.locator.value,
+            ),
+            const Divider(height: 24),
+            Text(
+              strings.locale.languageCode == 'zh' ? '知件 · 解释' : 'Insight',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '分类' : 'Category',
+              value: record.category.name,
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '来源' : 'Source',
+              value: record.sourceKind.name,
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh'
+                  ? '保护状态'
+                  : 'Protection',
+              value: record.isProtected
+                  ? (strings.locale.languageCode == 'zh' ? '受保护' : 'Protected')
+                  : (strings.locale.languageCode == 'zh'
+                        ? '只读查看'
+                        : 'Read-only view'),
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh'
+                  ? '本地标记'
+                  : 'Local marks',
+              value: <String>[
+                if (_favorite)
+                  strings.locale.languageCode == 'zh' ? '已收藏' : 'Favorite',
+                if (_inReview)
+                  strings.locale.languageCode == 'zh'
+                      ? '删除审查'
+                      : 'Deletion review',
+                if (!_favorite && !_inReview)
+                  strings.locale.languageCode == 'zh' ? '无' : 'None',
+              ].join(' · '),
+            ),
+            _ViewerFact(
+              label: strings.locale.languageCode == 'zh' ? '重复状态' : 'Duplicate',
+              value: switch (record.hashState) {
+                HashState.complete when record.sha256 != null =>
+                  strings.locale.languageCode == 'zh' ? '已计算' : 'Calculated',
+                HashState.hashing =>
+                  strings.locale.languageCode == 'zh' ? '计算中' : 'Calculating',
+                _ =>
+                  strings.locale.languageCode == 'zh' ? '尚未判断' : 'Not checked',
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                strings.locale.languageCode == 'zh'
+                    ? '事实来自平台元数据和本地规则；当前不会修改此文件。'
+                    : 'Facts come from platform metadata and local rules; this file will not be modified.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: _openWithOtherApp,
+              icon: const Icon(Icons.open_in_new),
+              label: Text(strings.text('openWithOtherApp')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMedia = switch (mobileViewerKind(_record)) {
+      MobileInternalViewerKind.image || MobileInternalViewerKind.video => true,
+      _ => false,
+    };
+    return Scaffold(
+      key: const Key('mobile-first-class-viewer'),
+      backgroundColor: isMedia ? Colors.black : null,
+      appBar: _chromeVisible
+          ? AppBar(
+              backgroundColor: isMedia ? Colors.black87 : null,
+              foregroundColor: isMedia ? Colors.white : null,
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _record.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (_records.length > 1)
+                    Text(
+                      '${_index + 1} / ${_records.length}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: isMedia ? Colors.white70 : null,
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  key: const Key('mobile-viewer-favorite'),
+                  tooltip:
+                      MobileLocalizations.of(context).locale.languageCode ==
+                          'zh'
+                      ? (_favorite ? '取消收藏' : '收藏')
+                      : (_favorite ? 'Remove favorite' : 'Favorite'),
+                  onPressed: _toggleFavorite,
+                  icon: Icon(
+                    _favorite ? Icons.favorite : Icons.favorite_border,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('mobile-viewer-review'),
+                  tooltip:
+                      MobileLocalizations.of(context).locale.languageCode ==
+                          'zh'
+                      ? (_inReview ? '移出删除审查' : '加入删除审查')
+                      : (_inReview
+                            ? 'Remove from deletion review'
+                            : 'Add to deletion review'),
+                  onPressed: _toggleReview,
+                  icon: Icon(
+                    _inReview ? Icons.rule_folder : Icons.rule_folder_outlined,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('mobile-viewer-information'),
+                  tooltip:
+                      MobileLocalizations.of(context).locale.languageCode ==
+                          'zh'
+                      ? '文件信息'
+                      : 'File information',
+                  onPressed: _showInformation,
+                  icon: const Icon(Icons.info_outline),
+                ),
+                IconButton(
+                  key: const Key('mobile-viewer-open-with'),
+                  tooltip: MobileLocalizations.of(
+                    context,
+                  ).text('openWithOtherApp'),
+                  onPressed: _openWithOtherApp,
+                  icon: const Icon(Icons.open_in_new),
+                ),
+              ],
+            )
+          : null,
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => setState(() => _chromeVisible = !_chromeVisible),
+        child: PageView.builder(
+          controller: _pages,
+          itemCount: _records.length,
+          onPageChanged: (index) => setState(() => _index = index),
+          itemBuilder: (context, index) => MobileInternalViewer(
+            key: ValueKey('mobile-viewer-${_records[index].id}'),
+            record: _records[index],
+            repository: widget.repository,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _ViewerFact extends StatelessWidget {
+  const _ViewerFact({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 88,
+          child: Text(
+            label,
+            style: TextStyle(color: Theme.of(context).colorScheme.outline),
+          ),
+        ),
+        Expanded(child: SelectableText(value)),
+      ],
+    ),
+  );
+}
+
+String _viewerBytes(int bytes) {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '$bytes B';
+}
 
 final class MobileInternalViewer extends StatelessWidget {
   const MobileInternalViewer({

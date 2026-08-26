@@ -18,7 +18,7 @@ final class TranslationConfiguration {
   final bool keyPresent;
 }
 
-/// Opt-in OpenAI-compatible translator for explicit PDF text selections.
+/// Opt-in OpenAI-compatible translator for explicitly requested PDF text.
 ///
 /// Endpoint/model are app-owned preferences. The API key is stored by the
 /// Windows bridge with DPAPI and is never written to JSON or logs.
@@ -223,7 +223,7 @@ Future<void> showTranslationConfigurationDialog(
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
         key: const Key('translation-configuration-dialog'),
-        title: Text(chinese ? '配置划词翻译' : 'Configure selection translation'),
+        title: Text(chinese ? '配置文献翻译' : 'Configure literature translation'),
         content: SizedBox(
           width: 520,
           child: Column(
@@ -232,8 +232,8 @@ Future<void> showTranslationConfigurationDialog(
             children: [
               Text(
                 chinese
-                    ? '默认关闭。只发送你明确选中的文字，不发送 PDF。API Key 由 Windows DPAPI 保护。'
-                    : 'Disabled by default. Only explicitly selected text is sent, never the PDF. The API key is protected by Windows DPAPI.',
+                    ? '默认关闭。只发送你主动请求的选中文字、当前页或全文提取文字；绝不发送 PDF 文件。API Key 由 Windows DPAPI 保护。'
+                    : 'Disabled by default. Only text from a selection, page, or document scope you explicitly request is sent; the PDF file is never sent. The API key is protected by Windows DPAPI.',
               ),
               const SizedBox(height: 12),
               TextField(

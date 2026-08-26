@@ -9,6 +9,7 @@
 - `apps/desktop/` — shared Windows app with Standard and Pro entrypoints.
 - `apps/desktop/lib/src/file_preview.dart` — bounded image, PDFium, text, folder, and fallback preview surfaces.
 - `apps/mobile/` — Android mobile UI and target composition.
+- `apps/mobile/lib/src/mobile_file_browser.dart` — user-authorized hierarchical SAF browser with visible-only thumbnails and direct viewers.
 - `apps/mobile/lib/src/mobile_index_persistence.dart` — shared-SQLite Mobile metadata, checkpoint, and persistent-search adapter.
 - `packages/core_models/` — stable locators, records, enums, provider interfaces, and safe-mode policy.
 - `packages/file_index/` — SQLite index, incremental scan state, and batch persistence.
@@ -18,12 +19,12 @@
 - `packages/insight_engine/` — evidence-bearing structured Insight generation.
 - `packages/operation_planner/` — plan lifecycle, warnings, execution gate, and rollback metadata.
 - `packages/preview_core/` — bounded preview and thumbnail cache contracts.
-- `packages/literature_core/` — DOI extraction, metadata providers, reading state, and rename previews.
+- `packages/literature_core/` — DOI/metadata, reading state, local annotations, citation export, bounded translation, and rename previews.
 - `packages/research_core/` — virtual research workspace skeleton.
 - `packages/system_insight_core/` — read-only Windows storage/system explanations.
 - `packages/shared_ui/` — design tokens, localization, safe-mode banner, shared widgets.
 - `platform/windows_bridge/` — Windows directory picker, open/reveal, attributes, and read-only storage adapters.
-- `platform/android_bridge/` — MediaStore, SAF, bounded thumbnails, permissions, and storage restriction adapters.
+- `platform/android_bridge/` — MediaStore, read-only SAF hierarchy, bounded thumbnails, permissions, and storage restriction adapters.
 - `test_fixtures/` — synthetic-only public data and generator manifest.
 - `tools/` — local environment, fixture, license, privacy, size, and release checks.
 - `tools/picklogic.cmd` — local policy-safe launcher that prefers the TTDT toolchain.

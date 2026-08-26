@@ -2,7 +2,7 @@
 
 - Product: PickLogic / 拾理; contextual explanation: 知件 / Insight.
 - Motto: Small. Local. Useful.
-- Status: the usability-recovery candidate is locally verified for all three targets; Private PR/CI integration is in progress; no public release.
+- Status: mature local file/literature workflows and verified v0.1.0-alpha packages are awaiting the branch's final GitHub CI/publication gate.
 - Targets: Windows Standard, Windows Pro, Android Mobile.
 - Architecture: one Flutter/Dart workspace, shared pure-Dart core, narrow Windows/Android bridges.
 - Desktop: one implementation with `main_standard.dart` and `main_pro.dart`; no duplicate app.
@@ -16,7 +16,7 @@
 - Current state and next action: `TASK_STATE.md`; installation limits: `docs/KNOWN_ISSUES.md`.
 - Repository map: `docs/REPO_MAP.md`.
 - Dependency gate: `DEPENDENCY_BUDGET.md`.
-- Public gate: final license/copyright, brand review, maintainer approval, clean privacy scan, green CI, installable artifacts, user trial.
+- Public gate: BSD-3-Clause/Dawei Zhou authorization is recorded by the maintainer; publication still requires clean privacy/license scans, green CI, installable artifacts, and verified release contents.
 - Known brand risk: exact-name npm/open-source projects and active PickLogic domains; display name unchanged pending maintainer decision.
 - Local Android baseline: TTDT toolchain with JDK 17, Gradle 9.4.1, SDK/API 36, ADB, and existing AVDs.
 - Reference phone verified by ADB: nubia NX736J, Android 15, API 35, arm64-only. Do not record its serial.
@@ -25,12 +25,14 @@
 - Mobile bootstrap failures are bounded, explicit, safe, and retryable; platform errors are not presented as permission denial.
 - Mobile MediaStore metadata and per-collection checkpoints use the shared app-private SQLite index; bounded work resumes on next launch without scheduling OCR.
 - Mobile category/source navigation uses real bounded thumbnails; every accessible screenshot remains browsable by date through 120-item pagination.
+- Mobile Files now has a user-authorized hierarchical SAF browser, visible-only thumbnails, direct full-screen photo/video/audio/document opening, and app-local favorite/review marks.
 - A CI-built x86_64 APK passed the TTDT API 36 emulator bridge success path with zero media grants and zero fatal-log matches.
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
-- Pro Literature supports multi-PDF selection/drop, SQLite persistence, reading-position recovery, and app-local manual metadata correction; source PDFs remain read-only.
+- Pro Literature supports multi-PDF selection/drop, SQLite persistence, library search/tag filters, metadata correction, reading-position recovery, local page-linked annotations, BibTeX/RIS/text citation copy, and explicit selection/page/document translation with a bilingual pane; source PDFs remain read-only.
+- Desktop file selection no longer forces Preview/Insight open; double-click/Enter opens content and Ctrl+Shift+I opens the contextual panel on demand.
 - Native build assets: PDFium and SQLite, including opt-in Android x64 validation, are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
-- GitHub: Private repository, real milestones/issues, and reviewed integration PRs; Public remains maintainer-gated.
-- Release evidence: private Draft artifacts are refreshed only from green `develop` merges and must match remote digests and budgets; the Android user-test Profile APK uses a test signature and formal signing remains gated.
+- GitHub: the same Private repository and real history remain canonical; the maintainer authorized conversion of that repository to Public after this branch passes integration and release gates.
+- Release evidence: final local Standard/Pro ZIPs include BSD-3-Clause and third-party notices; the arm64 Profile APK is v2 test-signed. All packages are checksum-pinned for the public alpha prerelease.
 - Current limitation: Office Open XML files have bounded structural summaries and Shell thumbnails, but an installed Office/WPS Shell Preview Handler is not embedded; no Office runtime is bundled.
 
 ## Ownership

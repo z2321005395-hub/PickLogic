@@ -462,7 +462,6 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       _activePane = paneIndex;
       _panes[paneIndex].selected = entry;
       _searchController.text = _panes[paneIndex].query;
-      _detailMode = _DetailMode.context;
       _recentEntries.removeWhere((recent) => recent.id == entry.id);
       _recentEntries.insert(0, entry);
       if (_recentEntries.length > 12) _recentEntries.removeLast();
@@ -539,6 +538,21 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   Future<void> _openSelected() async {
     final selected = _panes[_activePane].selected;
     if (selected != null) await _openEntry(_activePane, selected);
+  }
+
+  void _navigateActivePaneUp() {
+    final parent = _panes[_activePane].snapshot?.parentPath;
+    if (parent != null) unawaited(_navigate(_activePane, parent));
+  }
+
+  void _closeTransientUi() {
+    setState(() {
+      if (_detailMode != _DetailMode.hidden) {
+        _detailMode = _DetailMode.hidden;
+      } else {
+        _panes[_activePane].selected = null;
+      }
+    });
   }
 
   void _openWorkspace({_WorkspaceViewMode? mode}) {
@@ -843,6 +857,24 @@ final class _StandardExplorerState extends State<StandardExplorer> {
             _adjustThumbnailSize(-16),
         const SingleActivator(LogicalKeyboardKey.digit0, control: true): () =>
             _adjustThumbnailSize(0, reset: true),
+        const SingleActivator(LogicalKeyboardKey.enter): () =>
+            unawaited(_openSelected()),
+        const SingleActivator(LogicalKeyboardKey.backspace):
+            _navigateActivePaneUp,
+        const SingleActivator(LogicalKeyboardKey.f2): () =>
+            unawaited(_renameSelected()),
+        const SingleActivator(LogicalKeyboardKey.escape): _closeTransientUi,
+        const SingleActivator(
+          LogicalKeyboardKey.keyI,
+          control: true,
+          shift: true,
+        ): () => setState(() {
+          if (_panes[_activePane].selected != null) {
+            _detailMode = _detailMode == _DetailMode.context
+                ? _DetailMode.hidden
+                : _DetailMode.context;
+          }
+        }),
       },
       child: Focus(
         autofocus: true,

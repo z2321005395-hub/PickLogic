@@ -60,6 +60,32 @@ void main() {
             'getPrivateIndexDatabasePath' =>
               'synthetic-private/picklogic-index.sqlite3',
             'pickDocumentTree' => 'content://tree/test',
+            'getBrowseRoots' => <Object>[
+              <String, Object>{
+                'treeUri': 'content://tree/test',
+                'documentUri': 'content://tree/test/document/root',
+                'displayName': 'Documents',
+              },
+            ],
+            'listBrowseDirectory' => <String, Object>{
+              'treeUri': 'content://tree/test',
+              'directoryUri': 'content://tree/test/document/root',
+              'directoryName': 'Documents',
+              'items': <Object>[
+                <String, Object>{
+                  'documentUri':
+                      'content://tree/test/document/root%2Fpaper.pdf',
+                  'parentUri': 'content://tree/test/document/root',
+                  'displayName': 'paper.pdf',
+                  'mimeType': 'application/pdf',
+                  'directory': false,
+                  'sizeBytes': 4096,
+                  'modifiedAtMillis': 1000,
+                },
+              ],
+              'offset': 0,
+              'hasMore': false,
+            },
             'openContentUri' => true,
             'loadPreviewImage' => Uint8List.fromList(<int>[1, 2, 3]),
             'loadTextPreview' => <String, Object>{
@@ -159,6 +185,14 @@ void main() {
 
   test('delegates user-triggered SAF and open actions', () async {
     expect(await platform.pickDocumentTree(), 'content://tree/test');
+    final roots = await platform.getBrowseRoots();
+    final page = await platform.listBrowseDirectory(
+      treeUri: roots.single.treeUri,
+      directoryUri: roots.single.documentUri,
+    );
+    expect(roots.single.displayName, 'Documents');
+    expect(page.directoryName, 'Documents');
+    expect(page.items.single.displayName, 'paper.pdf');
     expect(await platform.openContentUri('content://media/1'), isTrue);
   });
 

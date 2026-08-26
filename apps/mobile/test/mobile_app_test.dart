@@ -112,6 +112,29 @@ void main() {
     expect(find.textContaining('一键放心删除'), findsNothing);
   });
 
+  testWidgets('screenshot opens in the first-class internal viewer', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const PickLogicMobileApp());
+    await _openOrganize(tester, const Key('organize-screenshots'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('screenshot-item-Screenshot_1.png')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('screenshot-open-internal-viewer')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mobile-first-class-viewer')), findsOneWidget);
+    expect(find.text('Screenshot_1.png'), findsOneWidget);
+    expect(find.byKey(const Key('mobile-viewer-information')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-viewer-review')));
+    await tester.pump();
+    expect(find.textContaining('真实文件未修改'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-viewer-favorite')));
+    await tester.pump();
+    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.rule_folder), findsOneWidget);
+  });
+
   testWidgets('screenshot month filter and local review queue are usable', (
     tester,
   ) async {
@@ -159,6 +182,11 @@ void main() {
     await tester.tap(find.byKey(const Key('files-documents')));
     await tester.pumpAndSettle();
     expect(find.text('Document_1.txt'), findsOneWidget);
+    await tester.tap(find.text('Document_1.txt'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mobile-first-class-viewer')), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).first, const Offset(0, -520));
@@ -176,6 +204,10 @@ void main() {
 
       expect(find.byKey(const Key('mobile-home-search')), findsOneWidget);
       expect(find.text('文件类型'), findsOneWidget);
+      expect(
+        find.byKey(const Key('mobile-folder-browser-entry')),
+        findsOneWidget,
+      );
       await tester.scrollUntilVisible(
         find.text('智能集合'),
         240,
@@ -199,6 +231,19 @@ void main() {
       }
     },
   );
+
+  testWidgets('folder browser is a first-class read-only destination', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const PickLogicMobileApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('mobile-folder-browser-open')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mobile-saf-file-browser')), findsOneWidget);
+    expect(find.text('尚未添加文件夹'), findsOneWidget);
+    expect(find.textContaining('不会修改真实文件'), findsOneWidget);
+  });
 
   testWidgets('screenshot filters expose implemented review dimensions', (
     tester,

@@ -11,4 +11,4 @@
 - Mobile metadata and per-collection checkpoints persist in app-private SQLite and resume when PickLogic next runs. Android OS-scheduled WorkManager wakeups are not implemented.
 - MediaStore deletion reconciliation and periodic full-snapshot generations are not implemented; v0.1 incrementally adds or updates visible records.
 - Flutter/MSBuild currently corrupts the canonical Chinese repository path during a Windows custom build step. Local Windows builds use a separate ASCII-path detached worktree; hosted Windows CI remains green.
-- The final open-source license, copyright owner, package signing, Public conversion, and release publication are pending maintainer decisions.
+- Windows packages remain unsigned portable ZIPs and the Android user-test APK is debug-signed; production signing and store distribution are not part of this alpha.

@@ -90,6 +90,34 @@ class MethodChannelPicklogicAndroidBridge
       methodChannel.invokeMethod<String>('pickDocumentTree');
 
   @override
+  Future<List<AndroidBrowseRoot>> getBrowseRoots() async {
+    final raw = await methodChannel.invokeListMethod<Object?>('getBrowseRoots');
+    return (raw ?? const <Object?>[])
+        .cast<Map<Object?, Object?>>()
+        .map(AndroidBrowseRoot.fromMap)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<AndroidBrowsePage> listBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+    int offset = 0,
+    int limit = 200,
+  }) async {
+    final raw = await methodChannel.invokeMapMethod<Object?, Object?>(
+      'listBrowseDirectory',
+      <String, Object?>{
+        'treeUri': treeUri,
+        'directoryUri': directoryUri,
+        'offset': offset,
+        'limit': limit,
+      },
+    );
+    return AndroidBrowsePage.fromMap(raw!);
+  }
+
+  @override
   Future<bool> openContentUri(String contentUri) async =>
       await methodChannel.invokeMethod<bool>(
         'openContentUri',

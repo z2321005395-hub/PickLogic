@@ -58,6 +58,8 @@ finally {
 
 $installationGuide = Join-Path $repoRoot 'docs\INSTALLATION.md'
 Copy-Item -LiteralPath $installationGuide -Destination (Join-Path $releaseDirectory 'INSTALLATION.md')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $releaseDirectory 'LICENSE')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $releaseDirectory 'THIRD_PARTY_NOTICES.md')
 $totalBytes = (Get-ChildItem -LiteralPath $releaseDirectory -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $summary = "WINDOWS_BUILD_OK edition=$Edition installed_bytes=$totalBytes"
 

@@ -84,11 +84,13 @@ class PicklogicAndroidBridgePlugin :
     private var pendingWorkspaceImportResult: MethodChannel.Result? = null
     private var pendingTrashResult: MethodChannel.Result? = null
     private lateinit var workspace: AndroidWorkspaceManager
+    private lateinit var readOnlyBrowser: AndroidReadOnlyBrowser
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = binding.applicationContext
         workspace = AndroidWorkspaceManager(applicationContext)
+        readOnlyBrowser = AndroidReadOnlyBrowser(applicationContext)
         executor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "picklogic-media-index").apply { isDaemon = true }
         }
@@ -112,6 +114,10 @@ class PicklogicAndroidBridgePlugin :
             "countMedia" -> countMedia(call, result)
             "loadThumbnail" -> loadBoundedThumbnail(call, result)
             "pickDocumentTree" -> pickDocumentTree(result)
+            "getBrowseRoots" -> runReadTask(result, "browse_roots_failed") {
+                readOnlyBrowser.roots()
+            }
+            "listBrowseDirectory" -> listBrowseDirectory(call, result)
             "openContentUri" -> openContentUri(call, result)
             "loadPreviewImage" -> loadPreviewImage(call, result)
             "loadTextPreview" -> loadTextPreview(call, result)
@@ -265,6 +271,21 @@ class PicklogicAndroidBridgePlugin :
         }
         val preferences = applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
         result.success(if (preferences.contains(key)) preferences.getInt(key!!, 0) else null)
+    }
+
+    private fun listBrowseDirectory(call: MethodCall, result: MethodChannel.Result) {
+        val arguments = call.arguments as? Map<*, *>
+        val tree = (arguments?.get("treeUri") as? String)?.let(Uri::parse)
+        val directory = (arguments?.get("directoryUri") as? String)?.let(Uri::parse)
+        val offset = (arguments?.get("offset") as? Number)?.toInt() ?: 0
+        val limit = (arguments?.get("limit") as? Number)?.toInt() ?: 200
+        if (tree == null) {
+            result.error("invalid_browse_request", "A persisted SAF tree is required.", null)
+            return
+        }
+        runReadTask(result, "browse_directory_failed") {
+            readOnlyBrowser.list(tree, directory, offset, limit)
+        }
     }
 
     private fun writeIntPreference(call: MethodCall, result: MethodChannel.Result) {
@@ -1538,8 +1559,9 @@ class PicklogicAndroidBridgePlugin :
             applicationContext.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-            pending.success(uri.toString())
+                )
+                readOnlyBrowser.remember(uri)
+                pending.success(uri.toString())
         } catch (_: SecurityException) {
             pending.error(
                 "permission_not_persisted",

@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_core_models/picklogic_core_models.dart'
+    hide TranslationProvider;
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:test/test.dart';
 
@@ -299,6 +300,99 @@ void main() {
       expect(restored.single.localPath, first.localPath);
     },
   );
+
+  test('citation export produces portable BibTeX, RIS, and quick text', () {
+    const record = LiteratureRecord(
+      id: 'lit-citation',
+      localFileId: 'file-citation',
+      doi: '10.5555/picklogic.citation',
+      title: 'A local-first citation workflow',
+      authors: ['Ada Lovelace', 'Alan Turing'],
+      journal: 'Synthetic Research',
+      year: 2026,
+      volume: '12',
+      issue: '3',
+      pages: '45-51',
+      keywords: ['local-first', 'citation'],
+    );
+    const formatter = LiteratureCitationFormatter();
+
+    final bibtex = formatter.toBibTeX(record);
+    final ris = formatter.toRis(record);
+    final plain = formatter.toPlainText(record);
+
+    expect(bibtex, startsWith('@article{Lovelace2026A,'));
+    expect(bibtex, contains('doi = {10.5555/picklogic.citation}'));
+    expect(ris, contains('AU  - Ada Lovelace'));
+    expect(ris, contains('SP  - 45\nEP  - 51'));
+    expect(ris, endsWith('ER  -\n'));
+    expect(plain, contains('Ada Lovelace & Alan Turing'));
+    expect(formatter.inText(record), '(Lovelace & Turing, 2026)');
+  });
+
+  test(
+    'annotation store preserves page-linked notes without editing PDF',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'picklogic-literature-annotation-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final path = '${root.path}${Platform.pathSeparator}catalog.db';
+      final store = SqliteLiteratureAnnotationStore(path);
+      final createdAt = DateTime.utc(2026, 8, 27, 9);
+      final annotation = LiteratureAnnotation(
+        id: 'annotation-1',
+        literatureId: 'lit-synthetic',
+        pageNumber: 4,
+        kind: LiteratureAnnotationKind.highlight,
+        selectedText: 'Local-first evidence',
+        note: 'Use in introduction.',
+        colorName: 'yellow',
+        createdAt: createdAt,
+        updatedAt: createdAt,
+      );
+
+      await store.upsert(annotation);
+      var restored = await store.loadFor('lit-synthetic');
+      expect(restored, hasLength(1));
+      expect(restored.single.pageNumber, 4);
+      expect(restored.single.selectedText, 'Local-first evidence');
+
+      await store.upsert(
+        annotation.replaceNote(
+          'Use in discussion.',
+          createdAt.add(const Duration(minutes: 5)),
+        ),
+      );
+      restored = await store.loadFor('lit-synthetic');
+      expect(restored.single.note, 'Use in discussion.');
+
+      await store.delete(annotation.id);
+      expect(await store.loadFor('lit-synthetic'), isEmpty);
+    },
+  );
+
+  test(
+    'explicit page translation is split into bounded provider calls',
+    () async {
+      final provider = _RecordingTranslationProvider();
+      final source = List<String>.generate(
+        18,
+        (index) => 'Paragraph $index contains synthetic local PDF text.',
+      ).join('\n\n');
+
+      final result = await provider.translateExplicitTextInChunks(
+        source,
+        targetLanguage: 'Simplified Chinese',
+        maxChunkCharacters: 500,
+      );
+
+      expect(provider.requests.length, greaterThan(1));
+      expect(provider.requests.every((value) => value.length <= 500), isTrue);
+      expect(result.sourceText, source);
+      expect(result.translatedText, contains('translated:'));
+    },
+  );
 }
 
 final class _RecordingPdfSource implements PdfByteSource {
@@ -319,5 +413,32 @@ final class _RecordingPdfSource implements PdfByteSource {
     final end = (offset + length).clamp(0, bytes.length);
     if (offset >= end) return const <int>[];
     return bytes.sublist(offset, end);
+  }
+}
+
+final class _RecordingTranslationProvider implements TranslationProvider {
+  final List<String> requests = [];
+
+  @override
+  TranslationProviderKind get kind => TranslationProviderKind.openAiCompatible;
+
+  @override
+  String get label => 'Synthetic translator';
+
+  @override
+  Future<bool> isConfigured() async => true;
+
+  @override
+  Future<SelectedTextTranslation> translateSelectedText(
+    String selectedText, {
+    required String targetLanguage,
+  }) async {
+    requests.add(selectedText);
+    return SelectedTextTranslation(
+      sourceText: selectedText,
+      translatedText: 'translated:$selectedText',
+      targetLanguage: targetLanguage,
+      providerLabel: label,
+    );
   }
 }

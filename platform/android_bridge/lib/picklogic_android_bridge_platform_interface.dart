@@ -67,6 +67,19 @@ abstract class PicklogicAndroidBridgePlatform extends PlatformInterface {
     throw UnimplementedError('pickDocumentTree() has not been implemented.');
   }
 
+  Future<List<AndroidBrowseRoot>> getBrowseRoots() {
+    throw UnimplementedError('getBrowseRoots() has not been implemented.');
+  }
+
+  Future<AndroidBrowsePage> listBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+    int offset = 0,
+    int limit = 200,
+  }) {
+    throw UnimplementedError('listBrowseDirectory() has not been implemented.');
+  }
+
   Future<bool> openContentUri(String contentUri) {
     throw UnimplementedError('openContentUri() has not been implemented.');
   }
