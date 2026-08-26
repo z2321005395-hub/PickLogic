@@ -21,4 +21,4 @@ PickLogic is pre-alpha. Contributions must preserve local-first behavior, shared
 
 Describe changed files, tests, install-size impact, privacy/safety impact, compatibility, blockers, and next action. A passing build alone does not prove a change is safe or complete.
 
-The final project license is pending maintainer confirmation. External contributions should not be solicited until licensing and public-repository decisions are complete.
+By contributing, you agree that your contribution may be distributed under the repository's BSD 3-Clause License. Do not submit code, assets, or binaries without clear provenance and compatible redistribution rights.

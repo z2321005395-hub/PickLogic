@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "PickLogic Desktop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "picklogic_desktop" "\0"
-            VALUE "LegalCopyright", "Copyright owner pending maintainer confirmation." "\0"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Dawei Zhou" "\0"
             VALUE "OriginalFilename", "picklogic_desktop.exe" "\0"
             VALUE "ProductName", "PickLogic" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

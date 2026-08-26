@@ -1,6 +1,6 @@
 # Task State
 
-Updated: 2026-08-16
+Updated: 2026-08-27
 
 ## Goal
 
@@ -9,7 +9,7 @@ Build PickLogic / 拾理 as one shared Flutter/Dart monorepo with launchable Win
 ## Completed
 
 - Inspected the initially empty Git repository; renamed the unborn branch from `master` to `main`.
-- Created the Private GitHub repository `z2321005395-hub/PickLogic`; Public conversion remains blocked on maintainer approval.
+- Created the canonical GitHub repository `z2321005395-hub/PickLogic`; it began Private and Public conversion was explicitly authorized by the maintainer on 2026-08-27 after the release gates.
 - Audited Flutter/Windows/Android tool availability and started the official Flutter stable SDK download.
 - Reused the existing TTDT Android toolchain instead of installing Android Studio: JDK 17, Gradle 9.4.1, SDK/API 36, ADB, Emulator, and two AVDs.
 - Verified the reference phone via ADB without recording its serial: nubia NX736J, Android 15, API 35.

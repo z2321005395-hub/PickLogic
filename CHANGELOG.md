@@ -2,7 +2,7 @@
 
 All notable changes will be recorded here. Dates and versions reflect real repository history.
 
-## Unreleased
+## 0.1.0-alpha - 2026-08-27
 
 - Persist Android MediaStore metadata and bounded resume checkpoints through the shared SQLite index without adding a dependency.
 
@@ -43,4 +43,4 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 - Kept unfinished translation and other placeholder actions out of the visible Pro workflow.
 - Made Windows artifact export compatible with Windows PowerShell 5.1.
 
-No release has been published.
+This is an alpha user-testing release. Real-file mutation remains disabled by Developer Safe Mode.
