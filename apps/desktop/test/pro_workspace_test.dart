@@ -9,6 +9,13 @@ import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 void main() {
+  test('local PDF reader disables progressive loading on Windows files', () {
+    final documentRef = buildProLocalPdfDocumentRef(r'X:\synthetic\reader.pdf');
+
+    expect(documentRef.file, r'X:\synthetic\reader.pdf');
+    expect(documentRef.useProgressiveLoading, isFalse);
+  });
+
   testWidgets(
     'Literature uses a bounded list-reader layout with opt-in details',
     (tester) async {

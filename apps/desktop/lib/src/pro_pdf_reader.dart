@@ -82,6 +82,10 @@ final class ProSyntheticPdfReader extends StatelessWidget {
   static void _ignorePosition(int currentPage, int totalPages) {}
 }
 
+@visibleForTesting
+PdfDocumentRefFile buildProLocalPdfDocumentRef(String filePath) =>
+    PdfDocumentRefFile(filePath, useProgressiveLoading: false);
+
 final class _ProPdfReader extends StatefulWidget {
   const _ProPdfReader({
     this.filePath,
@@ -1798,8 +1802,11 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         params: params,
       );
     }
-    return PdfViewer.file(
-      widget.filePath!,
+    return PdfViewer(
+      buildProLocalPdfDocumentRef(widget.filePath!),
+      // The full local file is already available. Disabling progressive range
+      // access avoids leaving some Windows PDFium builds waiting indefinitely
+      // on the first page while preserving bounded page rendering and cache.
       controller: _viewerController,
       params: params,
     );
