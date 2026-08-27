@@ -276,3 +276,18 @@ Build and smoke-test refreshed Standard/Pro packages from an ASCII-path worktree
 ## Next action
 
 Commit the recovery, build Standard/Pro from an ASCII-path worktree, launch the refreshed packages, and validate a synthetic local PDF through the packaged Pro reader before asking the user to retry their own PDF.
+
+## Final user-test usability validation
+
+- Desktop Standard/Pro packages were rebuilt from the recovery branch. User-facing file, storage, Preview, and Insight sizes use KB/MB/GB/TB; Pro Literature import has distinct picker, unreadable-file, invalid-PDF, and catalog-save recovery messages.
+- A parallel arm64 Profile APK was built as `io.picklogic.mobile.usertest`, v2-signature verified, installed with update semantics, and launched on the authorized nubia Z70 without replacing the differently signed PickLogic package or clearing either package's data.
+- Z70 read-only media validation used no screenshots, filenames, paths, or content in repository evidence. One accessible audio item initialized and advanced from 0:00 to 0:13/0:14 while muted; one accessible video initialized and completed 0:16/0:16 while muted. App-scoped warnings contained no ExoPlayer, MediaCodec, permission, or fatal matches.
+- A photo opened in the dedicated full-body viewer rather than a sheet: the content area occupied the complete post-AppBar viewport and exposed reset-zoom and rotate controls. App-scoped warnings contained no image decode, memory, or permission matches.
+- Media lists remain date ordered and paged through every accessible record; 120 is the bounded in-memory page size, not a collection cap. Synthetic coverage verifies loading from 120/145 to 145/145.
+- Added regression coverage requiring photos to use the full-page image viewer and audio/video collections to route through the shared internal media player.
+- Verification: Mobile 37/37, Android Bridge 12/12, Shared UI 4/4, Desktop 23/23, and Literature Core 14/14 tests passed. Windows Computer Use remained blocked by desktop access error `0x80070005`; no security control was bypassed.
+- Local ignored artifacts: Standard ZIP 18,712,146 B; Pro ZIP 18,726,422 B; arm64 Profile APK 32,322,278 B. The APK installed and launched successfully; both Windows package processes launched successfully.
+
+## Next action
+
+Commit the focused media-viewer regression tests and this state update, run the repository quick gate and privacy scan, then push one feature PR into `develop` and merge it only after green CI. Keep routine build artifacts local under `codex_output/`.
