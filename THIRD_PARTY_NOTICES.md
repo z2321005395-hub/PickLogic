@@ -11,6 +11,8 @@ This file is the redistribution notice index for PickLogic. It is not a replacem
 | `sqlite3` 3.5.1 | MIT; Copyright 2020 Simon Binder | Package license is retained; SQLite itself is dedicated to the public domain |
 | `plugin_platform_interface` 2.1.8 | BSD-3-Clause; Copyright 2013 The Flutter Authors | Resolved package license is covered by the dependency audit and generated notices |
 | `pdfrx` 2.4.7 | MIT; Copyright 2018 Takashi Kawasaki | Package license is retained with the resolved dependency notices |
+| `pdfium_dart` 0.2.5 | MIT; Copyright 2025 Takashi Kawasaki | Existing transitive package is now used directly for PDF annotation export; its license remains in generated notices |
+| `ffi` 2.2.0 | BSD-3-Clause; Copyright 2019 the Dart project authors | Existing transitive package license is covered by the dependency audit and generated notices |
 | PDFium Chromium/7811 | PDFium BSD-style license and bundled third-party terms | Windows packaging verifies the pinned archive/DLL hashes and copies the top-level license plus all 15 bundled notice files beside the application |
 | `flutter_svg` 2.3.0 | BSD-3-Clause; Copyright 2018 Dan Field and contributors | Resolved package license is covered by the dependency audit and generated notices |
 | `desktop_drop` 0.7.1 | Apache-2.0; Copyright Mixin Network | Resolved package license and notice are retained in generated notices |

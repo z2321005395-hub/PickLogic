@@ -125,6 +125,32 @@ void main() {
     expect(preview.warnings, isNot(contains('Author metadata is missing.')));
   });
 
+  test(
+    'PDF edit plan safely reorders, rotates, duplicates, and removes pages',
+    () {
+      var plan = PdfEditPlan.identity(3);
+      expect(plan.changed, isFalse);
+
+      plan = plan.move(2, 0).rotate(0, clockwise: true).duplicate(1).remove(2);
+
+      expect(
+        plan.pages.map(
+          (page) => (page.sourcePageNumber, page.clockwiseQuarterTurns),
+        ),
+        [(3, 1), (1, 0), (2, 0)],
+      );
+      expect(plan.changed, isTrue);
+      expect(plan.rotatedPageCount, 1);
+      expect(plan.duplicatedPageCount, 0);
+      expect(plan.removedPageCount, 0);
+    },
+  );
+
+  test('PDF edit plan refuses to remove its final page', () {
+    final plan = PdfEditPlan.identity(1);
+    expect(() => plan.remove(0), throwsStateError);
+  });
+
   test('bounded PDF probe reads only small head and tail ranges', () async {
     final bytes = List<int>.filled(4096, 0x20);
     final header = latin1.encode(

@@ -748,6 +748,77 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     return;
   }
 
+  if (method == "pickPdfSavePath") {
+    IFileSaveDialog* dialog = nullptr;
+    HRESULT status = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
+                                      CLSCTX_INPROC_SERVER,
+                                      IID_PPV_ARGS(&dialog));
+    if (FAILED(status) || dialog == nullptr) {
+      result->Error("dialog_unavailable",
+                    "Windows could not open the PDF save dialog.");
+      return;
+    }
+    const COMDLG_FILTERSPEC filters[] = {
+        {L"PDF documents (*.pdf)", L"*.pdf"},
+    };
+    status = dialog->SetFileTypes(1, filters);
+    if (SUCCEEDED(status)) status = dialog->SetFileTypeIndex(1);
+    if (SUCCEEDED(status)) status = dialog->SetDefaultExtension(L"pdf");
+    DWORD options = 0;
+    if (SUCCEEDED(status)) status = dialog->GetOptions(&options);
+    if (SUCCEEDED(status)) {
+      status = dialog->SetOptions(options | FOS_FORCEFILESYSTEM |
+                                  FOS_PATHMUSTEXIST | FOS_STRICTFILETYPES |
+                                  FOS_NOCHANGEDIR | FOS_OVERWRITEPROMPT);
+    }
+    if (const auto title = StringArgument(method_call, "title")) {
+      const std::wstring wide_title = Utf8ToWide(*title);
+      if (!wide_title.empty()) dialog->SetTitle(wide_title.c_str());
+    }
+    if (const auto suggested = StringArgument(method_call, "suggestedName")) {
+      const std::wstring wide_name = Utf8ToWide(*suggested);
+      if (!wide_name.empty() &&
+          wide_name.find_first_of(L"\\/") == std::wstring::npos) {
+        dialog->SetFileName(wide_name.c_str());
+      }
+    }
+    if (FAILED(status)) {
+      dialog->Release();
+      result->Error("dialog_unavailable",
+                    "Windows could not configure the PDF save dialog.");
+      return;
+    }
+    status = dialog->Show(parent);
+    if (status == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+      dialog->Release();
+      result->Success(flutter::EncodableValue());
+      return;
+    }
+    if (FAILED(status)) {
+      dialog->Release();
+      result->Error("dialog_failed", "Windows PDF save selection failed.");
+      return;
+    }
+    IShellItem* item = nullptr;
+    status = dialog->GetResult(&item);
+    dialog->Release();
+    if (FAILED(status) || item == nullptr) {
+      result->Error("dialog_failed", "Windows returned no PDF save path.");
+      return;
+    }
+    PWSTR path = nullptr;
+    status = item->GetDisplayName(SIGDN_FILESYSPATH, &path);
+    item->Release();
+    if (FAILED(status) || path == nullptr) {
+      result->Error("dialog_failed", "The PDF save target has no filesystem path.");
+      return;
+    }
+    const std::string utf8_path = WideToUtf8(path);
+    CoTaskMemFree(path);
+    result->Success(flutter::EncodableValue(utf8_path));
+    return;
+  }
+
   if (method == "getApplicationSupportDirectory") {
     PWSTR local_app_data = nullptr;
     const HRESULT status = SHGetKnownFolderPath(

@@ -7,6 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
+import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
+
+import 'pdf_edit_exporter.dart';
+import 'pro_pdf_editor.dart';
 
 typedef LiteratureReadingPositionChanged =
     void Function(int currentPage, int totalPages);
@@ -14,7 +18,7 @@ typedef LiteratureAnnotationSaved =
     Future<void> Function(LiteratureAnnotation annotation);
 typedef LiteratureAnnotationDeleted = Future<void> Function(String id);
 
-/// Reads one explicitly selected local PDF without modifying it.
+/// Reads and exports edited copies of one explicitly selected local PDF.
 final class ProLocalPdfReader extends StatelessWidget {
   const ProLocalPdfReader({
     super.key,
@@ -133,6 +137,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   bool _selectionLoading = false;
   bool _translationBusy = false;
   bool _annotationBusy = false;
+  bool _pdfEditBusy = false;
   bool _annotationsVisible = false;
   final Map<int, String> _pageTranslations = <int, String>{};
   final Map<int, String> _pageTranslationSources = <int, String>{};
@@ -465,6 +470,59 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             );
         }
       }
+    }
+  }
+
+  Future<void> _editPdfCopy() async {
+    final document = _document;
+    final sourcePath = widget.filePath;
+    if (document == null || sourcePath == null || _pdfEditBusy) return;
+    final strings = _PdfReaderStrings.of(context);
+    final plan = await showPdfPageEditor(
+      context: context,
+      pageCount: document.pages.length,
+      annotationCount: widget.annotations.length,
+    );
+    if (plan == null || !mounted) return;
+    final destination = await const PicklogicWindowsBridge().pickPdfSavePath(
+      title: strings.saveEditedCopy,
+      suggestedName: _suggestedEditedFileName(widget.sourceName),
+    );
+    if (destination == null || !mounted) return;
+    setState(() => _pdfEditBusy = true);
+    try {
+      final result = await const PdfEditedCopyExporter().export(
+        sourcePath: sourcePath,
+        destinationPath: destination,
+        plan: plan,
+        annotations: widget.annotations,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            strings.editedCopySaved(
+              result.pageCount,
+              result.embeddedAnnotationCount,
+              result.sizeBytes,
+            ),
+          ),
+          action: SnackBarAction(
+            label: strings.showInFolder,
+            onPressed: () => unawaited(
+              const PicklogicWindowsBridge().revealItem(result.destinationPath),
+            ),
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${strings.pdfEditFailed}: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pdfEditBusy = false);
     }
   }
 
@@ -1112,6 +1170,23 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             final readingControls = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                IconButton.filledTonal(
+                  key: const Key('pdf-edit-copy-action'),
+                  onPressed:
+                      widget.filePath != null &&
+                          document != null &&
+                          !_pdfEditBusy
+                      ? _editPdfCopy
+                      : null,
+                  tooltip: strings.editPdfCopy,
+                  icon: _pdfEditBusy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.edit_document),
+                ),
+                const SizedBox(width: 6),
                 IconButton(
                   key: const Key('pdf-toggle-annotations-action'),
                   onPressed:
@@ -1731,6 +1806,17 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   }
 }
 
+String _suggestedEditedFileName(String sourceName) {
+  final fileName = sourceName
+      .split(RegExp(r'[\\/]'))
+      .where((part) => part.isNotEmpty)
+      .last;
+  final stem = fileName.toLowerCase().endsWith('.pdf')
+      ? fileName.substring(0, fileName.length - 4)
+      : fileName;
+  return '$stem - edited.pdf';
+}
+
 final class _PdfReaderStrings {
   const _PdfReaderStrings(this.isChinese);
 
@@ -1749,6 +1835,21 @@ final class _PdfReaderStrings {
   String get zoomPreparing => isChinese ? '缩放准备中' : 'Zoom is preparing';
   String get syntheticPdf => isChinese ? '合成 PDF' : 'SYNTHETIC PDF';
   String get localPdf => isChinese ? '本地 PDF' : 'LOCAL PDF';
+  String get editPdfCopy => isChinese ? '编辑 PDF 副本' : 'Edit PDF copy';
+  String get saveEditedCopy =>
+      isChinese ? '另存编辑后的 PDF' : 'Save edited PDF copy';
+  String get showInFolder => isChinese ? '在文件夹中显示' : 'Show in folder';
+  String get pdfEditFailed =>
+      isChinese ? 'PDF 编辑副本保存失败' : 'Could not save edited PDF copy';
+  String editedCopySaved(int pages, int annotations, int bytes) {
+    final size = bytes >= 1024 * 1024
+        ? '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+        : '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return isChinese
+        ? '已保存 $pages 页编辑副本，写入 $annotations 条批注（$size）。原 PDF 未修改。'
+        : 'Saved a $pages-page edited copy with $annotations embedded annotations ($size). The source PDF was unchanged.';
+  }
+
   String get localRendering => isChinese ? '本地渲染' : 'Local rendering';
   String get capabilities =>
       isChinese ? '滚动 / 缩放 / 选择 / 复制' : 'Scroll / zoom / select / copy';
@@ -1758,8 +1859,8 @@ final class _PdfReaderStrings {
       ? '运行时生成的合成 PDF；未读取、上传或修改真实文献。'
       : 'Runtime-generated synthetic PDF; no real literature was read, uploaded, or modified.';
   String get localDescription => isChinese
-      ? '只读打开所选本地 PDF；不上传、不改写、不自动重命名。'
-      : 'Opens the selected local PDF read-only; no upload, rewrite, or automatic rename.';
+      ? '原 PDF 保持只读：不上传、不改写；页面编辑和批注可另存为新 PDF。'
+      : 'The source PDF remains read-only: no upload, rewrite, or overwrite; page edits and annotations can be saved as a new PDF.';
   String get searchPdfText => isChinese ? '搜索 PDF 文本' : 'Search PDF text';
   String get searchHint => isChinese ? '输入关键词' : 'Enter keywords';
   String get search => isChinese ? '搜索' : 'Search';

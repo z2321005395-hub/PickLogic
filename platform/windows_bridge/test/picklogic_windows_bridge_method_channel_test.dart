@@ -21,6 +21,7 @@ void main() {
               r'X:\synthetic\second.pdf',
             ],
             'pickFiles' => <String>[r'X:\synthetic\sample.txt'],
+            'pickPdfSavePath' => r'X:\synthetic\edited-copy.pdf',
             'getApplicationSupportDirectory' => r'X:\synthetic\app-support',
             'getBrowseRoots' => <Object>[
               <String, Object>{
@@ -87,6 +88,13 @@ void main() {
       r'X:\synthetic\second.pdf',
     ]);
     expect(await platform.pickFiles(title: 'Pick files'), hasLength(1));
+    expect(
+      await platform.pickPdfSavePath(
+        title: 'Save edited PDF',
+        suggestedName: 'edited-copy.pdf',
+      ),
+      r'X:\synthetic\edited-copy.pdf',
+    );
     expect(
       await platform.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',

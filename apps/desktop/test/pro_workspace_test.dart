@@ -386,6 +386,7 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.byKey(const Key('pdf-edit-copy-action')), findsOneWidget);
     await tester.tap(find.byKey(const Key('pdf-toggle-annotations-action')));
     await tester.pump();
     expect(find.byKey(const Key('pdf-annotation-panel')), findsOneWidget);

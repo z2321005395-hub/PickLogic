@@ -45,6 +45,10 @@ abstract class PicklogicWindowsBridgePlatform extends PlatformInterface {
     throw UnimplementedError('pickFiles() has not been implemented.');
   }
 
+  Future<String?> pickPdfSavePath({String? title, String? suggestedName}) {
+    throw UnimplementedError('pickPdfSavePath() has not been implemented.');
+  }
+
   Future<String> getApplicationSupportDirectory() {
     throw UnimplementedError(
       'getApplicationSupportDirectory() has not been implemented.',
