@@ -299,8 +299,10 @@ Commit the focused media-viewer regression tests and this state update, run the 
 - Android MediaStore items now expose a system-trash action in the first-class viewer. PickLogic shows its own operation preview first, then Android shows the non-bypassable system confirmation. Screenshot items marked for deletion review expose the same action; successful items are removed from the visible page and local search index. Protected, system, unknown, inaccessible, and SAF read-only items remain blocked.
 - No real file or media deletion was used for validation. Mobile 41/41, Desktop 23/23, Operation Planner 10/10, Android Bridge 12/12, and Windows Bridge 9/9 tests passed; Mobile and Desktop analyzers reported no issues from the ASCII build worktree.
 - Standard and Pro Release bundles were rebuilt, packaged, and launched successfully. The parallel `io.picklogic.mobile.usertest` APK is arm64-only, 31,735,038 bytes, and verifies with APK Signature Scheme v2. The first canonical-path build failed only at the known Chinese-path AOT decoding boundary.
-- Z70 currently reports ADB `offline`; installation is waiting for unlock/reconnect and any on-device RSA prompt. No real deletion or system-trash confirmation was exercised during validation.
+- PR #33 merged the change into `develop` as `89b0766`; the independent post-merge CI passed quality/audits, Android, and Windows jobs and created zero routine artifacts.
+- Z70 reconnected successfully. Android first rejected the default build number as a downgrade, so no forced downgrade was used; the arm64-only parallel user-test package was rebuilt as version code 2002, APK Signature Scheme v2 verified, installed with update semantics, and launched while preserving app data. App-scoped startup checks found zero fatal, missing-plugin, or security-exception matches.
+- No real deletion or system-trash confirmation was exercised during validation. The final local APK is 31,735,042 bytes with SHA-256 `B42AADE87F9C7F565BA743317130418CE8DF2FBDAA0C1E0784A5307C6F2142FB`.
 
 ## Next action
 
-Push the safe-trash branch, merge one green PR into `develop`, and install/launch the parallel Android user-test package when Z70 returns online. Keep real deletion untested until the user explicitly chooses an item and accepts the platform confirmation.
+Collect hands-on feedback. A real item moves to trash only after the user selects it, accepts PickLogic's preview, and accepts the Windows or Android platform confirmation; permanent deletion remains outside PickLogic.
