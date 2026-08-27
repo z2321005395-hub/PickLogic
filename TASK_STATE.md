@@ -315,7 +315,8 @@ Collect hands-on feedback. A real item moves to trash only after the user select
 - Added persistent page translations and terminology, restored bilingual pages, selection/page/document translation boundaries, and page-coordinate highlight/underline/strikethrough/note overlays. Translation remains explicit and source PDF bytes remain local/read-only.
 - Reused MIT `petit_bibtex` 6.2.0 and existing MIT `pdfrx`/PDFium; no copied GitHub source, AGPL/CSL runtime, cloud backend, or proprietary asset was added.
 - Verification: Literature Core 20/20, Windows Bridge 10/10, Pro focused UI 11/11, complete Desktop 26/26, targeted analyzers clean, dependency audit 114 external + 5 Flutter SDK packages with zero findings, privacy findings 0, and `git diff --check` clean. The canonical Chinese path reproduced the known Flutter/MSBuild `app.dill` path-decoding failure; final Windows validation must run from an ASCII-path worktree.
+- Commit `12104bb` built successfully from an ASCII detached worktree. The Pro Release runtime is 42,799,132 bytes; the local user-test ZIP is 18,868,211 bytes with SHA-256 `30C0AB7818F8D2DC7A72A964D348662EED6CE2BA25890991DF07094E247086AA`; packaged synthetic PDF smoke exited 0 and the extracted app launched with a visible `PickLogic` window.
 
 ## Next action
 
-Run the complete Desktop suite and audits, commit the coherent change, build/package Pro from an ASCII detached worktree, smoke-test the synthetic PDF path, then push a genuine integration PR.
+Commit this validation note, push the feature branch, open a genuine integration PR to `develop`, and merge only after its required CI passes. Keep the verified ZIP local under ignored `codex_output/` rather than uploading a routine Actions artifact.
