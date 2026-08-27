@@ -306,3 +306,16 @@ Commit the focused media-viewer regression tests and this state update, run the 
 ## Next action
 
 Collect hands-on feedback. A real item moves to trash only after the user selects it, accepts PickLogic's preview, and accepts the Windows or Android platform confirmation; permanent deletion remains outside PickLogic.
+
+## Pro literature workflow parity stage
+
+- Goal: converge Pro on the most useful local Zotero/EndNote/ReadCube/小绿鲸 workflows without copying proprietary UI/code and without adding online metadata lookup.
+- Added reference-only BibTeX/RIS import with later PDF attachment; regular/nested and smart collections; tags, ratings, stars, unread/duplicate/trash views; deterministic high-confidence duplicate merging; and catalog-only removal that preserves source PDFs.
+- Added six offline citation styles, batch bibliography output, and Windows plain-text + RTF clipboard data for paste into Word. This is not a live Word field/add-in or a complete CSL implementation.
+- Added persistent page translations and terminology, restored bilingual pages, selection/page/document translation boundaries, and page-coordinate highlight/underline/strikethrough/note overlays. Translation remains explicit and source PDF bytes remain local/read-only.
+- Reused MIT `petit_bibtex` 6.2.0 and existing MIT `pdfrx`/PDFium; no copied GitHub source, AGPL/CSL runtime, cloud backend, or proprietary asset was added.
+- Verification: Literature Core 20/20, Windows Bridge 10/10, Pro focused UI 11/11, complete Desktop 26/26, targeted analyzers clean, dependency audit 114 external + 5 Flutter SDK packages with zero findings, privacy findings 0, and `git diff --check` clean. The canonical Chinese path reproduced the known Flutter/MSBuild `app.dill` path-decoding failure; final Windows validation must run from an ASCII-path worktree.
+
+## Next action
+
+Run the complete Desktop suite and audits, commit the coherent change, build/package Pro from an ASCII detached worktree, smoke-test the synthetic PDF path, then push a genuine integration PR.

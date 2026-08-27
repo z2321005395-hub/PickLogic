@@ -107,6 +107,7 @@ final class WindowsOpenAiCompatibleTranslationProvider
   Future<SelectedTextTranslation> translateSelectedText(
     String selectedText, {
     required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
   }) async {
     final source = selectedText.trim();
     if (source.isEmpty) throw const FormatException('Select text first.');
@@ -126,6 +127,7 @@ final class WindowsOpenAiCompatibleTranslationProvider
       ..idleTimeout = const Duration(seconds: 20)
       ..maxConnectionsPerHost = 1;
     try {
+      final terminologyPrompt = _terminologyPrompt(terminology);
       final request = await client.postUrl(endpoint);
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
@@ -138,7 +140,9 @@ final class WindowsOpenAiCompatibleTranslationProvider
               'role': 'system',
               'content':
                   'Translate only the user-selected text into $targetLanguage. '
-                  'Preserve equations, citations, and paragraph breaks. Return only the translation.',
+                  'Preserve equations, citations, and paragraph breaks. '
+                  'Return only the translation.'
+                  '${terminologyPrompt.isEmpty ? '' : ' $terminologyPrompt'}',
             },
             <String, String>{'role': 'user', 'content': source},
           ],
@@ -194,6 +198,24 @@ final class WindowsOpenAiCompatibleTranslationProvider
       if (value.isNotEmpty) return value;
     }
     throw const FormatException('Translation response did not contain text.');
+  }
+
+  static String _terminologyPrompt(Map<String, String> terminology) {
+    if (terminology.isEmpty) return '';
+    final lines = <String>[];
+    var length = 0;
+    for (final entry in terminology.entries.take(100)) {
+      final source = entry.key.trim();
+      final translated = entry.value.trim();
+      if (source.isEmpty || translated.isEmpty) continue;
+      final line = '$source => $translated';
+      if (length + line.length > 4000) break;
+      lines.add(line);
+      length += line.length;
+    }
+    return lines.isEmpty
+        ? ''
+        : 'Use this user terminology consistently:\n${lines.join('\n')}';
   }
 
   static String _defaultSettingsPath() {

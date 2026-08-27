@@ -87,6 +87,12 @@ class MockPicklogicWindowsBridgePlatform
 
   @override
   Future<void> deleteProtectedSecret(String name) async {}
+
+  @override
+  Future<bool> copyRichText({
+    required String plainText,
+    required String rtf,
+  }) async => plainText.isNotEmpty && rtf.startsWith(r'{\rtf1');
 }
 
 void main() {
@@ -132,5 +138,9 @@ void main() {
       isTrue,
     );
     expect(await bridge.restoreRecycledItem('trash-1'), isTrue);
+    expect(
+      await bridge.copyRichText(plainText: 'Reference', rtf: r'{\rtf1 Ref}'),
+      isTrue,
+    );
   });
 }

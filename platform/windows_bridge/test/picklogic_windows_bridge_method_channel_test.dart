@@ -52,6 +52,7 @@ void main() {
               'undoAvailable': true,
             },
             'restoreRecycledItem' => true,
+            'copyRichText' => true,
             'writeProtectedSecret' || 'deleteProtectedSecret' => null,
             'readProtectedSecret' => 'synthetic-secret',
             _ => null,
@@ -112,6 +113,16 @@ void main() {
     expect(recycled.recycled, isTrue);
     expect(recycled.undoAvailable, isTrue);
     expect(await platform.restoreRecycledItem('trash-1'), isTrue);
+  });
+
+  test('delegates plain and RTF clipboard formats', () async {
+    expect(
+      await platform.copyRichText(
+        plainText: 'Synthetic reference',
+        rtf: r'{\rtf1 Synthetic reference}',
+      ),
+      isTrue,
+    );
   });
 
   test('parses synthetic browse roots', () async {

@@ -14,14 +14,19 @@ import 'reading_progress.dart';
 final class LiteratureLibraryEntry {
   LiteratureLibraryEntry({
     required this.record,
-    required this.localPath,
+    this.localPath,
     required this.fileName,
     required this.addedAt,
     this.currentPage = 1,
     this.totalPages,
+    this.collectionIds = const <String>[],
+    this.rating = 0,
+    this.isStarred = false,
+    this.trashedAt,
+    this.supplementalPaths = const <String>[],
   }) {
-    if (localPath.trim().isEmpty) {
-      throw ArgumentError.value(localPath, 'localPath', 'Must not be empty.');
+    if (localPath case final String path when path.trim().isEmpty) {
+      throw ArgumentError.value(path, 'localPath', 'Must not be empty.');
     }
     if (fileName.trim().isEmpty) {
       throw ArgumentError.value(fileName, 'fileName', 'Must not be empty.');
@@ -37,16 +42,45 @@ final class LiteratureLibraryEntry {
         'Must be positive and include currentPage.',
       );
     }
+    if (rating < 0 || rating > 5) {
+      throw RangeError.range(rating, 0, 5, 'rating');
+    }
+    if (collectionIds.any((value) => value.trim().isEmpty)) {
+      throw ArgumentError.value(
+        collectionIds,
+        'collectionIds',
+        'Collection IDs must not be empty.',
+      );
+    }
+    if (supplementalPaths.any((value) => value.trim().isEmpty)) {
+      throw ArgumentError.value(
+        supplementalPaths,
+        'supplementalPaths',
+        'Attachment paths must not be empty.',
+      );
+    }
   }
 
   final LiteratureRecord record;
-  final String localPath;
+  final String? localPath;
   final String fileName;
   final DateTime addedAt;
   final int currentPage;
   final int? totalPages;
+  final List<String> collectionIds;
+  final int rating;
+  final bool isStarred;
+  final DateTime? trashedAt;
+  final List<String> supplementalPaths;
 
   String get id => record.id;
+  bool get hasLocalPdf => localPath?.trim().isNotEmpty == true;
+  bool get isTrashed => trashedAt != null;
+
+  List<String> get allAttachmentPaths => List<String>.unmodifiable({
+    if (localPath case final String path) path,
+    ...supplementalPaths,
+  });
 
   /// Replaces app-owned metadata while preserving the source reference and
   /// reading position. The source PDF is never opened for writing.
@@ -64,6 +98,11 @@ final class LiteratureLibraryEntry {
       addedAt: addedAt,
       currentPage: currentPage,
       totalPages: totalPages,
+      collectionIds: collectionIds,
+      rating: rating,
+      isStarred: isStarred,
+      trashedAt: trashedAt,
+      supplementalPaths: supplementalPaths,
     );
   }
 
@@ -85,8 +124,107 @@ final class LiteratureLibraryEntry {
       addedAt: addedAt,
       currentPage: currentPage,
       totalPages: totalPages,
+      collectionIds: collectionIds,
+      rating: rating,
+      isStarred: isStarred,
+      trashedAt: trashedAt,
+      supplementalPaths: supplementalPaths,
     );
   }
+
+  LiteratureLibraryEntry replaceOrganization({
+    List<String>? collectionIds,
+    int? rating,
+    bool? isStarred,
+  }) => LiteratureLibraryEntry(
+    record: record,
+    localPath: localPath,
+    fileName: fileName,
+    addedAt: addedAt,
+    currentPage: currentPage,
+    totalPages: totalPages,
+    collectionIds: List<String>.unmodifiable(
+      collectionIds ?? this.collectionIds,
+    ),
+    rating: rating ?? this.rating,
+    isStarred: isStarred ?? this.isStarred,
+    trashedAt: trashedAt,
+    supplementalPaths: supplementalPaths,
+  );
+
+  LiteratureLibraryEntry attachPdf({
+    required String path,
+    required String fileName,
+  }) {
+    final existingPrimary = localPath;
+    return LiteratureLibraryEntry(
+      record: record,
+      localPath: path,
+      fileName: fileName,
+      addedAt: addedAt,
+      currentPage: 1,
+      collectionIds: collectionIds,
+      rating: rating,
+      isStarred: isStarred,
+      trashedAt: trashedAt,
+      supplementalPaths: List<String>.unmodifiable({
+        if (existingPrimary != null &&
+            existingPrimary.toLowerCase() != path.toLowerCase())
+          existingPrimary,
+        ...supplementalPaths.where(
+          (candidate) => candidate.toLowerCase() != path.toLowerCase(),
+        ),
+      }),
+    );
+  }
+
+  LiteratureLibraryEntry replaceAttachments({
+    String? primaryPdfPath,
+    String? primaryFileName,
+    List<String>? supplementalPaths,
+  }) => LiteratureLibraryEntry(
+    record: record,
+    localPath: primaryPdfPath ?? localPath,
+    fileName: primaryFileName ?? fileName,
+    addedAt: addedAt,
+    currentPage: currentPage,
+    totalPages: totalPages,
+    collectionIds: collectionIds,
+    rating: rating,
+    isStarred: isStarred,
+    trashedAt: trashedAt,
+    supplementalPaths: List<String>.unmodifiable(
+      supplementalPaths ?? this.supplementalPaths,
+    ),
+  );
+
+  LiteratureLibraryEntry moveToTrash(DateTime changedAt) =>
+      LiteratureLibraryEntry(
+        record: record,
+        localPath: localPath,
+        fileName: fileName,
+        addedAt: addedAt,
+        currentPage: currentPage,
+        totalPages: totalPages,
+        collectionIds: collectionIds,
+        rating: rating,
+        isStarred: isStarred,
+        trashedAt: changedAt.toUtc(),
+        supplementalPaths: supplementalPaths,
+      );
+
+  LiteratureLibraryEntry restoreFromTrash() => LiteratureLibraryEntry(
+    record: record,
+    localPath: localPath,
+    fileName: fileName,
+    addedAt: addedAt,
+    currentPage: currentPage,
+    totalPages: totalPages,
+    collectionIds: collectionIds,
+    rating: rating,
+    isStarred: isStarred,
+    supplementalPaths: supplementalPaths,
+  );
 
   Map<String, Object?> toJson() => <String, Object?>{
     'localPath': localPath,
@@ -94,6 +232,11 @@ final class LiteratureLibraryEntry {
     'addedAt': addedAt.toUtc().toIso8601String(),
     'currentPage': currentPage,
     'totalPages': totalPages,
+    'collectionIds': collectionIds,
+    'rating': rating,
+    'isStarred': isStarred,
+    'trashedAt': trashedAt?.toUtc().toIso8601String(),
+    'supplementalPaths': supplementalPaths,
     'record': <String, Object?>{
       'id': record.id,
       'localFileId': record.localFileId,
@@ -147,11 +290,19 @@ final class LiteratureLibraryEntry {
           'metadataConfidence',
         ),
       ),
-      localPath: _requiredString(map, 'localPath'),
+      localPath: _optionalString(map['localPath']),
       fileName: _requiredString(map, 'fileName'),
       addedAt: _requiredDateTime(map['addedAt'], 'addedAt'),
       currentPage: _optionalInt(map['currentPage'], 'currentPage') ?? 1,
       totalPages: _optionalInt(map['totalPages'], 'totalPages'),
+      collectionIds: _stringList(map['collectionIds'], 'collectionIds'),
+      rating: _optionalInt(map['rating'], 'rating') ?? 0,
+      isStarred: _optionalBool(map['isStarred'], 'isStarred') ?? false,
+      trashedAt: _optionalDateTime(map['trashedAt'], 'trashedAt'),
+      supplementalPaths: _stringList(
+        map['supplementalPaths'],
+        'supplementalPaths',
+      ),
     );
   }
 
@@ -189,17 +340,49 @@ final class LiteratureLibraryEntry {
     );
   }
 
+  static LiteratureLibraryEntry fromImportedRecord({
+    required LiteratureRecord record,
+    required DateTime addedAt,
+    String sourceFileName = 'Imported reference',
+  }) => LiteratureLibraryEntry(
+    record: record,
+    fileName: sourceFileName,
+    addedAt: addedAt,
+  );
+
   /// Stable local identifier without persisting the path inside the ID.
   static String stableIdForPath(String path) {
+    return _stableId('path:${path.toLowerCase()}');
+  }
+
+  static String stableIdForReference({
+    String? doi,
+    required String title,
+    List<String> authors = const <String>[],
+    int? year,
+  }) {
+    final normalizedDoi = doi?.trim().toLowerCase();
+    final seed = normalizedDoi?.isNotEmpty == true
+        ? 'doi:$normalizedDoi'
+        : 'reference:${_identityText(title)}|${authors.map(_identityText).join('|')}|${year ?? ''}';
+    return _stableId(seed);
+  }
+
+  static String _stableId(String seed) {
     const offsetBasis = 0xcbf29ce484222325;
     const prime = 0x100000001b3;
     var hash = offsetBasis;
-    for (final byte in utf8.encode(path.toLowerCase())) {
+    for (final byte in utf8.encode(seed)) {
       hash ^= byte;
       hash = (hash * prime) & 0xFFFFFFFFFFFFFFFF;
     }
     return 'lit-${hash.toRadixString(16).padLeft(16, '0')}';
   }
+
+  static String _identityText(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\u4e00-\u9fff]+'), ' ')
+      .trim();
 }
 
 abstract interface class LiteratureLibraryStore {
@@ -359,6 +542,12 @@ List<String> _stringList(Object? value, String label) {
 int? _optionalInt(Object? value, String label) {
   if (value == null) return null;
   if (value is! int) throw FormatException('$label must be an integer.');
+  return value;
+}
+
+bool? _optionalBool(Object? value, String label) {
+  if (value == null) return null;
+  if (value is! bool) throw FormatException('$label must be a boolean.');
   return value;
 }
 

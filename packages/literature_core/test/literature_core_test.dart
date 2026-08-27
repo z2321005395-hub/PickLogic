@@ -347,6 +347,252 @@ void main() {
     expect(formatter.inText(record), '(Lovelace & Turing, 2026)');
   });
 
+  test('BibTeX and RIS imports create durable reference-only entries', () {
+    const importer = LiteratureCitationImporter();
+    final importedAt = DateTime.utc(2026, 8, 27, 12);
+    final bibtex = importer.parse(
+      r'''
+@article{local2026,
+  title = {A {Nested} Local-First Study},
+  author = {Lovelace, Ada and Alan Turing},
+  journal = {Synthetic Research},
+  year = {2026},
+  doi = {https://doi.org/10.5555/PICKLOGIC.IMPORT},
+  keywords = {local-first; citation}
+}
+''',
+      format: CitationImportFormat.bibtex,
+      importedAt: importedAt,
+      sourceFileName: 'library.bib',
+    );
+
+    expect(bibtex.warnings, isEmpty);
+    expect(bibtex.entries, hasLength(1));
+    expect(bibtex.entries.single.hasLocalPdf, isFalse);
+    expect(bibtex.entries.single.record.title, 'A {Nested} Local-First Study');
+    expect(bibtex.entries.single.record.authors, [
+      'Lovelace, Ada',
+      'Alan Turing',
+    ]);
+    expect(bibtex.entries.single.record.doi, '10.5555/picklogic.import');
+    expect(bibtex.entries.single.record.keywords, ['local-first', 'citation']);
+
+    final ris = importer.parse(
+      '''TY  - JOUR
+TI  - Portable reference import
+AU  - Example, Alice
+AU  - Example, Bob
+JO  - Synthetic Journal
+PY  - 2025/08/27
+SP  - 10
+EP  - 18
+DO  - doi:10.5555/PICKLOGIC.RIS
+ER  -
+''',
+      format: CitationImportFormat.ris,
+      importedAt: importedAt,
+      sourceFileName: 'library.ris',
+    );
+
+    expect(ris.warnings, isEmpty);
+    expect(ris.entries.single.record.authors, [
+      'Example, Alice',
+      'Example, Bob',
+    ]);
+    expect(ris.entries.single.record.year, 2025);
+    expect(ris.entries.single.record.pages, '10-18');
+    expect(ris.entries.single.record.doi, '10.5555/picklogic.ris');
+  });
+
+  test('library organization supports smart filters, sorting, and trash', () {
+    final first = LiteratureLibraryEntry(
+      record: const LiteratureRecord(
+        id: 'lit-organize-first',
+        localFileId: 'file-organize-first',
+        title: 'Local microscopy workflow',
+        authors: ['Ada Example'],
+        year: 2025,
+        tags: ['microscopy', 'methods'],
+      ),
+      fileName: 'first.pdf',
+      addedAt: DateTime.utc(2026, 8, 26),
+      rating: 4,
+      isStarred: true,
+    );
+    final second = LiteratureLibraryEntry(
+      record: const LiteratureRecord(
+        id: 'lit-organize-second',
+        localFileId: 'file-organize-second',
+        title: 'Different topic',
+        authors: ['Bob Example'],
+        year: 2026,
+        readingProgress: 0.5,
+      ),
+      fileName: 'second.pdf',
+      addedAt: DateTime.utc(2026, 8, 27),
+      rating: 5,
+    );
+    final removed = second.moveToTrash(DateTime.utc(2026, 8, 27, 13));
+    final smart = LiteratureCollection(
+      id: 'smart-microscopy',
+      name: 'Unread microscopy',
+      createdAt: DateTime.utc(2026, 8, 27),
+      kind: LiteratureCollectionKind.smart,
+      query: 'local',
+      requiredTags: const ['microscopy'],
+      minimumRating: 4,
+      unreadOnly: true,
+      starredOnly: true,
+    );
+    const organizer = LiteratureLibraryOrganizer();
+
+    expect(organizer.apply(entries: [first, removed], collection: smart), [
+      same(first),
+    ]);
+    expect(organizer.apply(entries: [first, removed], trash: true), [
+      same(removed),
+    ]);
+    expect(
+      organizer
+          .apply(
+            entries: [first, second],
+            sortMode: LiteratureSortMode.yearNewest,
+          )
+          .map((entry) => entry.id),
+      ['lit-organize-second', 'lit-organize-first'],
+    );
+  });
+
+  test('SQLite collection store preserves hierarchy and smart rules', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'picklogic-literature-collections-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final store = SqliteLiteratureCollectionStore(
+      '${root.path}${Platform.pathSeparator}catalog.db',
+    );
+    final createdAt = DateTime.utc(2026, 8, 27);
+    final parent = LiteratureCollection(
+      id: 'collection-parent',
+      name: 'Project A',
+      createdAt: createdAt,
+    );
+    final child = LiteratureCollection(
+      id: 'collection-child',
+      name: 'Unread methods',
+      parentId: parent.id,
+      createdAt: createdAt,
+      kind: LiteratureCollectionKind.smart,
+      requiredTags: const ['methods'],
+      unreadOnly: true,
+    );
+
+    await store.save([parent, child]);
+    final restored = await store.load();
+
+    expect(restored.map((item) => item.id), [parent.id, child.id]);
+    expect(restored.last.parentId, parent.id);
+    expect(restored.last.kind, LiteratureCollectionKind.smart);
+    expect(restored.last.requiredTags, ['methods']);
+    expect(restored.last.unreadOnly, isTrue);
+  });
+
+  test('high-confidence duplicates merge metadata without losing PDFs', () {
+    final first = LiteratureLibraryEntry(
+      record: const LiteratureRecord(
+        id: 'lit-duplicate-a',
+        localFileId: 'file-duplicate-a',
+        doi: '10.5555/duplicate',
+        title: 'A duplicate study',
+        authors: ['Alice Example'],
+        tags: ['reviewed'],
+        readingProgress: 0.2,
+      ),
+      localPath: r'X:\synthetic\a.pdf',
+      fileName: 'a.pdf',
+      addedAt: DateTime.utc(2026, 8, 25),
+      rating: 3,
+    );
+    final second = LiteratureLibraryEntry(
+      record: const LiteratureRecord(
+        id: 'lit-duplicate-b',
+        localFileId: 'file-duplicate-b',
+        doi: '10.5555/DUPLICATE',
+        title: 'A duplicate study with a longer corrected title',
+        authors: ['Alice Example', 'Bob Example'],
+        abstractText: 'A richer abstract.',
+        keywords: ['local'],
+        readingProgress: 0.8,
+      ),
+      localPath: r'X:\synthetic\b.pdf',
+      fileName: 'b.pdf',
+      addedAt: DateTime.utc(2026, 8, 26),
+      currentPage: 8,
+      totalPages: 10,
+      rating: 5,
+      isStarred: true,
+    );
+    const detector = LiteratureReferenceDuplicateDetector();
+    final groups = detector.find([first, second]);
+
+    expect(groups, hasLength(1));
+    expect(groups.single.reasons, contains('Same DOI'));
+    final merged = detector.merge(groups.single, preferredId: first.id);
+    expect(merged.id, first.id);
+    expect(merged.record.title, second.record.title);
+    expect(merged.record.authors, second.record.authors);
+    expect(merged.record.tags, ['reviewed']);
+    expect(merged.record.keywords, ['local']);
+    expect(merged.record.readingProgress, 0.8);
+    expect(merged.localPath, first.localPath);
+    expect(merged.supplementalPaths, contains(second.localPath));
+    expect(merged.rating, 5);
+    expect(merged.isStarred, isTrue);
+  });
+
+  test('six bundled citation styles produce copyable text and RTF', () {
+    const record = LiteratureRecord(
+      id: 'lit-style',
+      localFileId: 'file-style',
+      doi: '10.5555/style',
+      title: '拾理 citation styles',
+      authors: ['Ada Lovelace', 'Alan Turing'],
+      journal: 'Synthetic Research',
+      year: 2026,
+      volume: '12',
+      issue: '3',
+      pages: '45-51',
+    );
+    const formatter = LiteratureBibliographyFormatter();
+
+    for (final style in LiteratureCitationStyle.values) {
+      final result = formatter.bibliography([record], style: style);
+      expect(result.entries, hasLength(1), reason: style.name);
+      expect(result.plainText, contains('citation styles'), reason: style.name);
+      expect(result.rtf, startsWith(r'{\rtf1'), reason: style.name);
+      expect(result.rtf, contains(r'\u'), reason: style.name);
+      expect(
+        formatter.formatCitation([record], style: style),
+        isNotEmpty,
+        reason: style.name,
+      );
+    }
+    expect(
+      formatter.formatCitation([
+        record,
+        record,
+      ], style: LiteratureCitationStyle.vancouver),
+      '[1,2]',
+    );
+    expect(
+      formatter.formatCitation([
+        record,
+        record,
+      ], style: LiteratureCitationStyle.ieee),
+      '[1], [2]',
+    );
+  });
+
   test(
     'annotation store preserves page-linked notes without editing PDF',
     () async {
@@ -367,6 +613,15 @@ void main() {
         colorName: 'yellow',
         createdAt: createdAt,
         updatedAt: createdAt,
+        boxes: [
+          LiteratureAnnotationBox(
+            pageNumber: 4,
+            left: 72,
+            top: 710,
+            right: 240,
+            bottom: 696,
+          ),
+        ],
       );
 
       await store.upsert(annotation);
@@ -374,6 +629,8 @@ void main() {
       expect(restored, hasLength(1));
       expect(restored.single.pageNumber, 4);
       expect(restored.single.selectedText, 'Local-first evidence');
+      expect(restored.single.boxes, hasLength(1));
+      expect(restored.single.boxes.single.left, 72);
 
       await store.upsert(
         annotation.replaceNote(
@@ -383,6 +640,7 @@ void main() {
       );
       restored = await store.loadFor('lit-synthetic');
       expect(restored.single.note, 'Use in discussion.');
+      expect(restored.single.boxes.single.pageNumber, 4);
 
       await store.delete(annotation.id);
       expect(await store.loadFor('lit-synthetic'), isEmpty);
@@ -402,14 +660,81 @@ void main() {
         source,
         targetLanguage: 'Simplified Chinese',
         maxChunkCharacters: 500,
+        terminology: const {'grain boundary': '晶界'},
       );
 
       expect(provider.requests.length, greaterThan(1));
       expect(provider.requests.every((value) => value.length <= 500), isTrue);
       expect(result.sourceText, source);
       expect(result.translatedText, contains('translated:'));
+      expect(
+        provider.terminologyRequests.every(
+          (terms) => terms['grain boundary'] == '晶界',
+        ),
+        isTrue,
+      );
     },
   );
+
+  test('SQLite translation memory restores pages and terminology', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'picklogic-literature-translation-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final path = '${root.path}${Platform.pathSeparator}catalog.db';
+    final store = SqliteLiteratureTranslationStore(path);
+    final updatedAt = DateTime.utc(2026, 8, 27, 14);
+    final page = LiteraturePageTranslation(
+      literatureId: 'lit-translation',
+      pageNumber: 3,
+      targetLanguage: 'Simplified Chinese',
+      sourceText: 'Grain boundary evidence.',
+      translatedText: '晶界证据。',
+      providerLabel: 'Synthetic translator',
+      updatedAt: updatedAt,
+    );
+    final term = LiteratureTerminologyEntry(
+      id: 'term-grain-boundary',
+      sourceTerm: 'grain boundary',
+      translatedTerm: '晶界',
+      targetLanguage: 'Simplified Chinese',
+      updatedAt: updatedAt,
+    );
+
+    await store.upsertPage(page);
+    await store.upsertTerm(term);
+    final restoredPages = await SqliteLiteratureTranslationStore(path)
+        .loadPages(
+          literatureId: 'lit-translation',
+          targetLanguage: 'Simplified Chinese',
+        );
+    final restoredTerms = await SqliteLiteratureTranslationStore(
+      path,
+    ).loadTerminology('Simplified Chinese');
+
+    expect(restoredPages, hasLength(1));
+    expect(restoredPages.single.sourceText, page.sourceText);
+    expect(restoredPages.single.translatedText, page.translatedText);
+    expect(restoredPages.single.sourceFingerprint, page.sourceFingerprint);
+    expect(restoredTerms, hasLength(1));
+    expect(restoredTerms.single.sourceTerm, 'grain boundary');
+    expect(restoredTerms.single.translatedTerm, '晶界');
+
+    await store.deletePage(
+      literatureId: page.literatureId,
+      pageNumber: page.pageNumber,
+      targetLanguage: page.targetLanguage,
+    );
+    await store.deleteTerm(term.id);
+    expect(
+      await store.loadPages(
+        literatureId: page.literatureId,
+        targetLanguage: page.targetLanguage,
+      ),
+      isEmpty,
+    );
+    expect(await store.loadTerminology(page.targetLanguage), isEmpty);
+  });
 }
 
 final class _RecordingPdfSource implements PdfByteSource {
@@ -461,6 +786,7 @@ final class _TailFailingPdfSource implements PdfByteSource {
 
 final class _RecordingTranslationProvider implements TranslationProvider {
   final List<String> requests = [];
+  final List<Map<String, String>> terminologyRequests = [];
 
   @override
   TranslationProviderKind get kind => TranslationProviderKind.openAiCompatible;
@@ -475,8 +801,10 @@ final class _RecordingTranslationProvider implements TranslationProvider {
   Future<SelectedTextTranslation> translateSelectedText(
     String selectedText, {
     required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
   }) async {
     requests.add(selectedText);
+    terminologyRequests.add(Map<String, String>.of(terminology));
     return SelectedTextTranslation(
       sourceText: selectedText,
       translatedText: 'translated:$selectedText',

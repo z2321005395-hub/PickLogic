@@ -217,6 +217,46 @@ std::string WideToUtf8(const std::wstring& value) {
   return output;
 }
 
+bool SetClipboardBlock(UINT format, const void* data, SIZE_T size) {
+  HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, size);
+  if (memory == nullptr) return false;
+  void* target = GlobalLock(memory);
+  if (target == nullptr) {
+    GlobalFree(memory);
+    return false;
+  }
+  CopyMemory(target, data, size);
+  GlobalUnlock(memory);
+  if (SetClipboardData(format, memory) == nullptr) {
+    GlobalFree(memory);
+    return false;
+  }
+  return true;
+}
+
+bool CopyRichTextToClipboard(HWND parent, const std::string& plain_text,
+                             const std::string& rtf) {
+  if (plain_text.empty() || rtf.empty() || plain_text.size() > 4 * 1024 * 1024 ||
+      rtf.size() > 4 * 1024 * 1024) {
+    return false;
+  }
+  const std::wstring plain_wide = Utf8ToWide(plain_text);
+  if (plain_wide.empty()) return false;
+  const UINT rich_text_format = RegisterClipboardFormatW(L"Rich Text Format");
+  if (rich_text_format == 0 || !OpenClipboard(parent)) return false;
+  bool success = EmptyClipboard() != FALSE;
+  if (success) {
+    success = SetClipboardBlock(
+        CF_UNICODETEXT, plain_wide.c_str(),
+        (plain_wide.size() + 1) * sizeof(wchar_t));
+  }
+  if (success) {
+    success = SetClipboardBlock(rich_text_format, rtf.c_str(), rtf.size() + 1);
+  }
+  CloseClipboard();
+  return success;
+}
+
 std::optional<std::string> StringArgument(
     const flutter::MethodCall<flutter::EncodableValue>& call,
     const char* key) {
@@ -860,6 +900,19 @@ void PicklogicWindowsBridgePlugin::HandleMethodCall(
     }
     result->Success(flutter::EncodableValue(
         recycle_undo_store_->Restore(parent, *operation_id)));
+    return;
+  }
+
+  if (method == "copyRichText") {
+    const auto plain_text = StringArgument(method_call, "plainText");
+    const auto rtf = StringArgument(method_call, "rtf");
+    if (!plain_text || !rtf || rtf->rfind("{\\rtf", 0) != 0) {
+      result->Error("invalid_rich_text",
+                    "Plain text and a bounded RTF document are required.");
+      return;
+    }
+    result->Success(flutter::EncodableValue(
+        CopyRichTextToClipboard(parent, *plain_text, *rtf)));
     return;
   }
 

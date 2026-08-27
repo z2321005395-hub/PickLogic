@@ -9,6 +9,7 @@ environment:
 resolution: workspace
 
 dependencies:
+  petit_bibtex: 6.2.0
   picklogic_core_models:
     path: ../core_models
   sqlite3: 3.5.1

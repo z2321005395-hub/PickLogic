@@ -5,7 +5,8 @@
 - No account, telemetry, ads, cloud backend, or file upload.
 - Index, OCR output, preferences, thumbnails, and Insight records remain local.
 - API keys, if a future provider needs one, use OS secure storage and are never logged or committed.
-- Online translation receives only the selected text after explicit opt-in.
+- Online translation is disabled until configured and receives only bounded extracted selection, page, or document text after an explicit user request; PDF bytes are never uploaded.
+- Page translations and terminology are stored in the app-owned local SQLite catalog. A bounded terminology list accompanies only an explicit translation request.
 
 ## Developer Safe Mode
 
