@@ -927,8 +927,35 @@ final class _StandardExplorerState extends State<StandardExplorer> {
             children: [
               NavigationRail(
                 key: const Key('primary-navigation'),
-                selectedIndex: navigationSections.indexOf(_section).clamp(0, 4),
+                selectedIndex: navigationSections
+                    .indexOf(_section)
+                    .clamp(0, navigationSections.length - 1),
                 labelType: NavigationRailLabelType.all,
+                groupAlignment: -0.82,
+                leading: Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 14),
+                  child: Tooltip(
+                    message: widget.pro
+                        ? strings.proProductName
+                        : strings.productName,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'P',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
                 onDestinationSelected: _selectSection,
                 destinations: [
                   NavigationRailDestination(
@@ -984,6 +1011,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                   children: [
                     _TopBar(
                       strings: strings,
+                      title: _sectionTitle(strings, _section),
                       locale: widget.locale,
                       searchController: _searchController,
                       onLocaleChanged: _changeLocale,
@@ -1184,9 +1212,22 @@ List<_WorkspaceSection> _navigationSections(bool pro) => [
   ],
 ];
 
+String _sectionTitle(_ExplorerStrings strings, _WorkspaceSection section) =>
+    switch (section) {
+      _WorkspaceSection.home => strings.homeNav,
+      _WorkspaceSection.files => strings.files,
+      _WorkspaceSection.search => strings.search,
+      _WorkspaceSection.duplicates => strings.duplicates,
+      _WorkspaceSection.storage => strings.storage,
+      _WorkspaceSection.literature => strings.literature,
+      _WorkspaceSection.research => strings.research,
+      _WorkspaceSection.system => strings.systemInsight,
+    };
+
 final class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.strings,
+    required this.title,
     required this.locale,
     required this.searchController,
     required this.onLocaleChanged,
@@ -1204,6 +1245,7 @@ final class _TopBar extends StatelessWidget {
   });
 
   final _ExplorerStrings strings;
+  final String title;
   final Locale locale;
   final TextEditingController searchController;
   final ValueChanged<Locale> onLocaleChanged;
@@ -1222,112 +1264,146 @@ final class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
-    child: Padding(
-      padding: const EdgeInsets.all(PickLogicTokens.spaceMd),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            Text(
-              strings.productName,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(width: PickLogicTokens.spaceLg),
-            FilledButton.tonalIcon(
-              key: const Key('choose-folder'),
-              onPressed: onChooseFolder,
-              icon: const Icon(Icons.create_new_folder_outlined),
-              label: Text(strings.addFolder),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceMd),
-            SizedBox(
-              width: 360,
-              child: TextField(
-                key: const Key('active-pane-search'),
-                controller: searchController,
-                onChanged: onSearchChanged,
-                onSubmitted: (_) => onIndexSearch(),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: strings.searchInPane(activePane),
-                ),
-              ),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceSm),
-            IconButton.filledTonal(
-              key: const Key('search-index'),
-              onPressed: onIndexSearch,
-              tooltip: strings.searchIndex,
-              icon: const Icon(Icons.manage_search),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceMd),
-            PopupMenuButton<_WorkspaceViewMode>(
-              key: const Key('workspace-view-mode'),
-              tooltip: strings.viewMode,
-              onSelected: onViewModeChanged,
-              itemBuilder: (context) => [
-                for (final mode in _WorkspaceViewMode.values)
-                  PopupMenuItem<_WorkspaceViewMode>(
-                    value: mode,
-                    child: ListTile(
-                      leading: Icon(_viewModeIcon(mode)),
-                      title: Text(strings.viewModeLabel(mode)),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: PickLogicTokens.spaceMd,
+          vertical: 10,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 920;
+            return Row(
+              children: [
+                if (!compact) ...[
+                  SizedBox(
+                    width: 150,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        Text(
+                          strings.productName,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: PickLogicTokens.spaceSmd),
+                ],
+                FilledButton.tonalIcon(
+                  key: const Key('choose-folder'),
+                  onPressed: onChooseFolder,
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: Text(strings.addFolder),
+                ),
+                const SizedBox(width: PickLogicTokens.spaceSmd),
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: TextField(
+                      key: const Key('active-pane-search'),
+                      controller: searchController,
+                      onChanged: onSearchChanged,
+                      onSubmitted: (_) => onIndexSearch(),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: strings.searchInPane(activePane),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: PickLogicTokens.spaceSm),
+                IconButton.filledTonal(
+                  key: const Key('search-index'),
+                  onPressed: onIndexSearch,
+                  tooltip: strings.searchIndex,
+                  icon: const Icon(Icons.manage_search),
+                ),
+                const SizedBox(width: PickLogicTokens.spaceSmd),
+                MenuAnchor(
+                  key: const Key('workspace-view-mode'),
+                  menuChildren: [
+                    for (final mode in _WorkspaceViewMode.values)
+                      MenuItemButton(
+                        onPressed: () => onViewModeChanged(mode),
+                        leadingIcon: Icon(
+                          mode == viewMode ? Icons.check : _viewModeIcon(mode),
+                        ),
+                        child: Text(strings.viewModeLabel(mode)),
+                      ),
+                    const Divider(),
+                    SubmenuButton(
+                      menuChildren: [
+                        for (final size in const [64.0, 96.0, 144.0, 208.0])
+                          MenuItemButton(
+                            onPressed: () => onThumbnailSizeChanged(size),
+                            leadingIcon: Icon(
+                              (thumbnailSize - size).abs() < 8
+                                  ? Icons.check
+                                  : Icons.photo_size_select_large_outlined,
+                            ),
+                            child: Text(strings.thumbnailPreset(size.round())),
+                          ),
+                      ],
+                      leadingIcon: const Icon(
+                        Icons.photo_size_select_large_outlined,
+                      ),
+                      child: Text(strings.thumbnailSize),
+                    ),
+                  ],
+                  builder: (context, controller, child) => OutlinedButton.icon(
+                    onPressed: () => controller.isOpen
+                        ? controller.close()
+                        : controller.open(),
+                    icon: Icon(_viewModeIcon(viewMode)),
+                    label: compact
+                        ? const Icon(Icons.arrow_drop_down)
+                        : Text(strings.viewModeLabel(viewMode)),
+                  ),
+                ),
+                const SizedBox(width: PickLogicTokens.spaceSm),
+                IconButton.filledTonal(
+                  key: const Key('insight-tool'),
+                  onPressed: canShowDetails
+                      ? () => onDetailModeChanged(_DetailMode.context)
+                      : null,
+                  tooltip: strings.contextPanel,
+                  isSelected: detailMode == _DetailMode.context,
+                  icon: const Icon(Icons.view_sidebar_outlined),
+                ),
+                const SizedBox(width: PickLogicTokens.spaceXs),
+                IconButton(
+                  key: const Key('toggle-language'),
+                  onPressed: () => onLocaleChanged(
+                    locale.languageCode == 'zh'
+                        ? const Locale('en')
+                        : const Locale('zh'),
+                  ),
+                  tooltip: strings.switchLanguage,
+                  icon: const Icon(Icons.language),
+                ),
               ],
-              child: Chip(
-                avatar: Icon(_viewModeIcon(viewMode), size: 18),
-                label: Text(strings.viewModeLabel(viewMode)),
-              ),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceSm),
-            IconButton(
-              tooltip: strings.zoomOut,
-              onPressed: () =>
-                  onThumbnailSizeChanged((thumbnailSize - 16).clamp(48, 256)),
-              icon: const Icon(Icons.remove),
-            ),
-            SizedBox(
-              width: 112,
-              child: Slider(
-                key: const Key('thumbnail-size-slider'),
-                min: 48,
-                max: 256,
-                divisions: 13,
-                value: thumbnailSize.clamp(48, 256),
-                label: '${thumbnailSize.round()} px',
-                onChanged: onThumbnailSizeChanged,
-              ),
-            ),
-            IconButton(
-              tooltip: strings.zoomIn,
-              onPressed: () =>
-                  onThumbnailSizeChanged((thumbnailSize + 16).clamp(48, 256)),
-              icon: const Icon(Icons.add),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceMd),
-            IconButton.filledTonal(
-              key: const Key('insight-tool'),
-              onPressed: canShowDetails
-                  ? () => onDetailModeChanged(_DetailMode.context)
-                  : null,
-              tooltip: strings.contextPanel,
-              isSelected: detailMode == _DetailMode.context,
-              icon: const Icon(Icons.view_sidebar_outlined),
-            ),
-            const SizedBox(width: PickLogicTokens.spaceSm),
-            IconButton(
-              key: const Key('toggle-language'),
-              onPressed: () => onLocaleChanged(
-                locale.languageCode == 'zh'
-                    ? const Locale('en')
-                    : const Locale('zh'),
-              ),
-              tooltip: strings.switchLanguage,
-              icon: const Icon(Icons.language),
-            ),
-          ],
+            );
+          },
         ),
       ),
     ),
@@ -1440,30 +1516,11 @@ final class _WorkspaceActionBar extends StatelessWidget {
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLowest,
       child: SizedBox(
-        height: 50,
+        height: 48,
         child: ListView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           children: [
-            TextButton.icon(
-              key: const Key('open-test-workspace'),
-              onPressed: onOpenTestWorkspace,
-              icon: const Icon(Icons.science_outlined),
-              label: Text(strings.testWorkspace),
-            ),
-            TextButton.icon(
-              key: const Key('authorize-managed-folder'),
-              onPressed: onAuthorizeManagedFolder,
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              label: Text(strings.manageFolder),
-            ),
-            TextButton.icon(
-              key: const Key('import-test-copies'),
-              onPressed: onImportTestCopies,
-              icon: const Icon(Icons.copy_all_outlined),
-              label: Text(strings.importTestCopies),
-            ),
-            const VerticalDivider(),
             TextButton.icon(
               key: const Key('create-workspace-folder'),
               onPressed: mutable ? onCreateFolder : null,
@@ -1493,6 +1550,36 @@ final class _WorkspaceActionBar extends StatelessWidget {
               onPressed: canUndo ? onUndo : null,
               icon: const Icon(Icons.undo),
               label: Text(strings.undo),
+            ),
+            const SizedBox(width: 8),
+            MenuAnchor(
+              key: const Key('workspace-tools-menu'),
+              menuChildren: [
+                MenuItemButton(
+                  key: const Key('open-test-workspace'),
+                  onPressed: onOpenTestWorkspace,
+                  leadingIcon: const Icon(Icons.science_outlined),
+                  child: Text(strings.testWorkspace),
+                ),
+                MenuItemButton(
+                  key: const Key('authorize-managed-folder'),
+                  onPressed: onAuthorizeManagedFolder,
+                  leadingIcon: const Icon(Icons.admin_panel_settings_outlined),
+                  child: Text(strings.manageFolder),
+                ),
+                MenuItemButton(
+                  key: const Key('import-test-copies'),
+                  onPressed: onImportTestCopies,
+                  leadingIcon: const Icon(Icons.copy_all_outlined),
+                  child: Text(strings.importTestCopies),
+                ),
+              ],
+              builder: (context, controller, child) => OutlinedButton.icon(
+                onPressed: () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+                icon: const Icon(Icons.more_horiz),
+                label: Text(strings.moreActions),
+              ),
             ),
           ],
         ),
@@ -2535,6 +2622,7 @@ final class _ExplorerStrings {
   final bool chinese;
 
   String get productName => chinese ? '拾理' : 'PickLogic';
+  String get proProductName => chinese ? '拾理专业版' : 'PickLogic Pro';
   String get homeNav => chinese ? '首页' : 'Home';
   String get files => chinese ? '文件' : 'Files';
   String get search => chinese ? '搜索' : 'Search';
@@ -2567,6 +2655,8 @@ final class _ExplorerStrings {
   String get gridView => chinese ? '网格' : 'Grid';
   String get dualPane => chinese ? '双栏工作区' : 'Dual pane';
   String get viewMode => chinese ? '显示模式' : 'View mode';
+  String get thumbnailSize => chinese ? '缩略图大小' : 'Thumbnail size';
+  String thumbnailPreset(int size) => chinese ? '$size 像素' : '$size pixels';
   String get zoomIn => chinese ? '增大缩略图' : 'Larger thumbnails';
   String get zoomOut => chinese ? '减小缩略图' : 'Smaller thumbnails';
 

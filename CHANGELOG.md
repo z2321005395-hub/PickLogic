@@ -35,6 +35,7 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- Refined Desktop Standard and Pro with one typography hierarchy, quieter surfaces, responsive literature panes, grouped PDF controls, and menus for lower-frequency view, workspace, and translation actions.
 - Desktop file selection now stays focused on dual-pane organization; Preview/Insight opens only on request, while keyboard navigation supports Enter, Backspace, F2, Escape, and Ctrl+Shift+I.
 - Mobile media and screenshot items now open content-first full-screen viewers; metadata, Insight, favorite, and non-destructive deletion-review marks are secondary actions.
 - Unified Desktop navigation and contextual details across Standard and Pro without duplicating the shell.

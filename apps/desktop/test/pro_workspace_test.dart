@@ -286,7 +286,9 @@ void main() {
     expect(store.entries.single.isTrashed, isTrue);
     expect(store.entries.single.localPath, entry.localPath);
 
-    await tester.tap(find.byKey(const Key('literature-scope-trash')));
+    await tester.tap(find.byKey(const Key('literature-scope-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Trash').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('literature-check-lit-synthetic')));
     await tester.pump();
@@ -531,6 +533,7 @@ void main() {
     expect(find.text('本地渲染'), findsOneWidget);
     expect(find.text('搜索 PDF 文本'), findsOneWidget);
     expect(find.text('跳至页'), findsOneWidget);
+    expect(find.byKey(const Key('pdf-translation-menu')), findsOneWidget);
     expect(find.text('Local rendering'), findsNothing);
     expect(tester.takeException(), isNull);
 
