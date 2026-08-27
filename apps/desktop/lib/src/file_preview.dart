@@ -572,8 +572,8 @@ final class _ZipPreviewState extends State<_ZipPreview> {
                   ),
                   subtitle: file.isFile
                       ? Text(
-                          '${_compactBytes(file.rawContent?.length ?? file.size)} → '
-                          '${_compactBytes(file.size)}',
+                          '${formatFileSize(file.rawContent?.length ?? file.size)} → '
+                          '${formatFileSize(file.size)}',
                         )
                       : null,
                   trailing: file.isFile
@@ -1037,8 +1037,8 @@ final class _FolderPreviewState extends State<_FolderPreview> {
               const SizedBox(height: 8),
               Text(
                 widget.chinese
-                    ? '直接子文件估算大小：${_compactBytes(value.bytes)}'
-                    : 'Estimated direct-file size: ${_compactBytes(value.bytes)}',
+                    ? '直接子文件估算大小：${formatFileSize(value.bytes)}'
+                    : 'Estimated direct-file size: ${formatFileSize(value.bytes)}',
               ),
               if (value.types.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -1223,14 +1223,3 @@ IconData _officeIcon(String extension) => switch (extension) {
   'ppt' || 'pptx' => Icons.slideshow_outlined,
   _ => Icons.description_outlined,
 };
-
-String _compactBytes(int bytes) {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-  if (bytes >= 1024 * 1024) {
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
-  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '$bytes B';
-}

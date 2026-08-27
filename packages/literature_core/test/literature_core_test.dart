@@ -170,6 +170,23 @@ void main() {
     },
   );
 
+  test(
+    'PDF header may follow a short prefix and an unreadable tail is nonfatal',
+    () async {
+      final source = _TailFailingPdfSource();
+      final probe = await const BoundedPdfMetadataReader().read(source);
+
+      expect(probe.hasPdfHeader, isTrue);
+      expect(probe.title, 'Prefix-safe PDF');
+      expect(
+        probe.limitations,
+        contains(
+          'The tail metadata window could not be read; filename fallback remains available.',
+        ),
+      );
+    },
+  );
+
   test('library entry preserves metadata and exact reading page in JSON', () {
     final entry =
         LiteratureLibraryEntry.fromProbe(
@@ -413,6 +430,32 @@ final class _RecordingPdfSource implements PdfByteSource {
     final end = (offset + length).clamp(0, bytes.length);
     if (offset >= end) return const <int>[];
     return bytes.sublist(offset, end);
+  }
+}
+
+final class _TailFailingPdfSource implements PdfByteSource {
+  final List<int> _head = latin1.encode(
+    'synthetic-prefix%PDF-1.7 /Title (Prefix-safe PDF)',
+  );
+
+  @override
+  Future<int> length() async => 128 * 1024;
+
+  @override
+  Future<List<int>> readRange({
+    required int offset,
+    required int length,
+  }) async {
+    if (offset >= 64 * 1024) {
+      throw const FileSystemException('Synthetic tail read failure');
+    }
+    if (offset >= _head.length) return List<int>.filled(length, 0x20);
+    final end = (offset + length).clamp(0, _head.length);
+    final result = List<int>.of(_head.sublist(offset, end));
+    if (result.length < length) {
+      result.addAll(List<int>.filled(length - result.length, 0x20));
+    }
+    return result;
   }
 }
 

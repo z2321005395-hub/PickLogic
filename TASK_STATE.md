@@ -253,3 +253,41 @@ Push this branch, require one green integration CI, merge through the canonical 
 ## Next action
 
 After the user accepts the Z70 USB-debugging RSA prompt, install the published arm64 Profile APK, launch PickLogic, grant only user-selected read-only media/SAF access, and collect hands-on usability feedback. Stop new feature work until that trial.
+
+## Human-readable desktop storage units
+
+- Goal: remove raw byte counts from Desktop Standard/Pro user-facing file, storage, preview, and Insight surfaces.
+- Added one shared formatter that presents compact KB/MB/GB/TB values; zero and sub-KB files now show `0 KB` or `< 1 KB` instead of raw bytes.
+- Updated the Desktop explorer, storage summaries, internal preview surfaces, and shared Insight panel to use the same formatter and neutral `占用空间` / `Size` labels.
+- Verification: Shared UI tests passed 4/4 and the complete Desktop suite passed 22/22; targeted source search found no remaining raw-byte display formatter in Desktop/Shared UI.
+
+## Next action
+
+Build and smoke-test refreshed Standard/Pro packages from an ASCII-path worktree, then install a non-destructive parallel Android user-test package because the Z70 already contains differently signed `io.picklogic.mobile` and `io.picklogic.mobile.usertest` installations.
+
+## Pro PDF import usability recovery
+
+- The user-visible failure came from the still-running `pro-68c990b` package built on 2026-08-13, not the current release source.
+- Reworded the Literature surface around the user task (`文献库`, add/drop/read) and removed implementation jargon from the first screen.
+- PDF selection, unreadable local files, invalid PDFs, and catalog-save failures now have separate actionable messages; no private path or raw exception is displayed.
+- A valid `%PDF-` signature may occur within the first 1024 bytes, and an unavailable tail metadata window no longer prevents adding and reading the PDF with filename fallback.
+- Verification: Literature Core passed 14/14 and the complete Desktop suite passed 23/23, including a focused picker-recovery widget test.
+
+## Next action
+
+Commit the recovery, build Standard/Pro from an ASCII-path worktree, launch the refreshed packages, and validate a synthetic local PDF through the packaged Pro reader before asking the user to retry their own PDF.
+
+## Final user-test usability validation
+
+- Desktop Standard/Pro packages were rebuilt from the recovery branch. User-facing file, storage, Preview, and Insight sizes use KB/MB/GB/TB; Pro Literature import has distinct picker, unreadable-file, invalid-PDF, and catalog-save recovery messages.
+- A parallel arm64 Profile APK was built as `io.picklogic.mobile.usertest`, v2-signature verified, installed with update semantics, and launched on the authorized nubia Z70 without replacing the differently signed PickLogic package or clearing either package's data.
+- Z70 read-only media validation used no screenshots, filenames, paths, or content in repository evidence. One accessible audio item initialized and advanced from 0:00 to 0:13/0:14 while muted; one accessible video initialized and completed 0:16/0:16 while muted. App-scoped warnings contained no ExoPlayer, MediaCodec, permission, or fatal matches.
+- A photo opened in the dedicated full-body viewer rather than a sheet: the content area occupied the complete post-AppBar viewport and exposed reset-zoom and rotate controls. App-scoped warnings contained no image decode, memory, or permission matches.
+- Media lists remain date ordered and paged through every accessible record; 120 is the bounded in-memory page size, not a collection cap. Synthetic coverage verifies loading from 120/145 to 145/145.
+- Added regression coverage requiring photos to use the full-page image viewer and audio/video collections to route through the shared internal media player.
+- Verification: Mobile 37/37, Android Bridge 12/12, Shared UI 4/4, Desktop 23/23, and Literature Core 14/14 tests passed. Windows Computer Use remained blocked by desktop access error `0x80070005`; no security control was bypassed.
+- Local ignored artifacts: Standard ZIP 18,712,146 B; Pro ZIP 18,726,422 B; arm64 Profile APK 32,322,278 B. The APK installed and launched successfully; both Windows package processes launched successfully.
+
+## Next action
+
+Commit the focused media-viewer regression tests and this state update, run the repository quick gate and privacy scan, then push one feature PR into `develop` and merge it only after green CI. Keep routine build artifacts local under `codex_output/`.

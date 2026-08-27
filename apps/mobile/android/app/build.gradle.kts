@@ -4,6 +4,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val picklogicUserTest =
+    providers.gradleProperty("picklogicUserTest").orNull.equals("true", ignoreCase = true)
+
 android {
     namespace = "io.picklogic.mobile"
     compileSdk = flutter.compileSdkVersion
@@ -15,7 +18,14 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.picklogic.mobile"
+        applicationId =
+            if (picklogicUserTest) {
+                "io.picklogic.mobile.usertest"
+            } else {
+                "io.picklogic.mobile"
+            }
+        manifestPlaceholders["picklogicAppLabel"] =
+            if (picklogicUserTest) "PickLogic User Test" else "PickLogic"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

@@ -8,6 +8,7 @@ import 'package:picklogic_mobile/main.dart';
 import 'package:picklogic_mobile/src/incremental_index_queue.dart';
 import 'package:picklogic_mobile/src/mobile_repository.dart';
 import 'package:picklogic_mobile/src/screenshot_grouping.dart';
+import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 void main() {
   testWidgets('mobile has three focused primary destinations', (tester) async {
@@ -133,6 +134,55 @@ void main() {
     await tester.pump();
     expect(find.byIcon(Icons.favorite), findsOneWidget);
     expect(find.byIcon(Icons.rule_folder), findsOneWidget);
+  });
+
+  testWidgets('photo opens in the full-page zoomable viewer', (tester) async {
+    await tester.pumpWidget(const PickLogicMobileApp());
+    await _openOrganize(tester, const Key('organize-photos'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byKey(const Key('photos-thumbnail-grid')),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mobile-first-class-viewer')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-image-viewer')), findsOneWidget);
+    expect(find.byIcon(Icons.center_focus_strong), findsOneWidget);
+    expect(find.byIcon(Icons.rotate_right), findsOneWidget);
+  });
+
+  testWidgets('audio and video collections use the internal media player', (
+    tester,
+  ) async {
+    for (final item in <({String label, String name, bool audioOnly})>[
+      (label: '音频', name: 'Audio_1.mp3', audioOnly: true),
+      (label: '视频', name: 'Video_1.mp4', audioOnly: false),
+    ]) {
+      await tester.pumpWidget(PickLogicMobileApp(key: UniqueKey()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(item.label));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('mobile-collection-view')), findsOneWidget);
+      await tester.tap(find.text(item.name));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('mobile-first-class-viewer')),
+        findsOneWidget,
+      );
+      final player = tester.widget<PickLogicMediaPlayer>(
+        find.byType(PickLogicMediaPlayer),
+      );
+      expect(player.audioOnly, item.audioOnly);
+      expect(player.source.kind, PickLogicMediaSourceKind.contentUri);
+      expect(player.source.value, contains(item.name));
+    }
   });
 
   testWidgets('screenshot month filter and local review queue are usable', (

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show File, Platform;
+import 'dart:io' show File, FileSystemException, Platform;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +32,9 @@ enum _LiteratureStatus {
   pdfOnly,
   duplicate,
   invalidPdf,
+  pickerUnavailable,
+  fileUnreadable,
+  catalogSaveFailed,
   added,
   addedWithSkipped,
   addFailed,
@@ -297,6 +300,10 @@ final class _LiteratureManagerLiteViewState
               title: strings.pdfPickerTitle,
             );
       if (paths.isNotEmpty) await _importLiterature(paths);
+    } on PlatformException {
+      if (mounted) {
+        setState(() => _status = _LiteratureStatus.pickerUnavailable);
+      }
     } on Object {
       if (mounted) {
         setState(() => _status = _LiteratureStatus.addFailed);
@@ -330,6 +337,7 @@ final class _LiteratureManagerLiteViewState
     var skippedPdfOnly = false;
     var skippedDuplicate = false;
     var skippedInvalid = false;
+    var skippedUnreadable = false;
     var skippedFailure = false;
 
     for (final path in paths.toSet()) {
@@ -357,6 +365,8 @@ final class _LiteratureManagerLiteViewState
             addedAt: DateTime.now().toUtc(),
           ),
         );
+      } on FileSystemException {
+        skippedUnreadable = true;
       } on Object {
         skippedFailure = true;
       }
@@ -366,7 +376,9 @@ final class _LiteratureManagerLiteViewState
       if (!mounted) return;
       setState(() {
         _statusCount = 0;
-        _status = skippedFailure
+        _status = skippedUnreadable
+            ? _LiteratureStatus.fileUnreadable
+            : skippedFailure
             ? _LiteratureStatus.addFailed
             : skippedInvalid
             ? _LiteratureStatus.invalidPdf
@@ -381,7 +393,16 @@ final class _LiteratureManagerLiteViewState
       ...additions.reversed,
       ..._entries,
     ]);
-    await _enqueueSave(updated);
+    try {
+      await _enqueueSave(updated);
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _statusCount = 0;
+        _status = _LiteratureStatus.catalogSaveFailed;
+      });
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _entries = updated;
@@ -1732,17 +1753,17 @@ final class _LiteratureStrings {
 
   final bool isChinese;
 
-  String get managerTitle => isChinese ? '轻量文献管理' : 'Literature Manager Lite';
+  String get managerTitle => isChinese ? '文献库' : 'Literature Library';
   String get managerSubtitle => isChinese
-      ? '本地目录 · 有界元数据 · PDF 不上传、不改写'
-      : 'Local catalog · bounded metadata · PDFs are never uploaded or modified';
+      ? '本地阅读与文献管理 · 原 PDF 保持不变'
+      : 'Local reading and reference management · source PDFs stay unchanged';
   String get localReadOnly => isChinese ? '本地只读' : 'LOCAL READ-ONLY';
   String get addLiterature => isChinese ? '添加文献' : 'Add literature';
   String get pdfPickerTitle => isChinese ? '添加本地 PDF 文献' : 'Add a local PDF';
   String get library => isChinese ? '文献列表' : 'Library';
   String get emptyLibrary => isChinese
-      ? '暂无文献。点击“添加文献”选择 PDF，或直接拖入 PDF；不会扫描目录。'
-      : 'No literature yet. Choose Add literature or drop PDFs here; no directory will be scanned.';
+      ? '点击“添加文献”选择 PDF，或直接拖入 PDF，即可开始阅读。'
+      : 'Choose Add literature or drop PDFs here to start reading.';
   String get persistentLibrary =>
       isChinese ? '文献列表 · 持久保存' : 'Library · Persistent';
   String get searchLibrary => isChinese
@@ -1849,8 +1870,20 @@ final class _LiteratureStrings {
       isChinese ? '该 PDF 已在文献列表中。' : 'This PDF is already in the library.',
     _LiteratureStatus.invalidPdf =>
       isChinese
-          ? '所选文件未通过 PDF 头部验证，未添加。'
-          : 'The selected file failed PDF header validation and was not added.',
+          ? '所选文件不是有效 PDF。请换一个文件重试。'
+          : 'The selected file is not a valid PDF. Choose another file.',
+    _LiteratureStatus.pickerUnavailable =>
+      isChinese
+          ? 'Windows 未能返回本地 PDF。若文件在云盘中，请先下载到本机后重试。'
+          : 'Windows did not return a local PDF. Download cloud-only files to this PC and try again.',
+    _LiteratureStatus.fileUnreadable =>
+      isChinese
+          ? '无法读取所选 PDF。请确认文件已下载到本机、可正常打开且未被其他程序独占。'
+          : 'The selected PDF cannot be read. Make sure it is downloaded, opens normally, and is not locked by another app.',
+    _LiteratureStatus.catalogSaveFailed =>
+      isChinese
+          ? 'PDF 可以读取，但文献列表暂时无法保存。请关闭其他 PickLogic Pro 窗口后重试。'
+          : 'The PDF is readable, but the library could not be saved. Close other PickLogic Pro windows and try again.',
     _LiteratureStatus.added =>
       isChinese
           ? '已添加 ${count == 0 ? 1 : count} 篇文献；PDF 原文件保持只读且位置不变。'
