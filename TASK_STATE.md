@@ -291,3 +291,16 @@ Commit the recovery, build Standard/Pro from an ASCII-path worktree, launch the 
 ## Next action
 
 Commit the focused media-viewer regression tests and this state update, run the repository quick gate and privacy scan, then push one feature PR into `develop` and merge it only after green CI. Keep routine build artifacts local under `codex_output/`.
+
+## Recoverable delete and system trash
+
+- Goal: add discoverable deletion without introducing permanent or silent file removal.
+- Desktop Standard/Pro now keep ordinary locations read-only but make the trash action discoverable; selecting it explains the managed-folder authorization step. Authorized items still use OperationPlan preview, explicit confirmation, Windows Recycle Bin, and the existing in-session undo when Windows supplies a restore record. Protected, system, and unclassified files remain blocked.
+- Android MediaStore items now expose a system-trash action in the first-class viewer. PickLogic shows its own operation preview first, then Android shows the non-bypassable system confirmation. Screenshot items marked for deletion review expose the same action; successful items are removed from the visible page and local search index. Protected, system, unknown, inaccessible, and SAF read-only items remain blocked.
+- No real file or media deletion was used for validation. Mobile 41/41, Desktop 23/23, Operation Planner 10/10, Android Bridge 12/12, and Windows Bridge 9/9 tests passed; Mobile and Desktop analyzers reported no issues from the ASCII build worktree.
+- Standard and Pro Release bundles were rebuilt, packaged, and launched successfully. The parallel `io.picklogic.mobile.usertest` APK is arm64-only, 31,735,038 bytes, and verifies with APK Signature Scheme v2. The first canonical-path build failed only at the known Chinese-path AOT decoding boundary.
+- Z70 currently reports ADB `offline`; installation is waiting for unlock/reconnect and any on-device RSA prompt. No real deletion or system-trash confirmation was exercised during validation.
+
+## Next action
+
+Push the safe-trash branch, merge one green PR into `develop`, and install/launch the parallel Android user-test package when Z70 returns online. Keep real deletion untested until the user explicitly chooses an item and accepts the platform confirmation.

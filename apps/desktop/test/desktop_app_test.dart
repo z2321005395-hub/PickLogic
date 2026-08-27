@@ -147,6 +147,20 @@ void main() {
             .onPressed,
         isNull,
       );
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('trash-workspace-item')))
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.byKey(const Key('trash-workspace-item')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('trash-requires-managed-folder')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('active-pane-search')),
         'figure',

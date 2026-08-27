@@ -837,6 +837,12 @@ final class _FilesPageState extends State<_FilesPage> {
         repository: widget.repository,
         onBack: () => setState(() => _collectionOpen = false),
         onLoadMore: pager == null ? null : () => _loadNext(pager),
+        onTrashed: (id) {
+          if (pager?.removeById(id) ?? false) {
+            _loadHomeData();
+            setState(() {});
+          }
+        },
       );
     }
     return ListView(
@@ -1067,6 +1073,7 @@ final class _MobileCollectionView extends StatelessWidget {
     required this.repository,
     required this.onBack,
     required this.onLoadMore,
+    required this.onTrashed,
   });
 
   final MobileLocalizations strings;
@@ -1077,6 +1084,7 @@ final class _MobileCollectionView extends StatelessWidget {
   final MobileRepository repository;
   final VoidCallback onBack;
   final VoidCallback? onLoadMore;
+  final ValueChanged<String> onTrashed;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -1125,8 +1133,15 @@ final class _MobileCollectionView extends StatelessWidget {
               '${_formatDateTime(record.createdAt ?? record.modifiedAt)}'
               '${_durationLabel(record)}',
             ),
-            onTap: () =>
-                _showMediaItem(context, record, repository, records: records),
+            onTap: () async {
+              final moved = await _showMediaItem(
+                context,
+                record,
+                repository,
+                records: records,
+              );
+              if (moved) onTrashed(record.id);
+            },
           ),
         _LoadMoreFooter(pager: pager!, onLoadMore: onLoadMore!),
       ],
@@ -1559,6 +1574,12 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
     );
   }
 
+  void _removeTrashed(FileRecord record) {
+    _review.remove(record.id);
+    _pager?.removeById(record.id);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = MobileLocalizations.of(context);
@@ -1755,6 +1776,7 @@ final class _ScreenshotsPageState extends State<_ScreenshotsPage> {
                                 state,
                                 widget.repository,
                                 _mark,
+                                _removeTrashed,
                               ),
                               child: Stack(
                                 fit: StackFit.expand,
@@ -2041,12 +2063,18 @@ final class _PhotosPageState extends State<_PhotosPage> {
                         return Card(
                           clipBehavior: Clip.antiAlias,
                           child: InkWell(
-                            onTap: () => _showMediaItem(
-                              context,
-                              record,
-                              widget.repository,
-                              records: records,
-                            ),
+                            onTap: () async {
+                              final moved = await _showMediaItem(
+                                context,
+                                record,
+                                widget.repository,
+                                records: records,
+                              );
+                              if (moved && mounted) {
+                                pager.removeById(record.id);
+                                setState(() {});
+                              }
+                            },
                             child: Semantics(
                               label: record.displayName,
                               child: _OnDemandThumbnail(
@@ -2772,22 +2800,22 @@ String _localizedSourceHint(MobileLocalizations strings, String sourceHint) {
   return sourceHint;
 }
 
-void _showMediaItem(
+Future<bool> _showMediaItem(
   BuildContext context,
   FileRecord record,
   MobileRepository repository, {
   List<FileRecord>? records,
-}) {
-  Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (context) => MobileViewerPage(
-        records: records ?? <FileRecord>[record],
-        initialRecord: record,
-        repository: repository,
+}) async =>
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => MobileViewerPage(
+          records: records ?? <FileRecord>[record],
+          initialRecord: record,
+          repository: repository,
+        ),
       ),
-    ),
-  );
-}
+    ) ??
+    false;
 
 /// Observes two-pointer distance without claiming the scroll gesture arena.
 /// This keeps one-finger grid scrolling native while pinch changes 2–6 columns.
@@ -2859,6 +2887,7 @@ void _showScreenshotItem(
   ScreenshotReviewState state,
   MobileRepository repository,
   void Function(FileRecord, ScreenshotReviewState) onMark,
+  void Function(FileRecord) onTrashed,
 ) {
   showModalBottomSheet<void>(
     context: context,
@@ -2875,14 +2904,15 @@ void _showScreenshotItem(
               width: double.infinity,
               child: InkWell(
                 key: const Key('screenshot-open-viewer-thumbnail'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(sheetContext);
-                  _showMediaItem(
+                  final moved = await _showMediaItem(
                     context,
                     record,
                     repository,
                     records: group.records,
                   );
+                  if (moved) onTrashed(record);
                 },
                 child: _OnDemandThumbnail(
                   repository: repository,
@@ -2961,16 +2991,33 @@ void _showScreenshotItem(
                       icon: const Icon(Icons.rule_folder_outlined),
                       label: Text(strings.text('deleteReview')),
                     ),
+                    if (state == ScreenshotReviewState.deleteReview)
+                      FilledButton.icon(
+                        key: const Key('screenshot-system-trash'),
+                        onPressed: () async {
+                          final moved = await confirmMobileSystemTrash(
+                            sheetContext,
+                            record: record,
+                            repository: repository,
+                          );
+                          if (!sheetContext.mounted || !moved) return;
+                          Navigator.pop(sheetContext);
+                          onTrashed(record);
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: Text(strings.text('systemTrash')),
+                      ),
                     TextButton.icon(
                       key: const Key('screenshot-open-internal-viewer'),
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(sheetContext);
-                        _showMediaItem(
+                        final moved = await _showMediaItem(
                           context,
                           record,
                           repository,
                           records: group.records,
                         );
+                        if (moved) onTrashed(record);
                       },
                       icon: const Icon(Icons.fullscreen),
                       label: Text(strings.text('open')),

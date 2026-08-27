@@ -475,6 +475,10 @@ final class _FailingMobileIndexPersistence implements MobileIndexPersistence {
       throw StateError('synthetic index failure');
 
   @override
+  Future<void> removeRecords(Iterable<String> ids) async =>
+      throw StateError('synthetic remove failure');
+
+  @override
   Future<List<FileRecord>> search(String query, {int limit = 100}) async =>
       throw StateError('synthetic search failure');
 
