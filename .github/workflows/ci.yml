@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dart run tools/prepare_pdfium_native_asset.dart
+          dart run tools/prepare_pdfium_native_asset.dart --flutter-test-runtime
           for package in \
             packages/shared_ui platform/windows_bridge platform/android_bridge \
             apps/desktop apps/mobile; do

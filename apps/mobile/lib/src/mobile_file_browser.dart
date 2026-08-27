@@ -7,6 +7,7 @@ import 'package:picklogic_classification_rules/picklogic_classification_rules.da
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 
 import 'mobile_internal_viewer.dart';
+import 'mobile_folder_insight.dart';
 import 'mobile_repository.dart';
 
 enum _BrowserSort { name, modified, size }
@@ -146,6 +147,32 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
     );
   }
 
+  Future<void> _showRootInsight(AndroidBrowseRoot root) =>
+      showAndroidFolderInsightSheet(
+        context: context,
+        repository: widget.repository,
+        root: root,
+        directoryUri: root.documentUri,
+        displayName: root.displayName,
+        pathSegments: <String>[root.displayName],
+      );
+
+  Future<void> _showDirectoryInsight(AndroidBrowseEntry entry) {
+    final root = _root;
+    if (root == null) return Future<void>.value();
+    return showAndroidFolderInsightSheet(
+      context: context,
+      repository: widget.repository,
+      root: root,
+      directoryUri: entry.documentUri,
+      displayName: entry.displayName,
+      pathSegments: <String>[
+        ..._trail.map((location) => location.name),
+        entry.displayName,
+      ],
+    );
+  }
+
   List<AndroidBrowseEntry> get _visibleItems {
     final query = _search.text.trim().toLowerCase();
     final visible = _items
@@ -254,7 +281,17 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
                 subtitle: Text(
                   _chinese ? '已授权 · 只读' : 'Authorized · read-only',
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: _chinese ? '解释此文件夹' : 'Explain folder',
+                      onPressed: () => _showRootInsight(root),
+                      icon: const Icon(Icons.info_outline),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
                 onTap: () => _openRoot(root),
               ),
             ),
@@ -381,6 +418,9 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
                       onTap: () => entry.directory
                           ? _openDirectory(entry)
                           : _openFile(entry),
+                      onInsight: entry.directory
+                          ? () => _showDirectoryInsight(entry)
+                          : null,
                     );
                   },
                 )
@@ -417,7 +457,22 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
                             : '${_browserBytes(entry.sizeBytes)} · ${_shortDate(entry.modifiedAt)}',
                       ),
                       trailing: entry.directory
-                          ? const Icon(Icons.chevron_right)
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  key: ValueKey<String>(
+                                    'folder-insight-${entry.documentUri}',
+                                  ),
+                                  tooltip: _chinese
+                                      ? '解释此文件夹'
+                                      : 'Explain folder',
+                                  onPressed: () => _showDirectoryInsight(entry),
+                                  icon: const Icon(Icons.info_outline),
+                                ),
+                                const Icon(Icons.chevron_right),
+                              ],
+                            )
                           : null,
                       onTap: () => entry.directory
                           ? _openDirectory(entry)
@@ -442,17 +497,20 @@ final class _GridEntry extends StatelessWidget {
     required this.record,
     required this.repository,
     required this.onTap,
+    this.onInsight,
   });
 
   final AndroidBrowseEntry entry;
   final FileRecord? record;
   final MobileRepository repository;
   final VoidCallback onTap;
+  final VoidCallback? onInsight;
 
   @override
   Widget build(BuildContext context) => InkWell(
     borderRadius: BorderRadius.circular(12),
     onTap: onTap,
+    onLongPress: onInsight,
     child: Padding(
       padding: const EdgeInsets.all(8),
       child: Column(

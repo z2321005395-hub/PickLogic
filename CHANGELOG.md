@@ -8,6 +8,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Added
 
+- Pro PDF page editing with reorder, rotate, duplicate, remove, undo/redo, embedded local annotations, and source-preserving Save As output.
+- Mobile folder Insight for every folder inside user-authorized SAF trees, with recursive metadata-only scanning, evidence, confidence, platform limits, and per-folder explanations.
 - Android hierarchical read-only SAF folder browsing with visible-only thumbnails and first-class internal photo, video, audio, PDF, text, archive, APK, and Office viewers.
 - Pro literature collections and smart filters, reference-only BibTeX/RIS import, duplicate merging, ratings/star/trash organization, persistent bilingual reading and terminology, page-coordinate highlight/underline/strikethrough/note overlays, six local citation styles, and Word-compatible rich-text bibliography copy.
 - Desktop image, PDF, bounded-text, folder, and metadata preview in one Preview/Insight context panel.
@@ -35,6 +37,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- Literature rename previews now use `year - journal - title.pdf`, with explicit fallbacks when metadata is unavailable.
+- Mobile file Insight now separates verified facts, rule inference, risk, confidence, and limitations instead of showing a fixed confidence value.
 - Refined Desktop Standard and Pro with one typography hierarchy, quieter surfaces, responsive literature panes, grouped PDF controls, and menus for lower-frequency view, workspace, and translation actions.
 - Desktop file selection now stays focused on dual-pane organization; Preview/Insight opens only on request, while keyboard navigation supports Enter, Backspace, F2, Escape, and Ctrl+Shift+I.
 - Mobile media and screenshot items now open content-first full-screen viewers; metadata, Insight, favorite, and non-destructive deletion-review marks are secondary actions.

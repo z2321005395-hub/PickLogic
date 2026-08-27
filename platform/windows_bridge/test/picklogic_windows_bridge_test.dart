@@ -29,6 +29,12 @@ class MockPicklogicWindowsBridgePlatform
   ];
 
   @override
+  Future<String?> pickPdfSavePath({
+    String? title,
+    String? suggestedName,
+  }) async => r'X:\synthetic\edited-copy.pdf';
+
+  @override
   Future<String> getApplicationSupportDirectory() async =>
       r'X:\synthetic\app-support';
 
@@ -121,6 +127,10 @@ void main() {
     expect(await bridge.pickPdfFile(), r'X:\synthetic\paper.pdf');
     expect(await bridge.pickPdfFiles(), hasLength(2));
     expect(await bridge.pickFiles(), hasLength(1));
+    expect(
+      await bridge.pickPdfSavePath(suggestedName: 'edited-copy.pdf'),
+      r'X:\synthetic\edited-copy.pdf',
+    );
     expect(
       await bridge.getApplicationSupportDirectory(),
       r'X:\synthetic\app-support',

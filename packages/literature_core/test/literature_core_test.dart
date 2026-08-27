@@ -23,6 +23,7 @@ void main() {
       localFileId: 'file-1',
       title: 'A title: with / invalid * characters',
       authors: ['Researcher'],
+      journal: 'Journal: of / Synthetic * Evidence',
       year: 2026,
     );
     final preview = const LiteratureNaming().previewFileName(record);
@@ -37,6 +38,7 @@ void main() {
       localFileId: 'file-rename',
       title: 'Synthetic: paper',
       authors: ['Researcher'],
+      journal: 'Synthetic Journal',
       year: 2026,
     );
     final preview = const LiteratureNaming().previewRename(
@@ -45,7 +47,7 @@ void main() {
     );
     expect(
       preview.proposedFileName,
-      'Researcher (2026) - Synthetic_ paper.pdf',
+      '2026 - Synthetic Journal - Synthetic_ paper.pdf',
     );
     expect(preview.changed, isTrue);
     expect(preview.isPreviewOnly, isTrue);
@@ -85,6 +87,7 @@ void main() {
         localFileId: 'file-long-name',
         title: title,
         authors: const ['研究者'],
+        journal: '合成期刊',
         year: 2026,
       ),
       originalFileName: 'download.pdf',
@@ -100,6 +103,52 @@ void main() {
       preview.warnings,
       isNot(contains('Windows-invalid characters were replaced.')),
     );
+  });
+
+  test('naming keeps year-journal-title order with explicit fallbacks', () {
+    const record = LiteratureRecord(
+      id: 'lit-missing-name-metadata',
+      localFileId: 'file-missing-name-metadata',
+      title: '',
+    );
+    final preview = const LiteratureNaming().previewRename(
+      record: record,
+      originalFileName: 'download.pdf',
+    );
+    expect(
+      preview.proposedFileName,
+      'n.d. - Unknown journal - Untitled paper.pdf',
+    );
+    expect(preview.warnings, contains('Publication year is missing.'));
+    expect(preview.warnings, contains('Journal metadata is missing.'));
+    expect(preview.warnings, contains('Title metadata is missing.'));
+    expect(preview.warnings, isNot(contains('Author metadata is missing.')));
+  });
+
+  test(
+    'PDF edit plan safely reorders, rotates, duplicates, and removes pages',
+    () {
+      var plan = PdfEditPlan.identity(3);
+      expect(plan.changed, isFalse);
+
+      plan = plan.move(2, 0).rotate(0, clockwise: true).duplicate(1).remove(2);
+
+      expect(
+        plan.pages.map(
+          (page) => (page.sourcePageNumber, page.clockwiseQuarterTurns),
+        ),
+        [(3, 1), (1, 0), (2, 0)],
+      );
+      expect(plan.changed, isTrue);
+      expect(plan.rotatedPageCount, 1);
+      expect(plan.duplicatedPageCount, 0);
+      expect(plan.removedPageCount, 0);
+    },
+  );
+
+  test('PDF edit plan refuses to remove its final page', () {
+    final plan = PdfEditPlan.identity(1);
+    expect(() => plan.remove(0), throwsStateError);
   });
 
   test('bounded PDF probe reads only small head and tail ranges', () async {

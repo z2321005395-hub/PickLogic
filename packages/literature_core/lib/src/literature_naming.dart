@@ -35,8 +35,8 @@ final class LiteratureNaming {
       originalFileName: originalFileName,
       proposedFileName: result.fileName,
       warnings: List<String>.unmodifiable([
-        if (record.authors.isEmpty) 'Author metadata is missing.',
         if (record.year == null) 'Publication year is missing.',
+        if (record.journal.trim().isEmpty) 'Journal metadata is missing.',
         if (record.title.trim().isEmpty) 'Title metadata is missing.',
         if (result.sanitized) 'Windows-invalid characters were replaced.',
         if (result.truncated) 'The preview was shortened to 180 characters.',
@@ -51,14 +51,14 @@ final class LiteratureNaming {
   ({String fileName, bool sanitized, bool truncated}) _buildFileName(
     LiteratureRecord record,
   ) {
-    final author = record.authors.isEmpty
-        ? 'Unknown author'
-        : record.authors.first;
     final year = record.year?.toString() ?? 'n.d.';
+    final journal = record.journal.trim().isEmpty
+        ? 'Unknown journal'
+        : record.journal.trim();
     final title = record.title.trim().isEmpty
         ? 'Untitled paper'
         : record.title.trim();
-    final rawStem = '$author ($year) - $title';
+    final rawStem = '$year - $journal - $title';
     var stem = rawStem
         .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
         .replaceAll(RegExp(r'[ .]+$'), '');

@@ -11,10 +11,12 @@ resolution: workspace
 dependencies:
   archive: 4.0.9
   desktop_drop: 0.7.1
+  ffi: 2.2.0
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  pdfium_dart: 0.2.5
   pdfrx: 2.4.7
   picklogic_classification_rules:
     path: ../../packages/classification_rules

@@ -333,3 +333,18 @@ Commit this validation note, push the feature branch, open a genuine integration
 ## Next action
 
 Push this scoped branch, require green CI, merge into `develop`, then let the maintainer visually review the already launched Standard/Pro windows after unlocking Windows. Keep the packages local; routine CI must not upload them.
+
+## PDF editing and Android folder Insight recovery
+
+- Literature rename previews now use `year - journal - title.pdf` with safe `n.d.`, `Unknown journal`, and `Untitled paper` fallbacks. Commit: `5b354ee`.
+- Pro can reorder, rotate, duplicate, and remove PDF pages with undo/redo, then embed local annotations and save a new PDF. The source and any existing destination are never overwritten; PDF copy/assembly/annotation permissions are respected. Commit: `662c1b7`.
+- Mobile Storage Insight now traverses every directory in user-authorized SAF trees, page by page, and explains folders from verified access, naming/path conventions, package identifiers, and direct-child MIME metadata. Unknown remains `UNKNOWN`; Android private data remains inaccessible. Commit: `269f789`.
+- The folder scan is read-only, cancellable, survives per-folder provider failures, and performs no file-body read, thumbnail, OCR, hash, rename, move, or delete. Each directory in the normal folder browser also has an on-demand Insight action.
+- Mobile file Insight now separates verified facts, rule inference, risk, confidence, and limitations; it no longer reports a fixed 80% confidence or raw byte count.
+- Verification: Literature Core 23/23, Windows Bridge 10/10, Desktop 29/29, and Mobile 46/46 passed; targeted analyzers are clean; license audit reports 114 external + 5 Flutter SDK packages with zero findings; privacy findings 0.
+- ASCII-path Windows Pro Release build passed at 43,092,582 bytes installed; local ZIP is 18,989,942 bytes. The arm64 Profile APK is 32,456,378 bytes, v2-signed, and has SHA-256 `58E8A17D7A391582DB80BABFB1D30A8B2A4FF4A85E4D548128889FA72381472A`.
+- All nine stale PickLogic GUI instances were closed. `AGENTS.md` now requires closing locally launched GUI and app-owned ADB debug sessions after verification unless the maintainer is actively testing.
+
+## Next action
+
+The Z70 is currently ADB `offline`; after the maintainer unlocks/reconnects it and accepts any RSA prompt, install and launch the verified APK without clearing app data. Push this feature branch, require green CI, and merge it into `develop`; keep routine packages local under `codex_output/`.

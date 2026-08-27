@@ -8,6 +8,7 @@ export 'src/library_catalog.dart';
 export 'src/library_organization.dart';
 export 'src/literature_annotation.dart';
 export 'src/literature_naming.dart';
+export 'src/pdf_edit_plan.dart';
 export 'src/pdf_metadata_reader.dart';
 export 'src/reading_progress.dart';
 export 'src/reference_duplicates.dart';

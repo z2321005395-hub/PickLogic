@@ -56,6 +56,14 @@ class MethodChannelPicklogicWindowsBridge
   }
 
   @override
+  Future<String?> pickPdfSavePath({String? title, String? suggestedName}) {
+    final arguments = <String, Object?>{};
+    if (title != null) arguments['title'] = title;
+    if (suggestedName != null) arguments['suggestedName'] = suggestedName;
+    return methodChannel.invokeMethod<String>('pickPdfSavePath', arguments);
+  }
+
+  @override
   Future<String> getApplicationSupportDirectory() async => (await methodChannel
       .invokeMethod<String>('getApplicationSupportDirectory'))!;
 
