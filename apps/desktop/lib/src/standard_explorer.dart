@@ -463,9 +463,24 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       _searchController.selection = TextSelection.collapsed(
         offset: _searchController.text.length,
       );
-      _detailMode = _DetailMode.hidden;
+      _detailMode = _hasContext(_panes[index])
+          ? _DetailMode.context
+          : _DetailMode.hidden;
     });
   }
+
+  String? _directoryContextPath(_PaneState pane) {
+    final path = pane.snapshot?.path;
+    if (path == null ||
+        path.startsWith('search:') ||
+        path.startsWith('duplicates:')) {
+      return null;
+    }
+    return path;
+  }
+
+  bool _hasContext(_PaneState pane) =>
+      pane.selected != null || _directoryContextPath(pane) != null;
 
   Future<void> _navigate(int paneIndex, String path) async {
     final pane = _panes[paneIndex];
@@ -481,6 +496,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       setState(() {
         pane.snapshot = snapshot;
         pane.loading = false;
+        if (paneIndex == _activePane) _detailMode = _DetailMode.context;
       });
     } catch (_) {
       if (!mounted) return;
@@ -510,6 +526,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       _recentEntries.removeWhere((recent) => recent.id == entry.id);
       _recentEntries.insert(0, entry);
       if (_recentEntries.length > 12) _recentEntries.removeLast();
+      _detailMode = _DetailMode.context;
     });
   }
 
@@ -604,6 +621,9 @@ final class _StandardExplorerState extends State<StandardExplorer> {
     setState(() {
       _section = _WorkspaceSection.files;
       if (mode != null) _viewMode = mode;
+      if (_hasContext(_panes[_activePane])) {
+        _detailMode = _DetailMode.context;
+      }
     });
   }
 
@@ -742,7 +762,10 @@ final class _StandardExplorerState extends State<StandardExplorer> {
     }
     setState(() {
       _section = section;
-      _detailMode = _DetailMode.hidden;
+      _detailMode =
+          section == _WorkspaceSection.files && _hasContext(_panes[_activePane])
+          ? _DetailMode.context
+          : _DetailMode.hidden;
     });
     switch (section) {
       case _WorkspaceSection.duplicates:
@@ -891,6 +914,8 @@ final class _StandardExplorerState extends State<StandardExplorer> {
   Widget build(BuildContext context) {
     final strings = _ExplorerStrings.of(context);
     final selected = _panes[_activePane].selected;
+    final currentDirectoryPath = _directoryContextPath(_panes[_activePane]);
+    final hasContext = selected != null || currentDirectoryPath != null;
     final navigationSections = _navigationSections(widget.pro);
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
@@ -914,7 +939,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
           control: true,
           shift: true,
         ): () => setState(() {
-          if (_panes[_activePane].selected != null) {
+          if (hasContext) {
             _detailMode = _detailMode == _DetailMode.context
                 ? _DetailMode.hidden
                 : _DetailMode.context;
@@ -1021,7 +1046,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                         _panes[_activePane].query = value;
                       }),
                       onIndexSearch: _searchIndex,
-                      canShowDetails: selected != null,
+                      canShowDetails: hasContext,
                       detailMode: _detailMode,
                       onDetailModeChanged: (mode) => setState(() {
                         _detailMode = _detailMode == mode
@@ -1084,10 +1109,10 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                           : _section == _WorkspaceSection.storage
                           ? _StorageView(
                               strings: strings,
-                              repository: widget.repository,
                               summary: _storageSummary,
                               loading: _storageLoading,
                               error: _storageError,
+                              onBrowseFolders: _openWorkspace,
                             )
                           : Row(
                               children: [
@@ -1147,13 +1172,15 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                     ),
                                   ),
                                 ],
-                                if (_detailMode != _DetailMode.hidden) ...[
+                                if (_detailMode != _DetailMode.hidden &&
+                                    hasContext) ...[
                                   const VerticalDivider(width: 1),
                                   SizedBox(
-                                    width: 340,
+                                    width: 380,
                                     child: _DetailPane(
                                       mode: _detailMode,
                                       entry: selected,
+                                      directoryPath: currentDirectoryPath,
                                       strings: strings,
                                       repository: widget.repository,
                                       onClose: () => setState(
@@ -2365,17 +2392,17 @@ final class _HomePanel extends StatelessWidget {
 final class _StorageView extends StatelessWidget {
   const _StorageView({
     required this.strings,
-    required this.repository,
     required this.summary,
     required this.loading,
     required this.error,
+    required this.onBrowseFolders,
   });
 
   final _ExplorerStrings strings;
-  final DesktopRepository repository;
   final WindowsStorageSummary? summary;
   final bool loading;
   final bool error;
+  final VoidCallback onBrowseFolders;
 
   @override
   Widget build(BuildContext context) {
@@ -2400,9 +2427,15 @@ final class _StorageView extends StatelessWidget {
         const SizedBox(height: PickLogicTokens.spaceSm),
         Text(strings.storageReadOnly),
         const SizedBox(height: PickLogicTokens.spaceLg),
-        DesktopFolderInsightCard(
-          repository: repository,
-          chinese: strings.chinese,
+        Card(
+          key: const Key('storage-folder-insight-entry'),
+          child: ListTile(
+            leading: const Icon(Icons.folder_open_outlined),
+            title: Text(strings.folderInsightInBrowser),
+            subtitle: Text(strings.folderInsightInBrowserDescription),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onBrowseFolders,
+          ),
         ),
         const SizedBox(height: PickLogicTokens.spaceLg),
         if (loading)
@@ -2449,6 +2482,7 @@ final class _DetailPane extends StatelessWidget {
   const _DetailPane({
     required this.mode,
     required this.entry,
+    required this.directoryPath,
     required this.strings,
     required this.repository,
     required this.onClose,
@@ -2458,6 +2492,7 @@ final class _DetailPane extends StatelessWidget {
 
   final _DetailMode mode;
   final BrowseEntry? entry;
+  final String? directoryPath;
   final _ExplorerStrings strings;
   final DesktopRepository repository;
   final VoidCallback onClose;
@@ -2484,7 +2519,9 @@ final class _DetailPane extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: selected == null
-                ? Center(child: Text(strings.noSelection))
+                ? directoryPath == null
+                      ? Center(child: Text(strings.noSelection))
+                      : _buildCurrentFolder(context, directoryPath!)
                 : Column(
                     children: [
                       Expanded(
@@ -2612,6 +2649,37 @@ final class _DetailPane extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildCurrentFolder(BuildContext context, String path) => ListView(
+    key: const Key('current-folder-context'),
+    padding: const EdgeInsets.all(PickLogicTokens.spaceMd),
+    children: [
+      const Icon(Icons.folder_outlined, size: 56),
+      const SizedBox(height: PickLogicTokens.spaceSm),
+      Text(
+        _basename(path),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: PickLogicTokens.spaceSm),
+      SelectableText(path, textAlign: TextAlign.center),
+      const SizedBox(height: PickLogicTokens.spaceLg),
+      Row(
+        children: [
+          const Icon(Icons.lightbulb_outline, size: 18),
+          const SizedBox(width: 6),
+          Text(strings.insight, style: Theme.of(context).textTheme.titleSmall),
+        ],
+      ),
+      const SizedBox(height: PickLogicTokens.spaceSm),
+      DesktopSelectedFolderInsight(
+        key: ValueKey('folder-insight-$path'),
+        repository: repository,
+        path: path,
+        chinese: strings.chinese,
+      ),
+    ],
+  );
 }
 
 final class _Fact extends StatelessWidget {
@@ -2710,6 +2778,11 @@ final class _ExplorerStrings {
   String get storageReadOnly => chinese
       ? '仅显示系统磁盘容量摘要；不会扫描或修改文件。'
       : 'Shows system-drive capacity only; files are not scanned or changed.';
+  String get folderInsightInBrowser =>
+      chinese ? '打开文件夹并自动显示知件' : 'Browse folders with automatic Insight';
+  String get folderInsightInBrowserDescription => chinese
+      ? '无需另外选择“分析目录”。进入任意文件夹后，右侧窗口会自动显示当前目录或所选文件的信息。'
+      : 'No separate analysis picker is needed. The right pane follows the current folder or selected file automatically.';
   String get storageUnavailable =>
       chinese ? '无法读取系统磁盘容量摘要。' : 'System-drive summary is unavailable.';
   String get storageUsed => chinese ? '已用' : 'Used';

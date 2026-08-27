@@ -390,16 +390,12 @@ void main() {
     await tester.pumpWidget(const PickLogicMobileApp());
     await _openOrganize(tester, const Key('organize-storage'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('accessible-folder-insight-section')),
-      400,
-      scrollable: find.byType(Scrollable).last,
-    );
     expect(
-      find.byKey(const Key('accessible-folder-insight-section')),
+      find.byKey(const Key('storage-folder-browser-insight')),
       findsOneWidget,
     );
-    expect(find.textContaining('未知不等于垃圾'), findsOneWidget);
+    expect(find.text('浏览文件夹并自动解释'), findsOneWidget);
+    expect(find.textContaining('进入子文件夹时知件自动更新'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('明确限制'),
       600,

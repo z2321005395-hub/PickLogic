@@ -266,11 +266,13 @@ final class DesktopSelectedFolderInsight extends StatefulWidget {
     required this.repository,
     required this.path,
     required this.chinese,
+    this.compact = false,
   });
 
   final DesktopRepository repository;
   final String path;
   final bool chinese;
+  final bool compact;
 
   @override
   State<DesktopSelectedFolderInsight> createState() =>
@@ -316,7 +318,7 @@ final class _DesktopSelectedFolderInsightState
       return DesktopFolderInsightDetails(
         insight: insight,
         chinese: widget.chinese,
-        compact: true,
+        compact: widget.compact,
       );
     },
   );

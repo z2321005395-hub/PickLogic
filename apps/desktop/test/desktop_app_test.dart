@@ -43,7 +43,7 @@ void main() {
   });
 
   testWidgets(
-    'Standard panels navigate independently and details stay opt-in',
+    'Standard panels navigate independently and context follows browsing',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1800, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -79,7 +79,9 @@ void main() {
           .onDoubleTap!();
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('pane-0-entry-report')), findsOneWidget);
-      expect(find.byKey(const Key('detail-pane')), findsNothing);
+      expect(find.byKey(const Key('detail-pane')), findsOneWidget);
+      expect(find.byKey(const Key('current-folder-context')), findsOneWidget);
+      expect(find.text('已验证事实'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('pane-0-crumb-synthetic:/drive/Documents')),
         findsOneWidget,
@@ -104,9 +106,6 @@ void main() {
       tester
           .widget<InkWell>(find.byKey(const ValueKey('pane-0-entry-report')))
           .onTap!();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('detail-pane')), findsNothing);
-      await tester.tap(find.byKey(const Key('insight-tool')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('detail-pane')), findsOneWidget);
       expect(find.text('预览与知件'), findsOneWidget);
