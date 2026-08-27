@@ -327,7 +327,7 @@ Commit this validation note, push the feature branch, open a genuine integration
 - Changed `packages/shared_ui/lib/src/design_tokens.dart` plus the Desktop explorer, Pro literature workspace, PDF reader, and focused widget tests. Typography, surfaces, navigation states, fields, menus, and buttons now share one token system; low-frequency view/workspace/translation commands live in Material 3 menus.
 - Standard keeps folder selection, disk browsing, search, dual panes, duplicates, storage, Preview/Insight, and Safe Mode. Pro keeps the responsive three-pane literature model, citation/metadata actions, PDF search/zoom/page/annotation/bilingual reading, and translation controls without one oversized toolbar.
 - Verification: Shared UI 4/4, Pro focused 11/11, complete Desktop 26/26, targeted analyzer clean, privacy findings 0, format/diff checks clean. No dependency or product-data contract changed.
-- Commit `24119fe` built from `C:\Users\23210\picklogic-ui-build-24119fe`: Standard 42,864,668 B installed / 18,494,035 B ZIP; Pro 42,897,436 B installed / 18,508,131 B ZIP. Both extracted executables started successfully from `codex_output/ui-refinement-24119fe/windows/`.
+- Commit `24119fe` built from an isolated ASCII-path worktree: Standard 42,864,668 B installed / 18,494,035 B ZIP; Pro 42,897,436 B installed / 18,508,131 B ZIP. Both extracted executables started successfully from `codex_output/ui-refinement-24119fe/windows/`.
 - Blocker: Windows was locked during Computer Use capture, so no lock-screen bypass or unreliable pixel claim was made. Automated layout coverage includes 900 px and 1000 px widths with no overflow.
 
 ## Next action
