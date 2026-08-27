@@ -342,9 +342,12 @@ Push this scoped branch, require green CI, merge into `develop`, then let the ma
 - The folder scan is read-only, cancellable, survives per-folder provider failures, and performs no file-body read, thumbnail, OCR, hash, rename, move, or delete. Each directory in the normal folder browser also has an on-demand Insight action.
 - Mobile file Insight now separates verified facts, rule inference, risk, confidence, and limitations; it no longer reports a fixed 80% confidence or raw byte count.
 - Verification: Literature Core 23/23, Windows Bridge 10/10, Desktop 29/29, and Mobile 46/46 passed; targeted analyzers are clean; license audit reports 114 external + 5 Flutter SDK packages with zero findings; privacy findings 0.
-- ASCII-path Windows Pro Release build passed at 43,092,582 bytes installed; local ZIP is 18,989,942 bytes. The arm64 Profile APK is 32,456,378 bytes, v2-signed, and has SHA-256 `58E8A17D7A391582DB80BABFB1D30A8B2A4FF4A85E4D548128889FA72381472A`.
+- ASCII-path Windows Pro Release build passed at 43,092,582 bytes installed; local ZIP is 18,989,942 bytes. The installed arm64 user-test Profile APK is versionCode 2003, 32,456,386 bytes, v2-signed, and has SHA-256 `AAE98F6D334E494AB307D68FA7D7958DF891CE283A595ADAC89F1914CCDAC361`.
 - All nine stale PickLogic GUI instances were closed. `AGENTS.md` now requires closing locally launched GUI and app-owned ADB debug sessions after verification unless the maintainer is actively testing.
+- PR #36 passed quality/audits, Android arm64, Windows Standard/Pro, and packaged PDF smoke gates, then merged into `develop` as `f53f27b`. Routine PR package-upload steps were skipped.
+- The first Linux Flutter test exposed that `flutter_tester` did not register the already verified PDFium hook cache. Commit `dffd03e` now seeds the same fixed-hash `libpdfium.so` into the test runtime; the rerun passed without changing the product engine or dependency set.
+- The Z70 reconnected, rejected a safe versionCode 2001 downgrade, then accepted the rebuilt `io.picklogic.mobile.usertest` versionCode 2003 with update semantics. App data was preserved; cold launch completed in 422 ms with zero app-scoped fatal, missing-plugin, or security-exception matches.
 
 ## Next action
 
-The Z70 is currently ADB `offline`; after the maintainer unlocks/reconnects it and accepts any RSA prompt, install and launch the verified APK without clearing app data. Push this feature branch, require green CI, and merge it into `develop`; keep routine packages local under `codex_output/`.
+Pause new feature work while the maintainer tests PDF editing and Mobile Storage Insight on real content. Keep source files read-only and use only user-authorized SAF roots; refine rules from concrete unresolved-folder examples without committing private names or paths.
