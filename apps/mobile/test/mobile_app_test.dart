@@ -72,6 +72,26 @@ void main() {
     await tester.tap(find.byKey(const Key('screenshot-item-Screenshot_1.png')));
     await tester.pumpAndSettle();
     expect(find.text('Insight'), findsOneWidget);
+    expect(find.text('Verified facts'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Rule inference'),
+      160,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('mobile-insight-panel')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.text('Rule inference'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Limitations'),
+      160,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('mobile-insight-panel')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.text('Limitations'), findsOneWidget);
+    expect(find.text('Bytes'), findsNothing);
     expect(find.text('Keep'), findsOneWidget);
     expect(find.text('Later'), findsOneWidget);
     expect(
@@ -370,6 +390,16 @@ void main() {
     await tester.pumpWidget(const PickLogicMobileApp());
     await _openOrganize(tester, const Key('organize-storage'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('accessible-folder-insight-section')),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(
+      find.byKey(const Key('accessible-folder-insight-section')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('未知不等于垃圾'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('明确限制'),
       600,

@@ -50,6 +50,7 @@ Scope: the whole repository. A nearer `AGENTS.md` may add narrower rules but can
 
 - Format and inspect the diff after changes. Run the smallest relevant tests first; run all tests only for integration/release gates.
 - A task is complete only when requested artifacts build or run and verification evidence is recorded.
+- Close locally launched PickLogic GUI processes and stop app-owned ADB debug sessions after verification. Leave an instance running only when the maintainer is actively testing it or explicitly asks to keep it open.
 - Update `TASK_STATE.md` after each completed stage with goal, files, commands, results, blockers, and next action.
 - Keep Git history truthful and scoped. Do not fabricate issues, users, dates, downloads, stars, or activity.
 - Do not create or publish a remote, select a final license/copyright owner, make the repository public, scan real directories, mutate real files, or publish media without the user's required confirmation.

@@ -5,10 +5,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_insight_engine/picklogic_insight_engine.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'src/incremental_index_queue.dart';
 import 'src/mobile_file_browser.dart';
+import 'src/mobile_folder_insight.dart';
 import 'src/mobile_internal_viewer.dart';
 import 'src/mobile_localizations.dart';
 import 'src/mobile_repository.dart';
@@ -2366,6 +2368,8 @@ final class _StoragePageState extends State<_StoragePage> {
             ),
           ),
         const SizedBox(height: 12),
+        AccessibleFolderInsightSection(repository: widget.repository),
+        const SizedBox(height: 12),
         _MobileSectionTitle(strings.text('bySource')),
         ListTile(
           leading: const Icon(Icons.camera_alt_outlined),
@@ -2613,6 +2617,7 @@ final class _MobileInsightPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = MobileLocalizations.of(context);
+    final insight = const BasicInsightEngine().explainFile(record);
     return ListView(
       key: const Key('mobile-insight-panel'),
       padding: const EdgeInsets.all(20),
@@ -2627,22 +2632,22 @@ final class _MobileInsightPanel extends StatelessWidget {
             'type': _categoryLabel(strings, record.category),
           }),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
+        Text(
+          strings.text('verifiedFacts'),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
         _InsightDetail(
           label: strings.text('type'),
           value: _categoryLabel(strings, record.category),
         ),
         _InsightDetail(
-          label: strings.text('risk'),
-          value: strings.text('reviewRisk'),
-        ),
-        _InsightDetail(label: strings.text('confidence'), value: '80%'),
-        _InsightDetail(
-          label: strings.text('bytes'),
-          value: '${record.sizeBytes}',
+          label: strings.text('size'),
+          value: _formatBytes(record.sizeBytes),
         ),
         _InsightDetail(
-          label: strings.text('captured'),
+          label: strings.text('modified'),
           value: _formatDateTime(record.createdAt ?? record.modifiedAt),
         ),
         _InsightDetail(
@@ -2653,6 +2658,19 @@ final class _MobileInsightPanel extends StatelessWidget {
           label: strings.text('location'),
           value: _recordLocation(record) ?? strings.text('unknownSource'),
         ),
+        const SizedBox(height: 12),
+        Text(
+          strings.text('ruleInferenceSection'),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        _InsightDetail(
+          label: strings.text('classificationBasis'),
+          value: strings.format('classificationBasisValue', <String, Object>{
+            'extension': record.extension.isEmpty ? '—' : record.extension,
+            'mime': record.mimeType.isEmpty ? '—' : record.mimeType,
+          }),
+        ),
         _InsightDetail(
           label: strings.text('screenshotFlag'),
           value: strings.text(
@@ -2662,10 +2680,37 @@ final class _MobileInsightPanel extends StatelessWidget {
         _InsightDetail(
           label: strings.text('duplicateState'),
           value: record.hashState == HashState.complete
-              ? strings.text('reviewRisk')
-              : strings.text('notCalculated'),
+              ? strings.text('duplicateFingerprintAvailable')
+              : strings.text('duplicateNotChecked'),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          strings.text('assessment'),
+          style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
+        _InsightDetail(
+          label: strings.text('risk'),
+          value: _localizedRisk(strings, insight.riskLevel),
+        ),
+        _InsightDetail(
+          label: strings.text('confidence'),
+          value: '${(insight.confidence * 100).round()}%',
+        ),
+        const SizedBox(height: 12),
+        Text(
+          strings.text('limitationsTitle'),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          strings.text(
+            record.category == VirtualCategory.unknown
+                ? 'unknownInsightLimitation'
+                : 'fileInsightLimitation',
+          ),
+        ),
+        const SizedBox(height: 6),
         Text(strings.text('metadataEvidence')),
       ],
     );
@@ -2690,6 +2735,14 @@ final class _InsightDetail extends StatelessWidget {
     ),
   );
 }
+
+String _localizedRisk(MobileLocalizations strings, RiskLevel risk) =>
+    strings.text(switch (risk) {
+      RiskLevel.safe => 'safeRisk',
+      RiskLevel.review => 'reviewRisk',
+      RiskLevel.protected => 'protectedRisk',
+      RiskLevel.unknown => 'unknownRisk',
+    });
 
 IconData _iconFor(VirtualCategory category) => switch (category) {
   VirtualCategory.pdf ||
