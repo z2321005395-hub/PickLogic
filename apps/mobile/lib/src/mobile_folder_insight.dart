@@ -879,14 +879,16 @@ Future<void> showAndroidFolderInsightSheet({
   required String directoryUri,
   required String displayName,
   required List<String> pathSegments,
+  AndroidFolderInsight? initialInsight,
 }) async {
-  final future = AndroidFolderInsightScanner.fromRepository(repository)
-      .inspectFolder(
-        root: root,
-        directoryUri: directoryUri,
-        displayName: displayName,
-        pathSegments: pathSegments,
-      );
+  final future = initialInsight == null
+      ? AndroidFolderInsightScanner.fromRepository(repository).inspectFolder(
+          root: root,
+          directoryUri: directoryUri,
+          displayName: displayName,
+          pathSegments: pathSegments,
+        )
+      : Future<AndroidFolderInsight>.value(initialInsight);
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -918,6 +920,59 @@ Future<void> showAndroidFolderInsightSheet({
       ),
     ),
   );
+}
+
+/// Compact, always-visible summary for the folder currently being browsed.
+/// The full evidence view stays one tap away in a bottom sheet.
+final class FolderInsightSummaryCard extends StatelessWidget {
+  const FolderInsightSummaryCard({
+    super.key,
+    required this.insight,
+    required this.loading,
+    required this.failed,
+    required this.onTap,
+  });
+
+  final AndroidFolderInsight? insight;
+  final bool loading;
+  final bool failed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = _FolderInsightStrings(
+      Localizations.localeOf(context).languageCode == 'zh',
+    );
+    final value = insight;
+    final subtitle = loading
+        ? (strings.zh
+              ? '正在根据当前目录名称、路径和直属内容生成解释…'
+              : 'Explaining this folder from its name, path, and direct children…')
+        : failed || value == null
+        ? (strings.zh
+              ? '暂时无法解释；可点按详情重试。'
+              : 'Insight is temporarily unavailable. Open details to retry.')
+        : '${strings.role(value.role)} · '
+              '${strings.confidence(value.confidence)}\n'
+              '${strings.children(value.observation)}';
+    return Card(
+      key: const Key('mobile-current-folder-insight'),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: ListTile(
+        leading: const Icon(Icons.lightbulb_outline),
+        title: Text(strings.zh ? '知件 · 当前文件夹' : 'Insight · Current folder'),
+        subtitle: Text(subtitle),
+        isThreeLine: !loading && value != null,
+        trailing: loading
+            ? const SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.keyboard_arrow_up),
+        onTap: onTap,
+      ),
+    );
+  }
 }
 
 final class FolderInsightDetails extends StatelessWidget {

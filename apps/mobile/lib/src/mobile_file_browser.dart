@@ -35,10 +35,14 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
   late Future<List<AndroidBrowseRoot>> _roots;
   AndroidBrowseRoot? _root;
   AndroidBrowsePage? _page;
+  AndroidFolderInsight? _currentInsight;
   bool _loading = false;
+  bool _insightLoading = false;
   Object? _error;
+  Object? _insightError;
   bool _grid = false;
   _BrowserSort _sort = _BrowserSort.name;
+  int _insightGeneration = 0;
 
   bool get _chinese => Localizations.localeOf(context).languageCode == 'zh';
 
@@ -99,6 +103,9 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
   Future<void> _loadDirectory({bool loadMore = false}) async {
     final root = _root;
     if (root == null || _loading) return;
+    if (!loadMore) {
+      unawaited(_refreshCurrentInsight());
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -127,6 +134,68 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
       if (mounted) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _refreshCurrentInsight() async {
+    final root = _root;
+    if (root == null || _trail.isEmpty) return;
+    final location = _trail.last;
+    final pathSegments = _trail
+        .map((item) => item.name)
+        .toList(growable: false);
+    final generation = ++_insightGeneration;
+    setState(() {
+      _currentInsight = null;
+      _insightLoading = true;
+      _insightError = null;
+    });
+    try {
+      final insight =
+          await AndroidFolderInsightScanner.fromRepository(
+            widget.repository,
+          ).inspectFolder(
+            root: root,
+            directoryUri: location.documentUri,
+            displayName: location.name,
+            pathSegments: pathSegments,
+          );
+      if (!mounted || generation != _insightGeneration) return;
+      if (_root?.treeUri != root.treeUri ||
+          _trail.isEmpty ||
+          _trail.last.documentUri != location.documentUri) {
+        return;
+      }
+      setState(() => _currentInsight = insight);
+    } on Object catch (error) {
+      if (mounted && generation == _insightGeneration) {
+        setState(() => _insightError = error);
+      }
+    } finally {
+      if (mounted && generation == _insightGeneration) {
+        setState(() => _insightLoading = false);
+      }
+    }
+  }
+
+  void _returnToRoots() {
+    _insightGeneration++;
+    setState(() {
+      _root = null;
+      _trail.clear();
+      _items.clear();
+      _page = null;
+      _currentInsight = null;
+      _insightLoading = false;
+      _insightError = null;
+    });
+  }
+
+  void _handleBack() {
+    if (_trail.length > 1) {
+      unawaited(_goToTrail(_trail.length - 2));
+    } else {
+      _returnToRoots();
     }
   }
 
@@ -170,6 +239,21 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
         ..._trail.map((location) => location.name),
         entry.displayName,
       ],
+    );
+  }
+
+  Future<void> _showCurrentInsight() {
+    final root = _root;
+    if (root == null || _trail.isEmpty) return Future<void>.value();
+    final location = _trail.last;
+    return showAndroidFolderInsightSheet(
+      context: context,
+      repository: widget.repository,
+      root: root,
+      directoryUri: location.documentUri,
+      displayName: location.name,
+      pathSegments: _trail.map((item) => item.name).toList(growable: false),
+      initialInsight: _currentInsight,
     );
   }
 
@@ -234,27 +318,45 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    key: const Key('mobile-saf-file-browser'),
-    appBar: AppBar(
-      title: Text(_chinese ? '文件夹浏览' : 'Folder browser'),
-      actions: [
-        IconButton(
-          key: const Key('mobile-browser-add-root'),
-          tooltip: _chinese ? '添加文件夹' : 'Add folder',
-          onPressed: _addRoot,
-          icon: const Icon(Icons.create_new_folder_outlined),
-        ),
-        IconButton(
-          tooltip: _grid
-              ? (_chinese ? '列表视图' : 'List view')
-              : (_chinese ? '网格视图' : 'Grid view'),
-          onPressed: () => setState(() => _grid = !_grid),
-          icon: Icon(_grid ? Icons.view_list_outlined : Icons.grid_view),
-        ),
-      ],
+  Widget build(BuildContext context) => PopScope(
+    canPop: _root == null,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop && _root != null) _handleBack();
+    },
+    child: Scaffold(
+      key: const Key('mobile-saf-file-browser'),
+      appBar: AppBar(
+        title: Text(_chinese ? '文件夹浏览' : 'Folder browser'),
+        actions: [
+          if (_root != null)
+            IconButton(
+              key: const Key('mobile-browser-current-insight'),
+              tooltip: _chinese ? '当前文件夹知件' : 'Current folder Insight',
+              onPressed: _showCurrentInsight,
+              icon: _insightLoading
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.info_outline),
+            ),
+          IconButton(
+            key: const Key('mobile-browser-add-root'),
+            tooltip: _chinese ? '添加授权范围' : 'Add authorized location',
+            onPressed: _addRoot,
+            icon: const Icon(Icons.create_new_folder_outlined),
+          ),
+          IconButton(
+            tooltip: _grid
+                ? (_chinese ? '列表视图' : 'List view')
+                : (_chinese ? '网格视图' : 'Grid view'),
+            onPressed: () => setState(() => _grid = !_grid),
+            icon: Icon(_grid ? Icons.view_list_outlined : Icons.grid_view),
+          ),
+        ],
+      ),
+      body: _root == null ? _buildRoots() : _buildDirectory(),
     ),
-    body: _root == null ? _buildRoots() : _buildDirectory(),
   );
 
   Widget _buildRoots() => FutureBuilder<List<AndroidBrowseRoot>>(
@@ -269,8 +371,8 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
         children: [
           Text(
             _chinese
-                ? '选择已授权文件夹，像普通文件管理器一样逐层浏览。PickLogic 只读取内容，不会修改真实文件。'
-                : 'Open an authorized folder and browse it hierarchically. PickLogic reads content without modifying real files.',
+                ? '授权一个上级目录后，即可像普通文件管理器一样逐层浏览；进入任意子目录时知件会自动更新，无需逐个添加。PickLogic 只读，不会修改真实文件。'
+                : 'Authorize one parent folder, then browse every accessible child like a file manager. Insight updates automatically as you enter folders; children do not need to be added one by one. PickLogic remains read-only.',
           ),
           const SizedBox(height: 12),
           for (final root in roots)
@@ -305,7 +407,7 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
           FilledButton.icon(
             onPressed: _addRoot,
             icon: const Icon(Icons.add),
-            label: Text(_chinese ? '添加文件夹' : 'Add folder'),
+            label: Text(_chinese ? '授权一个文件夹范围' : 'Authorize a folder'),
           ),
         ],
       );
@@ -323,11 +425,7 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
             children: [
               IconButton(
                 tooltip: _chinese ? '返回授权目录' : 'Back to roots',
-                onPressed: () => setState(() {
-                  _root = null;
-                  _trail.clear();
-                  _items.clear();
-                }),
+                onPressed: _returnToRoots,
                 icon: const Icon(Icons.storage_outlined),
               ),
               for (var index = 0; index < _trail.length; index++) ...[
@@ -339,6 +437,12 @@ final class _MobileFileBrowserPageState extends State<MobileFileBrowserPage> {
               ],
             ],
           ),
+        ),
+        FolderInsightSummaryCard(
+          insight: _currentInsight,
+          loading: _insightLoading,
+          failed: _insightError != null,
+          onTap: _showCurrentInsight,
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),

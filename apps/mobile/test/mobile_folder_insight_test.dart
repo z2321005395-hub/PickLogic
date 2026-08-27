@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
+import 'package:picklogic_android_bridge/picklogic_android_bridge_platform_interface.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_mobile/src/mobile_file_browser.dart';
 import 'package:picklogic_mobile/src/mobile_folder_insight.dart';
 import 'package:picklogic_mobile/src/mobile_repository.dart';
 
@@ -166,6 +168,56 @@ void main() {
     expect(find.textContaining('字节'), findsNothing);
   });
 
+  testWidgets('file browser Insight follows the current folder and back path', (
+    tester,
+  ) async {
+    final originalPlatform = PicklogicAndroidBridgePlatform.instance;
+    final platform = _ContextFolderPlatform();
+    PicklogicAndroidBridgePlatform.instance = platform;
+    addTearDown(() {
+      PicklogicAndroidBridgePlatform.instance = originalPlatform;
+    });
+    final repository = AndroidMobileRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: const <Locale>[Locale('zh'), Locale('en')],
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: MobileFileBrowserPage(
+          repository: repository,
+          initialRoot: _ContextFolderPlatform.root,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('mobile-current-folder-insight')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('当前层：1 个子目录'), findsOneWidget);
+    expect(platform.inspectedUris.last, _ContextFolderPlatform.rootUri);
+
+    await tester.tap(find.text('Documents'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('文档集合'), findsOneWidget);
+    expect(platform.inspectedUris.last, _ContextFolderPlatform.documentsUri);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(platform.inspectedUris.last, _ContextFolderPlatform.rootUri);
+    expect(find.text('Documents'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('mobile-current-folder-insight')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('folder-insight-details')), findsOneWidget);
+    expect(find.text('已验证事实'), findsOneWidget);
+  });
+
   testWidgets('empty storage Insight exposes the authorization action first', (
     tester,
   ) async {
@@ -235,3 +287,83 @@ AndroidBrowseEntry _file(String name, String parentUri, String mimeType) =>
       sizeBytes: 1024,
       modifiedAt: DateTime.utc(2026, 8, 27),
     );
+
+final class _ContextFolderPlatform extends PicklogicAndroidBridgePlatform {
+  static const treeUri = 'content://tree/primary';
+  static const rootUri = 'content://tree/primary/document/primary:';
+  static const documentsUri =
+      'content://tree/primary/document/primary:Documents';
+  static const root = AndroidBrowseRoot(
+    treeUri: treeUri,
+    documentUri: rootUri,
+    displayName: '内部存储',
+  );
+
+  final List<String> inspectedUris = <String>[];
+
+  AndroidBrowseEntry get documents => AndroidBrowseEntry(
+    documentUri: documentsUri,
+    parentUri: rootUri,
+    displayName: 'Documents',
+    mimeType: 'vnd.android.document/directory',
+    directory: true,
+    sizeBytes: 0,
+    modifiedAt: DateTime.utc(2026, 8, 27),
+  );
+
+  @override
+  Future<List<AndroidBrowseRoot>> getBrowseRoots() async =>
+      const <AndroidBrowseRoot>[root];
+
+  @override
+  Future<AndroidBrowsePage> listBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+    int offset = 0,
+    int limit = 200,
+  }) async {
+    final current = directoryUri ?? rootUri;
+    return AndroidBrowsePage(
+      treeUri: treeUri,
+      directoryUri: current,
+      directoryName: current == documentsUri ? 'Documents' : '内部存储',
+      items: current == documentsUri
+          ? <AndroidBrowseEntry>[
+              AndroidBrowseEntry(
+                documentUri: '$documentsUri/report.pdf',
+                parentUri: documentsUri,
+                displayName: 'report.pdf',
+                mimeType: 'application/pdf',
+                directory: false,
+                sizeBytes: 2 * 1024 * 1024,
+                modifiedAt: DateTime.utc(2026, 8, 27),
+              ),
+            ]
+          : <AndroidBrowseEntry>[documents],
+      offset: offset,
+      hasMore: false,
+    );
+  }
+
+  @override
+  Future<AndroidBrowseDirectorySummary> inspectBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+  }) async {
+    final current = directoryUri ?? rootUri;
+    inspectedUris.add(current);
+    return AndroidBrowseDirectorySummary(
+      treeUri: treeUri,
+      directoryUri: current,
+      directoryName: current == documentsUri ? 'Documents' : '内部存储',
+      directories: current == documentsUri
+          ? const <AndroidBrowseEntry>[]
+          : <AndroidBrowseEntry>[documents],
+      directFileCount: current == documentsUri ? 1 : 0,
+      directFileBytes: current == documentsUri ? 2 * 1024 * 1024 : 0,
+      mimeFamilyCounts: current == documentsUri
+          ? const <String, int>{'document': 1}
+          : const <String, int>{},
+    );
+  }
+}

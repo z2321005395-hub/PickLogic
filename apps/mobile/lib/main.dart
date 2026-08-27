@@ -10,7 +10,6 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'src/incremental_index_queue.dart';
 import 'src/mobile_file_browser.dart';
-import 'src/mobile_folder_insight.dart';
 import 'src/mobile_internal_viewer.dart';
 import 'src/mobile_localizations.dart';
 import 'src/mobile_repository.dart';
@@ -883,8 +882,8 @@ final class _FilesPageState extends State<_FilesPage> {
                   ),
                   subtitle: Text(
                     strings.locale.languageCode == 'zh'
-                        ? '逐层打开已授权文件夹，照片、视频和文档可直接在 PickLogic 中打开。'
-                        : 'Browse authorized folders hierarchically and open photos, videos, and documents directly in PickLogic.',
+                        ? '授权一个上级目录后逐层浏览；进入子目录时知件自动更新，照片、视频和文档可直接打开。'
+                        : 'Authorize one parent folder, browse its children, and get automatic Insight for the current folder while opening photos, videos, and documents directly.',
                   ),
                   trailing: IconButton.filled(
                     tooltip: strings.locale.languageCode == 'zh'
@@ -905,8 +904,8 @@ final class _FilesPageState extends State<_FilesPage> {
                     if (roots.isEmpty) {
                       return Text(
                         strings.locale.languageCode == 'zh'
-                            ? '点击＋添加 Downloads、Documents 或任意允许访问的文件夹。'
-                            : 'Tap + to add Downloads, Documents, or another accessible folder.',
+                            ? '点击＋授权 Downloads、Documents 或更上层的共享目录一次；其可访问子目录无需逐个添加。'
+                            : 'Tap + once to authorize Downloads, Documents, or a higher shared folder; accessible children do not need separate grants.',
                       );
                     }
                     return Wrap(
@@ -2354,7 +2353,29 @@ final class _StoragePageState extends State<_StoragePage> {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 12),
-        AccessibleFolderInsightSection(repository: widget.repository),
+        Card(
+          key: const Key('storage-folder-browser-insight'),
+          child: ListTile(
+            leading: const Icon(Icons.folder_copy_outlined),
+            title: Text(
+              strings.locale.languageCode == 'zh'
+                  ? '浏览文件夹并自动解释'
+                  : 'Browse folders with automatic Insight',
+            ),
+            subtitle: Text(
+              strings.locale.languageCode == 'zh'
+                  ? '在文件管理器中打开任意已授权目录；进入子文件夹时知件自动更新，无需逐个添加。'
+                  : 'Open any authorized location in the file manager. Insight follows each child folder automatically.',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (context) =>
+                    MobileFileBrowserPage(repository: widget.repository),
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 20),
         _MobileSectionTitle(strings.text('byType')),
         const SizedBox(height: 4),

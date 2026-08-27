@@ -369,3 +369,19 @@ Pause new feature work while the maintainer tests PDF editing and Mobile Storage
 ## Next action
 
 On the phone, unlock PickLogic, open Storage, choose a shared folder through the visible SAF action, and keep the resulting traversal read-only. Use the local Standard/Pro packages for visual review; no PickLogic Windows test process was left running.
+
+## Contextual Folder Insight
+
+- Goal: remove the separate “add a folder, then analyze it” workflow and make Insight follow normal file browsing on Windows and Android.
+- Mobile now refreshes a compact current-folder Insight asynchronously whenever an authorized SAF folder or child is opened. One tap opens the full evidence sheet; Android back navigates to the parent before leaving the browser. One parent SAF grant covers its accessible descendants.
+- Desktop Standard and Pro now open the right Preview/Insight pane after directory navigation or item selection. With no item selected, the pane explains the current folder; Storage links back to this same browser instead of presenting a second analysis picker.
+- Safety is unchanged: browsing and explanations use local read-only metadata, Android scoped-storage limits remain enforced, and no real file operation was executed.
+- Verification: Desktop 32/32 and Mobile 48/48 tests passed; focused current-folder/back-navigation coverage passed; both targeted analyzers report no issues from an ASCII drive mapping; privacy findings 0 and `git diff --check` clean.
+- The canonical-path Windows build reproduced the known MSBuild Unicode path decoding failure before compilation. The same commit built successfully from an isolated ASCII detached worktree without moving or renaming the repository.
+- Standard is 43,115,385 bytes installed / 18,998,162-byte ZIP; Pro is 43,148,153 bytes installed / 19,012,783-byte ZIP. Both first-window smoke launches stayed alive, the packaged Pro synthetic PDF smoke exited 0, and every locally launched PickLogic Windows process was closed.
+- The v2-signed arm64-only user-test APK is 32,472,770 bytes with versionCode 2005. It updated `io.picklogic.mobile.usertest` on the authorized Z70 while preserving app data and three media read grants; app-scoped fatal/plugin/security log matches were 0. The display was not focused, so no lock-screen bypass or visual claim was attempted.
+- Local packages remain ignored under `codex_output/`; they are not routine Actions artifacts. No real Windows file or Android media item was moved, renamed, modified, or deleted.
+
+## Next action
+
+Push one Private PR, run CI once without routine artifact uploads, merge after green, verify Actions artifacts/caches remain empty, then collect hands-on feedback from the current-folder Insight workflow.
