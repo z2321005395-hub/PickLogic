@@ -351,3 +351,20 @@ Push this scoped branch, require green CI, merge into `develop`, then let the ma
 ## Next action
 
 Pause new feature work while the maintainer tests PDF editing and Mobile Storage Insight on real content. Keep source files read-only and use only user-authorized SAF roots; refine rules from concrete unresolved-folder examples without committing private names or paths.
+
+## Cross-platform Folder Insight usability recovery
+
+- Goal: make Storage Insight immediately usable on Mobile and provide the same evidence-based unknown-folder explanation on Desktop Standard/Pro without scanning or changing real data automatically.
+- Shared `FolderObservation`, `FolderInsight`, deterministic role/evidence rules, and cancellable breadth-first traversal now live in `insight_engine`. Android and Windows provide platform-specific one-pass direct-child summaries while locators remain opaque.
+- Mobile places `选择目录并开始分析` before storage totals, starts after SAF selection, streams completed folders, and defaults the results view to all folders. Android no longer re-queries and sorts a large directory for every 250-item page.
+- Desktop Storage has the same user-selected read-only traversal, unresolved-first review, search, live progress, cancellation, and contextual selected-folder explanation in both Standard and Pro.
+- Unknown remains unknown; no result authorizes cleanup. File bodies, OCR, hashes, Android private app data, registry, services, and file mutations are outside this scan.
+- Verification: Insight Engine 6/6, Android Bridge 12/12, Mobile 47/47, Desktop 32/32, targeted analyzers clean, privacy findings 0, dependency audit 114 external + 5 Flutter SDK packages with zero findings, and diff/format checks clean.
+- Local packages from `b1a7e88`: Standard installed 43,131,769 bytes / ZIP 19,006,231 bytes; Pro installed 43,164,537 bytes / ZIP 19,017,141 bytes; Pro PDF smoke exited 0. Both GUI launches stayed alive and were closed; zero PickLogic Windows processes remained.
+- The Z70 accepted the arm64-only user-test APK as versionCode 2004 with update semantics. App data was preserved; cold launch completed in 802 ms and app-scoped startup checks found zero fatal, missing-plugin, or security-exception matches. The locked display prevented UI automation; no lock-screen bypass was attempted.
+- Actions artifacts were reduced from 2 / 97,158,757 bytes to 0 while preserving release assets and all workflow history. A separate audit found 9,567,140,583 bytes of ephemeral per-ref Flutter caches; commit `b1a7e88` disables future Flutter SDK cache uploads. Repository artifact/log retention remains 3 days.
+- Commits: `0879d2f` product and shared-contract change; `b1a7e88` CI cache prevention.
+
+## Next action
+
+Push one integration PR, run CI once with candidate uploads disabled, merge green commits to `develop`, and verify that no artifact was created. On the phone, unlock PickLogic, open Storage, choose a shared folder through the visible SAF action, and keep the resulting traversal read-only.
