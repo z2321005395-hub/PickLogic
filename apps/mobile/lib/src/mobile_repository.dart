@@ -62,6 +62,12 @@ abstract interface class MobileRepository {
 
   Future<bool> open(FileRecord record);
 
+  /// Requests Android's own recoverable MediaStore trash flow.
+  ///
+  /// Implementations must never silently delete files and must return `false`
+  /// when the platform confirmation is cancelled or unavailable.
+  Future<bool> requestSystemTrash(List<FileRecord> records);
+
   Future<List<FileRecord>> search(String query);
 
   Future<void> close();
@@ -200,10 +206,6 @@ extension MobileRepositoryViewerCapabilities on MobileRepository {
         operationId: operationId,
       ) ??
       await loadTestWorkspace();
-
-  Future<bool> requestSystemTrash(FileRecord record) async =>
-      await _viewerBridge?.requestSystemTrash(<String>[record.locator.value]) ??
-      false;
 
   Future<List<AndroidBrowseRoot>> loadBrowseRoots() async =>
       await _viewerBridge?.getBrowseRoots() ?? const <AndroidBrowseRoot>[];
@@ -424,6 +426,38 @@ final class AndroidMobileRepository implements MobileRepository {
       bridge.openContentUri(record.locator.value);
 
   @override
+  Future<bool> requestSystemTrash(List<FileRecord> records) async {
+    if (records.isEmpty || records.length > 100) return false;
+    final uris = <String>[];
+    for (final record in records) {
+      final uri = Uri.tryParse(record.locator.value);
+      if (record.platform != PickLogicPlatform.android ||
+          !record.isAccessible ||
+          record.isProtected ||
+          record.isSystem ||
+          record.category == VirtualCategory.unknown ||
+          (record.sourceKind != SourceKind.mediaStore &&
+              record.sourceKind != SourceKind.downloads) ||
+          uri == null ||
+          uri.scheme != 'content') {
+        return false;
+      }
+      uris.add(record.locator.value);
+    }
+    final accepted = await bridge.requestSystemTrash(uris);
+    if (!accepted) return false;
+    final ids = records.map((record) => record.id).toSet();
+    _metadataCache.removeWhere((id, _) => ids.contains(id));
+    try {
+      await _indexPersistence.removeRecords(ids);
+    } on Object {
+      // The system operation succeeded. A later incremental pass repairs a
+      // stale local index if removing its rows fails.
+    }
+    return true;
+  }
+
+  @override
   Future<List<FileRecord>> search(String query) async {
     final normalized = query.trim().toLowerCase();
     if (normalized.isEmpty) return const <FileRecord>[];
@@ -457,7 +491,9 @@ final class AndroidMobileRepository implements MobileRepository {
 }
 
 final class SyntheticMobileRepository implements MobileRepository {
-  const SyntheticMobileRepository();
+  const SyntheticMobileRepository({this.systemTrashResult = false});
+
+  final bool systemTrashResult;
 
   @override
   MobileIndexQueueSnapshot get indexQueueSnapshot =>
@@ -603,6 +639,10 @@ final class SyntheticMobileRepository implements MobileRepository {
 
   @override
   Future<bool> open(FileRecord record) async => true;
+
+  @override
+  Future<bool> requestSystemTrash(List<FileRecord> records) async =>
+      systemTrashResult;
 
   @override
   Future<List<FileRecord>> search(String query) async {

@@ -531,6 +531,10 @@ final class _RetryMobileRepository implements MobileRepository {
   Future<bool> open(FileRecord record) => _delegate.open(record);
 
   @override
+  Future<bool> requestSystemTrash(List<FileRecord> records) =>
+      _delegate.requestSystemTrash(records);
+
+  @override
   Future<List<FileRecord>> search(String query) => _delegate.search(query);
 
   @override

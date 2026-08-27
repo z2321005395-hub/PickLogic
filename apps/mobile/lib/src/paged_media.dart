@@ -53,6 +53,14 @@ final class PagedMediaController<T> {
   bool get isLoading => _isLoading;
   Object? get error => _error;
 
+  bool removeById(String id) {
+    final removed = _items.remove(id) != null;
+    if (removed && _totalCount != null && _totalCount! > 0) {
+      _totalCount = _totalCount! - 1;
+    }
+    return removed;
+  }
+
   Future<void> loadNext() async {
     if (_isLoading || !_hasMore) return;
     _isLoading = true;

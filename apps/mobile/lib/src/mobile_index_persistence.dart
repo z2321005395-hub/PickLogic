@@ -10,6 +10,8 @@ abstract interface class MobileIndexPersistence
     implements MobileIndexCheckpointStore {
   Future<void> upsertRecords(List<FileRecord> records);
 
+  Future<void> removeRecords(Iterable<String> ids);
+
   Future<List<FileRecord>> search(String query, {int limit = 100});
 
   Future<void> close();
@@ -99,6 +101,9 @@ final class SqliteMobileIndexPersistence implements MobileIndexPersistence {
       _index.upsertBatch(records);
 
   @override
+  Future<void> removeRecords(Iterable<String> ids) => _index.removeByIds(ids);
+
+  @override
   Future<List<FileRecord>> search(String query, {int limit = 100}) =>
       _index.search(query, limit: limit);
 
@@ -154,6 +159,10 @@ final class LazyMobileIndexPersistence implements MobileIndexPersistence {
   @override
   Future<void> upsertRecords(List<FileRecord> records) async =>
       (await _ready).upsertRecords(records);
+
+  @override
+  Future<void> removeRecords(Iterable<String> ids) async =>
+      (await _ready).removeRecords(ids);
 
   @override
   Future<List<FileRecord>> search(String query, {int limit = 100}) async =>

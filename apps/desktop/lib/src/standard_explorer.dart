@@ -273,7 +273,49 @@ final class _StandardExplorerState extends State<StandardExplorer> {
 
   Future<void> _deleteSelected() async {
     final selected = _panes[_activePane].selected;
-    if (selected == null || _activeAccess == WorkspaceAccessLevel.browseOnly) {
+    if (selected == null) return;
+    final chinese = widget.locale.languageCode == 'zh';
+    if (_activeAccess == WorkspaceAccessLevel.browseOnly) {
+      final authorize = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const Key('trash-requires-managed-folder'),
+          title: Text(chinese ? '先授权管理目录' : 'Authorize a managed folder'),
+          content: Text(
+            chinese
+                ? '当前位置保持只读。若要把项目移到 Windows 回收站，请先选择并授权它所在的文件夹；授权后仍会逐项预览和确认。'
+                : 'This location remains read-only. To move an item to the Windows Recycle Bin, first choose and authorize its folder; every operation will still require a preview and confirmation.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(chinese ? '取消' : 'Cancel'),
+            ),
+            FilledButton.icon(
+              key: const Key('authorize-folder-for-trash'),
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.folder_open_outlined),
+              label: Text(chinese ? '选择文件夹' : 'Choose folder'),
+            ),
+          ],
+        ),
+      );
+      if (authorize == true && mounted) await _authorizeManagedFolder();
+      return;
+    }
+    if (selected.record?.isProtected == true ||
+        selected.record?.isSystem == true ||
+        (!selected.isDirectory &&
+            selected.category == VirtualCategory.unknown)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            chinese
+                ? '受保护、系统或尚未识别的项目不能直接删除。'
+                : 'Protected, system, or unclassified items cannot be deleted directly.',
+          ),
+        ),
+      );
       return;
     }
     try {
@@ -294,19 +336,21 @@ final class _StandardExplorerState extends State<StandardExplorer> {
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('workspace-operation-preview'),
-        title: Text(chinese ? '操作预览' : 'Operation preview'),
+        title: Text(chinese ? '确认移到回收站' : 'Confirm move to trash'),
         content: SelectableText(
-          '${_operationLabel(preview.operationType, chinese)}\n${preview.source.value}\n→\n$destination',
+          '${_operationLabel(preview.operationType, chinese)}\n${preview.source.value}\n→\n$destination'
+          '${preview.warnings.isEmpty ? '' : '\n\n${preview.warnings.join('\n')}'}',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(chinese ? '取消' : 'Cancel'),
           ),
-          FilledButton(
+          FilledButton.icon(
             key: const Key('confirm-workspace-operation'),
             onPressed: () => Navigator.pop(context, true),
-            child: Text(chinese ? '确认执行' : 'Confirm'),
+            icon: const Icon(Icons.delete_outline),
+            label: Text(chinese ? '移到回收站' : 'Move to trash'),
           ),
         ],
       ),
@@ -1440,7 +1484,7 @@ final class _WorkspaceActionBar extends StatelessWidget {
             ),
             TextButton.icon(
               key: const Key('trash-workspace-item'),
-              onPressed: mutable && hasSelection ? onDelete : null,
+              onPressed: hasSelection ? onDelete : null,
               icon: const Icon(Icons.delete_outline),
               label: Text(strings.moveToTrash),
             ),
@@ -2511,7 +2555,7 @@ final class _ExplorerStrings {
   String get newFolder => chinese ? '新建文件夹' : 'New folder';
   String get rename => chinese ? '重命名' : 'Rename';
   String get move => chinese ? '移动到另一栏' : 'Move to other pane';
-  String get moveToTrash => chinese ? '移至工作区回收站' : 'Move to workspace trash';
+  String get moveToTrash => chinese ? '移到回收站' : 'Move to trash';
   String get undo => chinese ? '撤销' : 'Undo';
   String get testWorkspace => chinese ? '测试工作区' : 'Test Workspace';
   String get manageFolder => chinese ? '授权管理目录' : 'Authorize managed folder';

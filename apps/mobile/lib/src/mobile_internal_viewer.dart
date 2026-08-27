@@ -6,6 +6,7 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 import 'mobile_localizations.dart';
 import 'mobile_repository.dart';
+import 'mobile_trash_controller.dart';
 
 final Set<String> _viewerFavoriteIds = <String>{};
 final Set<String> _viewerReviewIds = <String>{};
@@ -52,6 +53,87 @@ MobileInternalViewerKind mobileViewerKind(FileRecord record) {
 
 bool supportsMobileInternalViewer(FileRecord record) =>
     mobileViewerKind(record) != MobileInternalViewerKind.unsupported;
+
+Future<bool> confirmMobileSystemTrash(
+  BuildContext context, {
+  required FileRecord record,
+  required MobileRepository repository,
+}) async {
+  const controller = MobileTrashController();
+  final strings = MobileLocalizations.of(context);
+  final chinese = strings.locale.languageCode == 'zh';
+  if (!controller.canMoveToSystemTrash(record)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          chinese
+              ? '此项目是受保护、未知或只读来源，不能从 PickLogic 直接移到回收站。'
+              : 'This item is protected, unknown, or from a read-only source and cannot be trashed by PickLogic.',
+        ),
+      ),
+    );
+    return false;
+  }
+
+  final preview = controller.preview(record);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      key: const Key('mobile-trash-operation-preview'),
+      title: Text(strings.text('systemTrash')),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            record.displayName,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 6),
+          Text('${_viewerBytes(record.sizeBytes)} · ${record.mimeType}'),
+          const SizedBox(height: 12),
+          Text(strings.text('systemTrashConfirmDetail')),
+          const SizedBox(height: 8),
+          Text(
+            chinese
+                ? '该操作不会永久删除；可在 Android 系统回收站保留期内恢复。'
+                : 'This is not a permanent delete; the item can be restored while Android retains it in system trash.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: Text(strings.text('cancel')),
+        ),
+        FilledButton.icon(
+          key: const Key('confirm-mobile-system-trash'),
+          onPressed: () => Navigator.pop(dialogContext, true),
+          icon: const Icon(Icons.delete_outline),
+          label: Text(strings.text('continueAction')),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return false;
+
+  final result = await controller.execute(
+    confirmedPlan: preview.transitionTo(OperationStatus.confirmed),
+    requester: (_) => repository.requestSystemTrash(<FileRecord>[record]),
+  );
+  if (!context.mounted) return result.success;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        strings.text(
+          result.success ? 'systemTrashDone' : 'systemTrashCancelled',
+        ),
+      ),
+    ),
+  );
+  return result.success;
+}
 
 /// First-class file opener used by collections and the SAF folder browser.
 ///
@@ -109,6 +191,19 @@ final class _MobileViewerPageState extends State<MobileViewerPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(strings.text(opened ? 'opened' : 'noViewer'))),
     );
+  }
+
+  Future<void> _moveToSystemTrash() async {
+    final record = _record;
+    final moved = await confirmMobileSystemTrash(
+      context,
+      record: record,
+      repository: widget.repository,
+    );
+    if (!mounted || !moved) return;
+    _viewerFavoriteIds.remove(record.id);
+    _viewerReviewIds.remove(record.id);
+    if (Navigator.of(context).canPop()) Navigator.pop(context, true);
   }
 
   void _toggleFavorite() {
@@ -300,6 +395,25 @@ final class _MobileViewerPageState extends State<MobileViewerPage> {
                   icon: Icon(
                     _inReview ? Icons.rule_folder : Icons.rule_folder_outlined,
                   ),
+                ),
+                IconButton(
+                  key: const Key('mobile-viewer-trash'),
+                  tooltip:
+                      const MobileTrashController().canMoveToSystemTrash(
+                        _record,
+                      )
+                      ? MobileLocalizations.of(context).text('systemTrash')
+                      : (MobileLocalizations.of(context).locale.languageCode ==
+                                'zh'
+                            ? '受保护、未知或只读来源不可删除'
+                            : 'Protected, unknown, or read-only source'),
+                  onPressed:
+                      const MobileTrashController().canMoveToSystemTrash(
+                        _record,
+                      )
+                      ? _moveToSystemTrash
+                      : null,
+                  icon: const Icon(Icons.delete_outline),
                 ),
                 IconButton(
                   key: const Key('mobile-viewer-information'),
