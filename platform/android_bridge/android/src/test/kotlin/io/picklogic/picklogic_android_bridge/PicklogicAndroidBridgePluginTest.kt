@@ -45,4 +45,16 @@ internal class PicklogicAndroidBridgePluginTest {
             mediaSortOrder(hasImageColumns = false),
         )
     }
+
+    @Test
+    fun sourceHintIgnoresSystemImportOwners() {
+        assertEquals(
+            "Screenshots",
+            mediaSourceHint("com.android.shell", "Screenshots", "Screenshots"),
+        )
+        assertEquals(
+            "com.example.camera",
+            mediaSourceHint("com.example.camera", "Camera", "Camera"),
+        )
+    }
 }

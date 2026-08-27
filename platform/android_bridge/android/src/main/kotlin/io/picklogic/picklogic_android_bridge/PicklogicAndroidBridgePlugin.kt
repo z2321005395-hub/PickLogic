@@ -62,6 +62,17 @@ internal fun mediaSortOrder(hasImageColumns: Boolean): String {
     return "$primary DESC, ${MediaStore.MediaColumns._ID} DESC"
 }
 
+internal fun mediaSourceHint(
+    ownerPackage: String?,
+    bucket: String?,
+    pathHint: String?,
+): String? {
+    val meaningfulOwner = ownerPackage
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && it != "com.android.shell" && it != "android" }
+    return meaningfulOwner ?: bucket ?: pathHint
+}
+
 private data class BoundedOfficePart(
     val bytes: ByteArray,
     val truncated: Boolean,
@@ -1377,7 +1388,7 @@ class PicklogicAndroidBridgePlugin :
                     "createdAtEpochSeconds" to createdAtEpochSeconds,
                     "modifiedAtEpochSeconds" to modifiedAtEpochSeconds,
                     "relativePath" to relativePath,
-                    "sourceHint" to (ownerPackage ?: bucket ?: pathHint),
+                    "sourceHint" to mediaSourceHint(ownerPackage, bucket, pathHint),
                     "durationMillis" to if (durationColumn >= 0 && !it.isNull(durationColumn)) {
                         it.getLong(durationColumn).coerceAtLeast(0L)
                     } else {
