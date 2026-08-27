@@ -87,15 +87,37 @@ final class ProWorkspaceRoute extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(_routeTitle(context, section)),
+      toolbarHeight: 64,
+      titleSpacing: 8,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_routeTitle(context, section)),
+          Text(
+            'PickLogic Pro',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
       actions: [
         Tooltip(
           message: Localizations.localeOf(context).languageCode == 'zh'
               ? '未授权位置只读；测试工作区和已管理目录可按操作预览整理'
               : 'Unauthorized locations are read-only; Test Workspace and managed folders use operation previews',
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Icon(Icons.verified_user_outlined, size: 20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Chip(
+              avatar: const Icon(Icons.lock_outline, size: 16),
+              label: Text(
+                Localizations.localeOf(context).languageCode == 'zh'
+                    ? '本地只读'
+                    : 'Local read-only',
+              ),
+              visualDensity: VisualDensity.compact,
+            ),
           ),
         ),
       ],
@@ -1823,7 +1845,7 @@ final class _LiteratureManagerLiteViewState
         children: [
           Padding(
             key: const Key('literature-manager-lite-view'),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1879,7 +1901,7 @@ final class _LiteratureManagerLiteViewState
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 if (_loading)
                   const Expanded(
                     child: Center(child: CircularProgressIndicator()),
@@ -1896,7 +1918,12 @@ final class _LiteratureManagerLiteViewState
                   Expanded(
                     child: LayoutBuilder(
                       builder: (context, constraints) {
-                        final library = _buildLibraryList(strings);
+                        final showCollectionSidebar =
+                            constraints.maxWidth >= 1320;
+                        final library = _buildLibraryList(
+                          strings,
+                          showScopeFilter: !showCollectionSidebar,
+                        );
                         final reader = selected == null
                             ? _EmptyWorkspace(
                                 icon: Icons.menu_book_outlined,
@@ -1904,26 +1931,29 @@ final class _LiteratureManagerLiteViewState
                                 message: strings.selectLiteratureHint,
                               )
                             : _buildReaderPane(selected, strings);
-                        if (constraints.maxWidth < 820) {
+                        if (constraints.maxWidth < 980) {
+                          final libraryHeight = constraints.maxHeight < 520
+                              ? 170.0
+                              : 210.0;
                           return Column(
                             children: [
-                              SizedBox(height: 210, child: library),
+                              SizedBox(height: libraryHeight, child: library),
                               const SizedBox(height: 10),
                               Expanded(child: reader),
                             ],
                           );
                         }
-                        if (constraints.maxWidth >= 1080) {
+                        if (showCollectionSidebar) {
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               SizedBox(
-                                width: 210,
+                                width: 216,
                                 child: _buildCollectionSidebar(strings),
                               ),
-                              const SizedBox(width: 12),
-                              SizedBox(width: 330, child: library),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 10),
+                              SizedBox(width: 350, child: library),
+                              const SizedBox(width: 10),
                               Expanded(child: reader),
                             ],
                           );
@@ -1931,22 +1961,14 @@ final class _LiteratureManagerLiteViewState
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            SizedBox(width: 310, child: library),
-                            const SizedBox(width: 12),
+                            SizedBox(width: 340, child: library),
+                            const SizedBox(width: 10),
                             Expanded(child: reader),
                           ],
                         );
                       },
                     ),
                   ),
-                const SizedBox(height: 8),
-                Text(
-                  strings.libraryPrivacy,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
               ],
             ),
           ),
@@ -1979,7 +2001,10 @@ final class _LiteratureManagerLiteViewState
     );
   }
 
-  Widget _buildLibraryList(_LiteratureStrings strings) {
+  Widget _buildLibraryList(
+    _LiteratureStrings strings, {
+    required bool showScopeFilter,
+  }) {
     final entries = _visibleEntries;
     final tags = _availableTags;
     return Card(
@@ -1993,38 +2018,82 @@ final class _LiteratureManagerLiteViewState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  strings.persistentLibrary,
-                  style: Theme.of(context).textTheme.titleMedium,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        strings.persistentLibrary,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        strings.libraryCount(entries.length),
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const Key('literature-library-search'),
+                  controller: _librarySearchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: strings.searchLibrary,
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _librarySearchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: strings.clearSearch,
+                            onPressed: () {
+                              _librarySearchController.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close),
+                          ),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Expanded(
-                      child: DropdownButtonFormField<_LiteratureScope>(
-                        key: const Key('literature-scope-filter'),
-                        initialValue: _scope,
-                        isDense: true,
-                        isExpanded: true,
-                        decoration: InputDecoration(labelText: strings.view),
-                        items: [
-                          for (final scope in _LiteratureScope.values)
-                            DropdownMenuItem(
-                              value: scope,
-                              child: Text(strings.scope(scope)),
-                            ),
-                        ],
-                        onChanged: (scope) {
-                          if (scope == null) return;
-                          setState(() {
-                            _scope = scope;
-                            _selectedCollectionId = null;
-                            _checkedIds.clear();
-                          });
-                        },
+                    if (showScopeFilter) ...[
+                      Expanded(
+                        child: DropdownButtonFormField<_LiteratureScope>(
+                          key: const Key('literature-scope-filter'),
+                          initialValue: _scope,
+                          isDense: true,
+                          isExpanded: true,
+                          decoration: InputDecoration(labelText: strings.view),
+                          items: [
+                            for (final scope in _LiteratureScope.values)
+                              DropdownMenuItem(
+                                value: scope,
+                                child: Text(strings.scope(scope)),
+                              ),
+                          ],
+                          onChanged: (scope) {
+                            if (scope == null) return;
+                            setState(() {
+                              _scope = scope;
+                              _selectedCollectionId = null;
+                              _checkedIds.clear();
+                            });
+                          },
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: DropdownButtonFormField<LiteratureSortMode>(
                         key: const Key('literature-sort-filter'),
@@ -2045,27 +2114,6 @@ final class _LiteratureManagerLiteViewState
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  key: const Key('literature-library-search'),
-                  controller: _librarySearchController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: strings.searchLibrary,
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _librarySearchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: strings.clearSearch,
-                            onPressed: () {
-                              _librarySearchController.clear();
-                              setState(() {});
-                            },
-                            icon: const Icon(Icons.close),
-                          ),
-                  ),
                 ),
                 if (tags.isNotEmpty) ...[
                   const SizedBox(height: 8),
@@ -2103,8 +2151,9 @@ final class _LiteratureManagerLiteViewState
                 ? Center(child: Text(strings.noLibraryMatches))
                 : ListView.separated(
                     key: const Key('literature-library-list'),
+                    padding: const EdgeInsets.all(6),
                     itemCount: entries.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const SizedBox(height: 2),
                     itemBuilder: (context, index) {
                       final entry = entries[index];
                       final record = entry.record;
@@ -2113,9 +2162,16 @@ final class _LiteratureManagerLiteViewState
                       return ListTile(
                         key: Key('literature-entry-${entry.id}'),
                         selected: entry.id == _selectedId,
+                        selectedTileColor: Theme.of(context)
+                            .colorScheme
+                            .secondaryContainer
+                            .withValues(alpha: 0.65),
+                        hoverColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHigh,
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
+                          horizontal: 8,
+                          vertical: 3,
                         ),
                         leading: Checkbox(
                           key: Key('literature-check-${entry.id}'),
@@ -2458,59 +2514,64 @@ final class _LiteratureManagerLiteViewState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  selected.record.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  selected.fileName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      OutlinedButton.icon(
-                        key: const Key('literature-metadata-action'),
-                        onPressed: () => _showMetadata(selected, strings),
-                        icon: const Icon(Icons.info_outline),
-                        label: Text(strings.metadataAction),
+                      Text(
+                        selected.record.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
-                      OutlinedButton.icon(
-                        key: const Key('literature-rename-preview-action'),
-                        onPressed: selected.hasLocalPdf
-                            ? () => _showRenamePreview(selected, strings)
-                            : () => _attachPdf(selected),
-                        icon: Icon(
-                          selected.hasLocalPdf
-                              ? Icons.drive_file_rename_outline
-                              : Icons.picture_as_pdf_outlined,
-                        ),
-                        label: Text(
-                          selected.hasLocalPdf
-                              ? strings.previewAction
-                              : strings.attachPdf,
+                      const SizedBox(height: 2),
+                      Text(
+                        '${selected.record.authors.isEmpty ? strings.authorUnknown : selected.record.authors.first} · '
+                        '${selected.record.year?.toString() ?? strings.yearUnknown}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      OutlinedButton.icon(
-                        key: const Key('literature-citation-action'),
-                        onPressed: () => _showCitation(selected, strings),
-                        icon: const Icon(Icons.format_quote_outlined),
-                        label: Text(strings.citationAction),
+                      Text(
+                        selected.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  key: const Key('literature-metadata-action'),
+                  onPressed: () => _showMetadata(selected, strings),
+                  tooltip: strings.metadataAction,
+                  icon: const Icon(Icons.info_outline),
+                ),
+                IconButton(
+                  key: const Key('literature-rename-preview-action'),
+                  onPressed: selected.hasLocalPdf
+                      ? () => _showRenamePreview(selected, strings)
+                      : () => _attachPdf(selected),
+                  tooltip: selected.hasLocalPdf
+                      ? strings.previewAction
+                      : strings.attachPdf,
+                  icon: Icon(
+                    selected.hasLocalPdf
+                        ? Icons.drive_file_rename_outline
+                        : Icons.picture_as_pdf_outlined,
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  key: const Key('literature-citation-action'),
+                  onPressed: () => _showCitation(selected, strings),
+                  icon: const Icon(Icons.format_quote_outlined),
+                  label: Text(strings.citationAction),
                 ),
               ],
             ),
@@ -2730,17 +2791,37 @@ final class _ProHeader extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final identity = Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 30, color: Theme.of(context).colorScheme.primary),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: 21,
+              color: Theme.of(context).colorScheme.onSecondaryContainer,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                Text(title, style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 2),
-                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -2749,7 +2830,7 @@ final class _ProHeader extends StatelessWidget {
         ],
       );
       if (trailing == null) return identity;
-      if (constraints.maxWidth < 1100) {
+      if (constraints.maxWidth < 900) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2964,6 +3045,7 @@ final class _LiteratureStrings {
       : 'Choose Add literature or drop PDFs here to start reading.';
   String get persistentLibrary =>
       isChinese ? '文献列表 · 持久保存' : 'Library · Persistent';
+  String libraryCount(int count) => isChinese ? '$count 篇' : '$count items';
   String get searchLibrary => isChinese
       ? '搜索标题、作者、期刊、DOI 或标签'
       : 'Search title, author, journal, DOI, or tag';

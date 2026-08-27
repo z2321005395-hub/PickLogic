@@ -22,13 +22,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('拾理'), findsOneWidget);
-    expect(find.text('首页'), findsOneWidget);
+    expect(find.text('首页'), findsWidgets);
     expect(find.text('文件'), findsOneWidget);
     expect(find.text('搜索'), findsOneWidget);
     expect(find.text('重复项'), findsOneWidget);
     expect(find.text('存储'), findsOneWidget);
     expect(find.byKey(const Key('desktop-home')), findsOneWidget);
     expect(find.byKey(const Key('home-dual-pane')), findsOneWidget);
+    expect(find.byKey(const Key('workspace-view-mode')), findsOneWidget);
     expect(find.byKey(const Key('detail-pane')), findsNothing);
     expect(
       tester.widget<Switch>(find.byKey(const Key('auto-index-switch'))).value,
@@ -54,6 +55,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('home-dual-pane')));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('workspace-tools-menu')), findsOneWidget);
 
       tester
           .widget<InkWell>(
@@ -314,7 +316,7 @@ void main() {
         find.textContaining('Common-folder indexing completed'),
         findsOneWidget,
       );
-      expect(find.text('Files'), findsOneWidget);
+      expect(find.text('Files'), findsWidgets);
       expect(find.text('Search'), findsOneWidget);
       expect(find.text('Duplicates'), findsOneWidget);
       expect(find.text('Storage'), findsOneWidget);
@@ -561,14 +563,20 @@ void main() {
     expect(find.text('本地渲染'), findsOneWidget);
     expect(find.text('搜索 PDF 文本'), findsOneWidget);
     expect(find.text('跳至页'), findsOneWidget);
-    expect(find.textContaining('不上传、不改写'), findsOneWidget);
+    expect(
+      tester.widget<Tooltip>(find.byKey(const Key('pdf-local-status'))).message,
+      contains('不上传、不改写'),
+    );
 
     await tester.pumpWidget(build(const Locale('en')));
     await tester.pump();
     expect(find.text('Local rendering'), findsOneWidget);
     expect(find.text('Search PDF text'), findsOneWidget);
     expect(find.text('Go to page'), findsOneWidget);
-    expect(find.textContaining('no upload, rewrite'), findsOneWidget);
+    expect(
+      tester.widget<Tooltip>(find.byKey(const Key('pdf-local-status'))).message,
+      contains('no upload, rewrite'),
+    );
     expect(find.text('本地渲染'), findsNothing);
   });
 

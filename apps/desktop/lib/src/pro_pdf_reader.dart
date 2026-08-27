@@ -936,6 +936,374 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     }
   }
 
+  Widget _buildReaderToolbar(
+    _PdfReaderStrings strings, {
+    required String matchLabel,
+    required String zoomLabel,
+  }) {
+    final document = _document;
+    final searcher = _searcher;
+    return Material(
+      key: const Key('pdf-reader-toolbar'),
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 1200;
+            final localStatus = Tooltip(
+              key: const Key('pdf-local-status'),
+              message: widget.isSynthetic
+                  ? strings.syntheticDescription
+                  : strings.localDescription,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lock_outline, size: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    strings.localRendering,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ],
+              ),
+            );
+            final searchControls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: compact ? 150 : 190,
+                  child: TextField(
+                    key: const Key('pdf-search-field'),
+                    controller: _searchController,
+                    enabled: searcher != null,
+                    decoration: InputDecoration(
+                      labelText: strings.searchPdfText,
+                      hintText: strings.searchHint,
+                      prefixIcon: const Icon(Icons.search, size: 19),
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _startSearch(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-search-action'),
+                  tooltip: strings.search,
+                  onPressed: searcher == null ? null : _startSearch,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                if (!compact)
+                  SizedBox(
+                    width: 72,
+                    child: Text(
+                      matchLabel,
+                      key: const Key('pdf-search-status'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  )
+                else
+                  Offstage(
+                    child: Text(
+                      matchLabel,
+                      key: const Key('pdf-search-status'),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: strings.previousMatch,
+                  onPressed: searcher?.hasMatches == true
+                      ? () => searcher!.goToPrevMatch()
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_up),
+                ),
+                IconButton(
+                  tooltip: strings.nextMatch,
+                  onPressed: searcher?.hasMatches == true
+                      ? () => searcher!.goToNextMatch()
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_down),
+                ),
+              ],
+            );
+            final zoomControls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const Key('pdf-zoom-out'),
+                  tooltip: strings.zoomOut,
+                  onPressed: _viewerController.isReady
+                      ? () => _viewerController.zoomDown()
+                      : null,
+                  icon: const Icon(Icons.remove),
+                ),
+                SizedBox(
+                  width: 46,
+                  child: Text(
+                    zoomLabel,
+                    key: const Key('pdf-zoom-status'),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-zoom-in'),
+                  tooltip: strings.zoomIn,
+                  onPressed: _viewerController.isReady
+                      ? () => _viewerController.zoomUp()
+                      : null,
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            );
+            final pageControls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 74,
+                  child: TextField(
+                    key: const Key('pdf-page-jump-field'),
+                    controller: _pageController,
+                    enabled: document != null,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: strings.jumpToPage),
+                    onSubmitted: (_) => _jumpToPage(),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-page-jump-action'),
+                  tooltip: strings.jump,
+                  onPressed: document == null ? null : _jumpToPage,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+                if (!compact)
+                  SizedBox(
+                    width: 82,
+                    child: Text(
+                      document == null
+                          ? (_loadSucceeded
+                                ? strings.preparingPages
+                                : strings.loadingPdf)
+                          : strings.pagePosition(
+                              _pageNumber,
+                              document.pages.length,
+                            ),
+                      key: const Key('pdf-page-status'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  )
+                else
+                  Offstage(
+                    child: Text(
+                      document == null
+                          ? strings.loadingPdf
+                          : strings.pagePosition(
+                              _pageNumber,
+                              document.pages.length,
+                            ),
+                      key: const Key('pdf-page-status'),
+                    ),
+                  ),
+              ],
+            );
+            final readingControls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const Key('pdf-toggle-annotations-action'),
+                  onPressed:
+                      widget.annotations.isNotEmpty ||
+                          widget.onSaveAnnotation != null
+                      ? () => setState(
+                          () => _annotationsVisible = !_annotationsVisible,
+                        )
+                      : null,
+                  tooltip: strings.annotations(widget.annotations.length),
+                  isSelected: _annotationsVisible,
+                  icon: Icon(
+                    _annotationsVisible ? Icons.notes : Icons.notes_outlined,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('pdf-bilingual-toggle-action'),
+                  onPressed: () =>
+                      setState(() => _bilingualVisible = !_bilingualVisible),
+                  tooltip: strings.bilingualReading,
+                  isSelected: _bilingualVisible,
+                  icon: const Icon(Icons.chrome_reader_mode_outlined),
+                ),
+                MenuAnchor(
+                  key: const Key('pdf-translation-menu'),
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const Key('pdf-translate-page-action'),
+                      onPressed:
+                          document == null ||
+                              _translationBusy ||
+                              _documentTranslationBusy
+                          ? null
+                          : _translateCurrentPage,
+                      leadingIcon: const Icon(Icons.translate_outlined),
+                      child: Text(strings.translateCurrentPage),
+                    ),
+                    if (_documentTranslationBusy)
+                      MenuItemButton(
+                        key: const Key('pdf-stop-document-translation-action'),
+                        onPressed: () =>
+                            setState(() => _cancelDocumentTranslation = true),
+                        leadingIcon: const Icon(Icons.stop_circle_outlined),
+                        child: Text(strings.stopTranslation),
+                      )
+                    else
+                      MenuItemButton(
+                        key: const Key('pdf-translate-document-action'),
+                        onPressed: document == null ? null : _translateDocument,
+                        leadingIcon: const Icon(Icons.auto_stories_outlined),
+                        child: Text(strings.translateDocument),
+                      ),
+                    if (widget.translationStore != null)
+                      MenuItemButton(
+                        key: const Key('pdf-terminology-action'),
+                        onPressed: _showTerminologyEditor,
+                        leadingIcon: const Icon(Icons.spellcheck_outlined),
+                        child: Text(strings.terminology),
+                      ),
+                  ],
+                  builder: (context, controller, child) =>
+                      IconButton.filledTonal(
+                        onPressed: () => controller.isOpen
+                            ? controller.close()
+                            : controller.open(),
+                        tooltip: strings.translationTools,
+                        icon: const Icon(Icons.translate),
+                      ),
+                ),
+              ],
+            );
+            if (compact) {
+              return Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  localStatus,
+                  searchControls,
+                  zoomControls,
+                  pageControls,
+                  readingControls,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                localStatus,
+                const SizedBox(width: 10),
+                searchControls,
+                const SizedBox(height: 24, child: VerticalDivider(width: 14)),
+                zoomControls,
+                const SizedBox(height: 24, child: VerticalDivider(width: 14)),
+                pageControls,
+                const Spacer(),
+                readingControls,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectionToolbar(_PdfReaderStrings strings) => Material(
+    key: const Key('pdf-selection-toolbar'),
+    color: Theme.of(context).colorScheme.secondaryContainer,
+    borderRadius: BorderRadius.circular(10),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          if (_selectionLoading)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            Chip(
+              key: const Key('pdf-selection-status'),
+              avatar: const Icon(Icons.text_fields, size: 16),
+              label: Text(strings.selectedCharacters(_selectedText.length)),
+            ),
+          const SizedBox(width: 4),
+          TextButton.icon(
+            key: const Key('pdf-copy-selection-action'),
+            onPressed: _selectedText.isEmpty ? null : _copySelection,
+            icon: const Icon(Icons.copy_outlined),
+            label: Text(strings.copySelection),
+          ),
+          FilledButton.tonalIcon(
+            key: const Key('pdf-translate-selection-action'),
+            onPressed: _selectedText.isEmpty || _translationBusy
+                ? null
+                : _translateSelection,
+            icon: const Icon(Icons.translate),
+            label: Text(strings.translateSelection),
+          ),
+          TextButton.icon(
+            key: const Key('pdf-annotate-selection-action'),
+            onPressed:
+                _selectedText.isEmpty ||
+                    widget.onSaveAnnotation == null ||
+                    _annotationBusy
+                ? null
+                : _saveSelectionAsAnnotation,
+            icon: const Icon(Icons.highlight_outlined),
+            label: Text(strings.saveAnnotation),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _buildDocumentTranslationProgress(_PdfReaderStrings strings) =>
+      Material(
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: LinearProgressIndicator(
+                  value: _translationTotal == 0
+                      ? null
+                      : _translationProgress / _translationTotal,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                strings.translationProgress(
+                  _translationProgress,
+                  _translationTotal,
+                ),
+                key: const Key('pdf-document-translation-progress'),
+              ),
+              IconButton(
+                key: const Key('pdf-stop-document-translation-action'),
+                tooltip: strings.stopTranslation,
+                onPressed: () =>
+                    setState(() => _cancelDocumentTranslation = true),
+                icon: const Icon(Icons.stop_circle_outlined),
+              ),
+            ],
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final strings = _PdfReaderStrings.of(context);
@@ -962,235 +1330,29 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       key: const Key('pro-pdf-reader'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          widget.isSynthetic
-              ? strings.syntheticDescription
-              : strings.localDescription,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall,
+        _buildReaderToolbar(
+          strings,
+          matchLabel: matchLabel,
+          zoomLabel: zoomLabel,
         ),
-        const SizedBox(height: 6),
-        Material(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  strings.localRendering,
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                if (_selectionLoading)
-                  const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                if (_selectedText.isNotEmpty) ...[
-                  Chip(
-                    key: const Key('pdf-selection-status'),
-                    avatar: const Icon(Icons.text_fields, size: 16),
-                    label: Text(
-                      strings.selectedCharacters(_selectedText.length),
-                    ),
-                  ),
-                  TextButton.icon(
-                    key: const Key('pdf-copy-selection-action'),
-                    onPressed: _copySelection,
-                    icon: const Icon(Icons.copy_outlined),
-                    label: Text(strings.copySelection),
-                  ),
-                  FilledButton.tonalIcon(
-                    key: const Key('pdf-translate-selection-action'),
-                    onPressed: _translationBusy ? null : _translateSelection,
-                    icon: _translationBusy
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.translate),
-                    label: Text(strings.translateSelection),
-                  ),
-                  OutlinedButton.icon(
-                    key: const Key('pdf-annotate-selection-action'),
-                    onPressed:
-                        widget.onSaveAnnotation == null || _annotationBusy
-                        ? null
-                        : _saveSelectionAsAnnotation,
-                    icon: const Icon(Icons.highlight_outlined),
-                    label: Text(strings.saveAnnotation),
-                  ),
-                ],
-                if (widget.annotations.isNotEmpty ||
-                    widget.onSaveAnnotation != null)
-                  TextButton.icon(
-                    key: const Key('pdf-toggle-annotations-action'),
-                    onPressed: () => setState(
-                      () => _annotationsVisible = !_annotationsVisible,
-                    ),
-                    icon: Icon(
-                      _annotationsVisible ? Icons.notes : Icons.notes_outlined,
-                    ),
-                    label: Text(strings.annotations(widget.annotations.length)),
-                  ),
-                OutlinedButton.icon(
-                  key: const Key('pdf-bilingual-toggle-action'),
-                  onPressed: () =>
-                      setState(() => _bilingualVisible = !_bilingualVisible),
-                  icon: const Icon(Icons.chrome_reader_mode_outlined),
-                  label: Text(strings.bilingualReading),
-                ),
-                if (widget.translationStore != null)
-                  TextButton.icon(
-                    key: const Key('pdf-terminology-action'),
-                    onPressed: _showTerminologyEditor,
-                    icon: const Icon(Icons.spellcheck_outlined),
-                    label: Text(strings.terminology),
-                  ),
-                FilledButton.tonalIcon(
-                  key: const Key('pdf-translate-page-action'),
-                  onPressed:
-                      document == null ||
-                          _translationBusy ||
-                          _documentTranslationBusy
-                      ? null
-                      : _translateCurrentPage,
-                  icon: _translationBusy
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.translate_outlined),
-                  label: Text(strings.translateCurrentPage),
-                ),
-                if (_documentTranslationBusy) ...[
-                  Chip(
-                    key: const Key('pdf-document-translation-progress'),
-                    label: Text(
-                      strings.translationProgress(
-                        _translationProgress,
-                        _translationTotal,
-                      ),
-                    ),
-                  ),
-                  TextButton.icon(
-                    key: const Key('pdf-stop-document-translation-action'),
-                    onPressed: () =>
-                        setState(() => _cancelDocumentTranslation = true),
-                    icon: const Icon(Icons.stop_circle_outlined),
-                    label: Text(strings.stopTranslation),
-                  ),
-                ] else
-                  TextButton.icon(
-                    key: const Key('pdf-translate-document-action'),
-                    onPressed: document == null ? null : _translateDocument,
-                    icon: const Icon(Icons.auto_stories_outlined),
-                    label: Text(strings.translateDocument),
-                  ),
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: 220,
-                  child: TextField(
-                    key: const Key('pdf-search-field'),
-                    controller: _searchController,
-                    enabled: searcher != null,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      labelText: strings.searchPdfText,
-                      hintText: strings.searchHint,
-                      prefixIcon: const Icon(Icons.search),
-                    ),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => _startSearch(),
-                  ),
-                ),
-                IconButton(
-                  key: const Key('pdf-search-action'),
-                  tooltip: strings.search,
-                  onPressed: searcher == null ? null : _startSearch,
-                  icon: const Icon(Icons.arrow_forward),
-                ),
-                Text(matchLabel, key: const Key('pdf-search-status')),
-                IconButton(
-                  tooltip: strings.previousMatch,
-                  onPressed: searcher?.hasMatches == true
-                      ? () => searcher!.goToPrevMatch()
-                      : null,
-                  icon: const Icon(Icons.keyboard_arrow_up),
-                ),
-                IconButton(
-                  tooltip: strings.nextMatch,
-                  onPressed: searcher?.hasMatches == true
-                      ? () => searcher!.goToNextMatch()
-                      : null,
-                  icon: const Icon(Icons.keyboard_arrow_down),
-                ),
-                const SizedBox(width: 6),
-                IconButton(
-                  key: const Key('pdf-zoom-out'),
-                  tooltip: strings.zoomOut,
-                  onPressed: _viewerController.isReady
-                      ? () => _viewerController.zoomDown()
-                      : null,
-                  icon: const Icon(Icons.zoom_out),
-                ),
-                Text(zoomLabel, key: const Key('pdf-zoom-status')),
-                IconButton(
-                  key: const Key('pdf-zoom-in'),
-                  tooltip: strings.zoomIn,
-                  onPressed: _viewerController.isReady
-                      ? () => _viewerController.zoomUp()
-                      : null,
-                  icon: const Icon(Icons.zoom_in),
-                ),
-                const SizedBox(width: 6),
-                SizedBox(
-                  width: 86,
-                  child: TextField(
-                    key: const Key('pdf-page-jump-field'),
-                    controller: _pageController,
-                    enabled: document != null,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      labelText: strings.jumpToPage,
-                    ),
-                    onSubmitted: (_) => _jumpToPage(),
-                  ),
-                ),
-                IconButton(
-                  key: const Key('pdf-page-jump-action'),
-                  tooltip: strings.jump,
-                  onPressed: document == null ? null : _jumpToPage,
-                  icon: const Icon(Icons.arrow_forward),
-                ),
-                Text(
-                  document == null
-                      ? (_loadSucceeded
-                            ? strings.preparingPages
-                            : strings.loadingPdf)
-                      : strings.pagePosition(
-                          _pageNumber,
-                          document.pages.length,
-                        ),
-                  key: const Key('pdf-page-status'),
-                ),
-                if (_pageJumpInvalid)
-                  Text(
-                    strings.pageRange(document?.pages.length ?? 1),
-                    key: const Key('pdf-page-jump-error'),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-              ],
+        if (_selectionLoading || _selectedText.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _buildSelectionToolbar(strings),
+        ],
+        if (_documentTranslationBusy) ...[
+          const SizedBox(height: 6),
+          _buildDocumentTranslationProgress(strings),
+        ],
+        if (_pageJumpInvalid) ...[
+          const SizedBox(height: 4),
+          Text(
+            strings.pageRange(document?.pages.length ?? 1),
+            key: const Key('pdf-page-jump-error'),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.error,
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 6),
         Expanded(
           child: Row(
@@ -1620,6 +1782,7 @@ final class _PdfReaderStrings {
   String get copySelection => isChinese ? '复制' : 'Copy';
   String get translateSelection => isChinese ? '翻译' : 'Translate';
   String get bilingualReading => isChinese ? '双语阅读' : 'Bilingual view';
+  String get translationTools => isChinese ? '翻译工具' : 'Translation tools';
   String get terminology => isChinese ? '术语表' : 'Terminology';
   String get terminologyNotice => isChinese
       ? '术语仅保存在本机，并在你主动翻译时作为一致性提示发送给已配置的 Provider。'
