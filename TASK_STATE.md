@@ -398,3 +398,13 @@ Collect hands-on feedback from the current-folder Insight workflow. On Android, 
 ## Next action
 
 Run final privacy/diff checks, push this focused branch, require one green CI, merge it into `develop`, verify Actions artifacts/caches remain empty, and close both isolated Android emulators. Keep video and install packages local under ignored `codex_output/`.
+
+## GitHub integration and duplicate-run prevention
+
+- PR #39 passed quality/audits, Android arm64, Windows Standard/Pro, and packaged Pro PDF smoke gates, then merged into `develop` as `431c948`.
+- The merge exposed a workflow regression: the same three heavy jobs immediately started again for the `develop` merge commit. That duplicate run was cancelled without deleting its history; artifacts and caches remained at zero.
+- CI now skips only GitHub-created `Merge pull request` commits pushed to `develop`. Direct `develop` pushes, `main`, tags, manual candidate builds, and all PR gates remain covered.
+
+## Next action
+
+Merge the focused CI policy fix after its PR gate, confirm the resulting `develop` merge run skips heavy jobs, re-audit artifacts/caches, and close all locally launched PickLogic/emulator processes.
