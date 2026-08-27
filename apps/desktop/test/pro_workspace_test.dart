@@ -91,7 +91,8 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(find.byKey(const Key('literature-add-action')));
     await tester.pumpAndSettle();
 
@@ -188,6 +189,159 @@ void main() {
     await tester.pump();
     expect(find.textContaining('@article{'), findsOneWidget);
     expect(find.textContaining('10.5555/picklogic.synthetic'), findsOneWidget);
+  });
+
+  testWidgets('BibTeX import creates a reference that can attach a PDF later', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const bibText = r'''
+@article{synthetic2026,
+  title = {Imported reference workflow},
+  author = {Example, Ada},
+  year = {2026},
+  journal = {Synthetic Research}
+}
+''';
+    final store = _MemoryLiteratureStore([]);
+
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: ProWorkspaceRoute(
+          section: 'literature',
+          libraryStore: store,
+          referencePicker: () async => [r'X:\synthetic\library.bib'],
+          referenceLoader: (_) async => bibText,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(
+      find.byKey(const Key('literature-import-reference-action')),
+    );
+    await tester.runAsync(() async {
+      for (var attempt = 0; attempt < 50 && store.entries.isEmpty; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(store.entries, hasLength(1));
+    expect(store.entries.single.record.title, 'Imported reference workflow');
+    expect(store.entries.single.hasLocalPdf, isFalse);
+    expect(
+      find.byKey(const Key('literature-attach-pdf-action')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('1 reference record(s) imported'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('collections, bulk trash, and restore preserve source PDFs', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final entry = _entry();
+    final store = _MemoryLiteratureStore([entry]);
+    final collection = LiteratureCollection(
+      id: 'collection-project-a',
+      name: 'Project A',
+      createdAt: DateTime.utc(2026, 8, 27),
+    );
+    final collectionStore = InMemoryLiteratureCollectionStore([collection]);
+
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: ProWorkspaceRoute(
+          section: 'literature',
+          libraryStore: store,
+          collectionStore: collectionStore,
+          annotationStore: InMemoryLiteratureAnnotationStore(),
+          literaturePdfReaderBuilder: (_, _, _) => const SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('literature-check-lit-synthetic')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('literature-bulk-collection-action')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Project A').last);
+    await tester.pumpAndSettle();
+    expect(store.entries.single.collectionIds, [collection.id]);
+
+    await tester.tap(find.byKey(const Key('literature-bulk-trash-action')));
+    await tester.pumpAndSettle();
+    expect(store.entries.single.isTrashed, isTrue);
+    expect(store.entries.single.localPath, entry.localPath);
+
+    await tester.tap(find.byKey(const Key('literature-scope-trash')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('literature-check-lit-synthetic')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('literature-bulk-restore-action')));
+    await tester.pumpAndSettle();
+    expect(store.entries.single.isTrashed, isFalse);
+    expect(store.entries.single.localPath, entry.localPath);
+  });
+
+  testWidgets('persisted page translation restores bilingual source and text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final translationStore = InMemoryLiteratureTranslationStore();
+    await translationStore.upsertPage(
+      LiteraturePageTranslation(
+        literatureId: 'lit-synthetic',
+        pageNumber: 1,
+        targetLanguage: 'English',
+        sourceText: '本地原文',
+        translatedText: 'Local translation',
+        providerLabel: 'Synthetic translator',
+        updatedAt: DateTime.utc(2026, 8, 27),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: ProLocalPdfReader(
+            path: r'X:\synthetic\reader.pdf',
+            fileName: 'reader.pdf',
+            initialPageNumber: 1,
+            onPositionChanged: (_, _) {},
+            viewerBuilder: (_) => const SizedBox.expand(),
+            literatureId: 'lit-synthetic',
+            translationStore: translationStore,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const Key('pdf-bilingual-toggle-action')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('pdf-bilingual-panel')), findsOneWidget);
+    expect(find.text('本地原文'), findsOneWidget);
+    expect(find.text('Local translation'), findsOneWidget);
+    expect(
+      find.byKey(const Key('pdf-retranslate-page-action')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('PDF annotation panel exposes page-linked local notes', (

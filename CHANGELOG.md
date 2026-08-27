@@ -9,7 +9,7 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 ### Added
 
 - Android hierarchical read-only SAF folder browsing with visible-only thumbnails and first-class internal photo, video, audio, PDF, text, archive, APK, and Office viewers.
-- Pro literature-library search and tags, page-linked local annotations, BibTeX/RIS/text citation copy, current-page bilingual reading, and explicitly confirmed full-document translation.
+- Pro literature collections and smart filters, reference-only BibTeX/RIS import, duplicate merging, ratings/star/trash organization, persistent bilingual reading and terminology, page-coordinate highlight/underline/strikethrough/note overlays, six local citation styles, and Word-compatible rich-text bibliography copy.
 - Desktop image, PDF, bounded-text, folder, and metadata preview in one Preview/Insight context panel.
 - Android compact file-type, smart-collection, app/source, screenshot-filter, and read-only storage-facet navigation.
 - Shared PickLogic SVG file-type visuals and real bounded image/media thumbnails.

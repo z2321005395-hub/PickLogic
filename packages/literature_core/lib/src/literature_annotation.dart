@@ -1,8 +1,69 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:sqlite3/sqlite3.dart';
 
-enum LiteratureAnnotationKind { highlight, note }
+enum LiteratureAnnotationKind { highlight, underline, strikethrough, note }
+
+/// One annotation rectangle in PDF page coordinates (origin at bottom-left).
+final class LiteratureAnnotationBox {
+  LiteratureAnnotationBox({
+    required this.pageNumber,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+  }) {
+    if (pageNumber < 1 ||
+        !left.isFinite ||
+        !top.isFinite ||
+        !right.isFinite ||
+        !bottom.isFinite ||
+        left > right ||
+        bottom > top) {
+      throw ArgumentError('Annotation box coordinates are invalid.');
+    }
+  }
+
+  final int pageNumber;
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+
+  Map<String, Object> toJson() => <String, Object>{
+    'pageNumber': pageNumber,
+    'left': left,
+    'top': top,
+    'right': right,
+    'bottom': bottom,
+  };
+
+  factory LiteratureAnnotationBox.fromJson(Object? value) {
+    if (value is! Map<Object?, Object?>) {
+      throw const FormatException('Annotation box must be an object.');
+    }
+    final pageNumber = value['pageNumber'];
+    final left = value['left'];
+    final top = value['top'];
+    final right = value['right'];
+    final bottom = value['bottom'];
+    if (pageNumber is! int ||
+        left is! num ||
+        top is! num ||
+        right is! num ||
+        bottom is! num) {
+      throw const FormatException('Annotation box fields are invalid.');
+    }
+    return LiteratureAnnotationBox(
+      pageNumber: pageNumber,
+      left: left.toDouble(),
+      top: top.toDouble(),
+      right: right.toDouble(),
+      bottom: bottom.toDouble(),
+    );
+  }
+}
 
 /// App-owned PDF annotation. The source PDF remains read-only.
 final class LiteratureAnnotation {
@@ -16,6 +77,7 @@ final class LiteratureAnnotation {
     required this.colorName,
     required this.createdAt,
     required this.updatedAt,
+    this.boxes = const <LiteratureAnnotationBox>[],
   }) {
     if (id.trim().isEmpty || literatureId.trim().isEmpty) {
       throw ArgumentError('Annotation and literature IDs must not be empty.');
@@ -37,6 +99,7 @@ final class LiteratureAnnotation {
   final String colorName;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final List<LiteratureAnnotationBox> boxes;
 
   LiteratureAnnotation replaceNote(String value, DateTime changedAt) =>
       LiteratureAnnotation(
@@ -49,6 +112,7 @@ final class LiteratureAnnotation {
         colorName: colorName,
         createdAt: createdAt,
         updatedAt: changedAt.toUtc(),
+        boxes: boxes,
       );
 }
 
@@ -96,7 +160,7 @@ final class SqliteLiteratureAnnotationStore
     try {
       final rows = database.select(
         'SELECT annotation_id, literature_id, page_number, kind, '
-        'selected_text, note, color_name, created_at, updated_at '
+        'selected_text, note, color_name, created_at, updated_at, geometry_json '
         'FROM literature_annotations WHERE literature_id = ? '
         'ORDER BY page_number, created_at',
         <Object?>[literatureId],
@@ -114,8 +178,8 @@ final class SqliteLiteratureAnnotationStore
       database.execute(
         'INSERT OR REPLACE INTO literature_annotations '
         '(annotation_id, literature_id, page_number, kind, selected_text, '
-        'note, color_name, created_at, updated_at) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'note, color_name, created_at, updated_at, geometry_json) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         <Object?>[
           annotation.id,
           annotation.literatureId,
@@ -126,6 +190,7 @@ final class SqliteLiteratureAnnotationStore
           annotation.colorName,
           annotation.createdAt.toUtc().toIso8601String(),
           annotation.updatedAt.toUtc().toIso8601String(),
+          jsonEncode(annotation.boxes.map((box) => box.toJson()).toList()),
         ],
       );
     } finally {
@@ -160,9 +225,19 @@ final class SqliteLiteratureAnnotationStore
         note TEXT NOT NULL,
         color_name TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        geometry_json TEXT NOT NULL DEFAULT '[]'
       )
     ''');
+    final columns = database
+        .select('PRAGMA table_info(literature_annotations)')
+        .map((row) => row['name'] as String)
+        .toSet();
+    if (!columns.contains('geometry_json')) {
+      database.execute(
+        "ALTER TABLE literature_annotations ADD COLUMN geometry_json TEXT NOT NULL DEFAULT '[]'",
+      );
+    }
     database.execute(
       'CREATE INDEX IF NOT EXISTS literature_annotations_by_item '
       'ON literature_annotations(literature_id, page_number)',
@@ -180,6 +255,11 @@ final class SqliteLiteratureAnnotationStore
     colorName: row['color_name']! as String,
     createdAt: DateTime.parse(row['created_at']! as String).toUtc(),
     updatedAt: DateTime.parse(row['updated_at']! as String).toUtc(),
+    boxes: List<LiteratureAnnotationBox>.unmodifiable(
+      (jsonDecode(row['geometry_json']! as String) as List<Object?>).map(
+        LiteratureAnnotationBox.fromJson,
+      ),
+    ),
   );
 }
 

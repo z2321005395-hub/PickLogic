@@ -106,4 +106,8 @@ abstract class PicklogicWindowsBridgePlatform extends PlatformInterface {
       'deleteProtectedSecret() has not been implemented.',
     );
   }
+
+  Future<bool> copyRichText({required String plainText, required String rtf}) {
+    throw UnimplementedError('copyRichText() has not been implemented.');
+  }
 }

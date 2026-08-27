@@ -28,7 +28,7 @@
 - Mobile Files now has a user-authorized hierarchical SAF browser, visible-only thumbnails, direct full-screen photo/video/audio/document opening, and app-local favorite/review marks.
 - A CI-built x86_64 APK passed the TTDT API 36 emulator bridge success path with zero media grants and zero fatal-log matches.
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
-- Pro Literature supports multi-PDF selection/drop, SQLite persistence, library search/tag filters, metadata correction, reading-position recovery, local page-linked annotations, BibTeX/RIS/text citation copy, and explicit selection/page/document translation with a bilingual pane; source PDFs remain read-only.
+- Pro Literature supports multi-PDF selection/drop, reference-only BibTeX/RIS import, nested/smart collections, tags/ratings/star/trash, high-confidence duplicate merging, reading-position and bilingual-page recovery, local page-coordinate annotations, six citation styles with Word-compatible rich-text copy, and explicit selection/page/document translation; source PDFs remain read-only.
 - Desktop file selection no longer forces Preview/Insight open; double-click/Enter opens content and Ctrl+Shift+I opens the contextual panel on demand.
 - Native build assets: PDFium and SQLite, including opt-in Android x64 validation, are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: the same repository and complete development history are Public at `z2321005395-hub/PickLogic`; commits, branches, PRs, Issues, workflow runs, and tags were preserved.

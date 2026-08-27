@@ -306,3 +306,17 @@ Commit the focused media-viewer regression tests and this state update, run the 
 ## Next action
 
 Collect hands-on feedback. A real item moves to trash only after the user selects it, accepts PickLogic's preview, and accepts the Windows or Android platform confirmation; permanent deletion remains outside PickLogic.
+
+## Pro literature workflow parity stage
+
+- Goal: converge Pro on the most useful local Zotero/EndNote/ReadCube/小绿鲸 workflows without copying proprietary UI/code and without adding online metadata lookup.
+- Added reference-only BibTeX/RIS import with later PDF attachment; regular/nested and smart collections; tags, ratings, stars, unread/duplicate/trash views; deterministic high-confidence duplicate merging; and catalog-only removal that preserves source PDFs.
+- Added six offline citation styles, batch bibliography output, and Windows plain-text + RTF clipboard data for paste into Word. This is not a live Word field/add-in or a complete CSL implementation.
+- Added persistent page translations and terminology, restored bilingual pages, selection/page/document translation boundaries, and page-coordinate highlight/underline/strikethrough/note overlays. Translation remains explicit and source PDF bytes remain local/read-only.
+- Reused MIT `petit_bibtex` 6.2.0 and existing MIT `pdfrx`/PDFium; no copied GitHub source, AGPL/CSL runtime, cloud backend, or proprietary asset was added.
+- Verification: Literature Core 20/20, Windows Bridge 10/10, Pro focused UI 11/11, complete Desktop 26/26, targeted analyzers clean, dependency audit 114 external + 5 Flutter SDK packages with zero findings, privacy findings 0, and `git diff --check` clean. The canonical Chinese path reproduced the known Flutter/MSBuild `app.dill` path-decoding failure; final Windows validation must run from an ASCII-path worktree.
+- Commit `12104bb` built successfully from an ASCII detached worktree. The Pro Release runtime is 42,799,132 bytes; the local user-test ZIP is 18,868,211 bytes with SHA-256 `30C0AB7818F8D2DC7A72A964D348662EED6CE2BA25890991DF07094E247086AA`; packaged synthetic PDF smoke exited 0 and the extracted app launched with a visible `PickLogic` window.
+
+## Next action
+
+Commit this validation note, push the feature branch, open a genuine integration PR to `develop`, and merge only after its required CI passes. Keep the verified ZIP local under ignored `codex_output/` rather than uploading a routine Actions artifact.

@@ -66,4 +66,10 @@ final class PicklogicWindowsBridge {
 
   Future<void> deleteProtectedSecret(String name) =>
       PicklogicWindowsBridgePlatform.instance.deleteProtectedSecret(name);
+
+  Future<bool> copyRichText({required String plainText, required String rtf}) =>
+      PicklogicWindowsBridgePlatform.instance.copyRichText(
+        plainText: plainText,
+        rtf: rtf,
+      );
 }

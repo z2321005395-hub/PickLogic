@@ -26,6 +26,7 @@ abstract interface class TranslationProvider {
   Future<SelectedTextTranslation> translateSelectedText(
     String selectedText, {
     required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
   });
 }
 
@@ -37,6 +38,7 @@ extension ExplicitTranslationChunks on TranslationProvider {
     String text, {
     required String targetLanguage,
     int maxChunkCharacters = 6000,
+    Map<String, String> terminology = const <String, String>{},
   }) async {
     final source = text.trim();
     if (source.isEmpty) throw const FormatException('Text must not be empty.');
@@ -50,6 +52,7 @@ extension ExplicitTranslationChunks on TranslationProvider {
       final result = await translateSelectedText(
         chunk,
         targetLanguage: targetLanguage,
+        terminology: terminology,
       );
       providerLabel = result.providerLabel;
       translated.add(result.translatedText.trim());
@@ -105,6 +108,7 @@ final class DisabledTranslationProvider implements TranslationProvider {
   Future<SelectedTextTranslation> translateSelectedText(
     String selectedText, {
     required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
   }) => Future<SelectedTextTranslation>.error(
     StateError('Translation is disabled.'),
   );

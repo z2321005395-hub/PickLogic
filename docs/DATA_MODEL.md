@@ -36,9 +36,21 @@ Evidence entries distinguish `fact`, `ruleInference`, `lowConfidenceGuess`, and 
 
 `id`, `localFileId`, optional `doi`, `title`, `authors`, `journal`, optional `year`, `volume`, `issue`, `pages`, `abstract`, `keywords`, `tags`, `readingProgress`, `lastOpenedAt`, `metadataSource`, and `metadataConfidence`.
 
+## LiteratureLibraryEntry
+
+The app-owned catalog entry wraps one `LiteratureRecord` with optional `localPath`, `fileName`, `addedAt`, `collectionIds`, `rating`, `isStarred`, optional `trashedAt`, and `supplementalPaths`. A reference imported from BibTeX/RIS may exist without a local PDF and can attach one later. Trash removes the entry from normal catalog views only; it never deletes the source PDF.
+
+## LiteratureCollection
+
+Regular and smart collections contain `id`, `name`, optional `parentId`, `createdAt`, `kind`, `query`, `requiredTags`, `minimumRating`, `unreadOnly`, and `starredOnly`. Membership and filters are virtual app-owned state and never move source files.
+
 ## LiteratureAnnotation
 
-App-owned annotation state contains `id`, `literatureId`, `pageNumber`, `kind`, `selectedText`, `note`, `colorName`, `createdAt`, and `updatedAt`. It is stored beside the local catalog, links back to a PDF page, and never implies writing into the source PDF.
+App-owned annotation state contains `id`, `literatureId`, `pageNumber`, `kind`, `selectedText`, `note`, `colorName`, `createdAt`, `updatedAt`, and zero or more page-coordinate `boxes`. Kinds are highlight, underline, strikethrough, and note. It is stored beside the local catalog, redraws over the matching PDF page, and never implies writing into the source PDF.
+
+## LiteratureTranslationState
+
+Explicit page translation stores `literatureId`, `pageNumber`, `targetLanguage`, `sourceText`, `translatedText`, `providerLabel`, `updatedAt`, and a source fingerprint. Terminology entries store source term, target term, and update time. Both remain local; a configured provider receives bounded extracted text and bounded terminology only after the user requests translation.
 
 ## ScreenshotGroup
 
@@ -71,4 +83,4 @@ The Android bridge's additive private-index-path method is not a `FileLocator` a
 
 `AndroidBrowseRoot`, `AndroidBrowseEntry`, and `AndroidBrowsePage` are additive SAF bridge DTOs for user-authorized read-only hierarchy traversal. Files are converted to normal `FileRecord` values with opaque `content://` locators; existing MediaStore contracts are unchanged.
 
-`LiteratureAnnotation`, citation formatters, and bounded translation chunking are additive Pro contracts. Existing `LiteratureRecord` serialization is unchanged, existing catalogs need no migration, and callers that do not provide an annotation store retain the prior read-only reader behavior.
+Literature catalog organization, reference-only entries, annotation geometry, local translation memory, citation import, and citation formatting are additive Pro contracts. Existing `LiteratureRecord` serialization is unchanged. Missing optional fields receive safe defaults, SQLite tables migrate additively, and callers that omit the new stores retain the prior read-only reader behavior.

@@ -153,4 +153,15 @@ class MethodChannelPicklogicWindowsBridge
         'deleteProtectedSecret',
         <String, Object>{'name': name},
       );
+
+  @override
+  Future<bool> copyRichText({
+    required String plainText,
+    required String rtf,
+  }) async =>
+      await methodChannel.invokeMethod<bool>('copyRichText', <String, Object>{
+        'plainText': plainText,
+        'rtf': rtf,
+      }) ??
+      false;
 }
