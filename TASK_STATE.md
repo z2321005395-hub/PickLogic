@@ -364,7 +364,8 @@ Pause new feature work while the maintainer tests PDF editing and Mobile Storage
 - The Z70 accepted the arm64-only user-test APK as versionCode 2004 with update semantics. App data was preserved; cold launch completed in 802 ms and app-scoped startup checks found zero fatal, missing-plugin, or security-exception matches. The locked display prevented UI automation; no lock-screen bypass was attempted.
 - Actions artifacts were reduced from 2 / 97,158,757 bytes to 0 while preserving release assets and all workflow history. A separate audit found 9,567,140,583 bytes of ephemeral per-ref Flutter caches; commit `b1a7e88` disables future Flutter SDK cache uploads. Repository artifact/log retention remains 3 days.
 - Commits: `0879d2f` product and shared-contract change; `b1a7e88` CI cache prevention.
+- PR #37 passed quality/audits, Android, and Windows Standard/Pro gates; all candidate upload steps were skipped. It merged into `develop` as `b03d63f` without a duplicate merge-push run. A one-time cleanup then removed all 14 obsolete `flutter-*` Actions caches (9,567,140,583 bytes); artifacts and caches both report zero while commits, PRs, branches, tags, releases, and workflow runs remain intact.
 
 ## Next action
 
-Push one integration PR, run CI once with candidate uploads disabled, merge green commits to `develop`, and verify that no artifact was created. On the phone, unlock PickLogic, open Storage, choose a shared folder through the visible SAF action, and keep the resulting traversal read-only.
+On the phone, unlock PickLogic, open Storage, choose a shared folder through the visible SAF action, and keep the resulting traversal read-only. Use the local Standard/Pro packages for visual review; no PickLogic Windows test process was left running.
