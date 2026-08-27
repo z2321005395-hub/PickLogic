@@ -386,3 +386,15 @@ On the phone, unlock PickLogic, open Storage, choose a shared folder through the
 ## Next action
 
 Collect hands-on feedback from the current-folder Insight workflow. On Android, authorize one suitable shared parent folder once and browse descendants normally; on Windows, open a drive or folder and review the automatically following right pane. Keep real-data operations read-only during this validation.
+
+## Promotion readiness and first-use fixes
+
+- Fixed local PDF import/read boundaries, Windows PDF first-page loading, and Pro PDF-engine initialization; the packaged Pro synthetic PDF smoke exits 0.
+- Removed duplicate Android home-source counts and filtered meaningless shell/package source hints. Focused Mobile tests pass 18/18, Android Bridge JVM tests pass 4/4, and Mobile analysis is clean. The direct full Mobile runner still has 9 environment-only SQLite native-asset failures; 40 other tests pass.
+- Rebuilt the arm64 Profile user-test APK at 32,472,770 bytes. Final local delivery also contains the verified Standard ZIP (18,998,381 bytes) and Pro ZIP (19,007,697 bytes); Standard startup and Pro PDF smoke both passed and all launched Windows processes were closed.
+- Produced a 7:27 Chinese narrated 1080p H.264/AAC walkthrough, editable SRT, script, thumbnail, and publish copy using only installed Windows voices and FFmpeg. Visual QA sampled the intro, all three product sections, and outro; only synthetic/public demo data appears.
+- Emulator validation covered all 18 synthetic screenshots, full-screen image viewing, local review marks, audio/video playback, and Storage Insight. No real Z70 media or private path was recorded for the promotion.
+
+## Next action
+
+Run final privacy/diff checks, push this focused branch, require one green CI, merge it into `develop`, verify Actions artifacts/caches remain empty, and close both isolated Android emulators. Keep video and install packages local under ignored `codex_output/`.

@@ -749,7 +749,11 @@ final class _FilesPageState extends State<_FilesPage> {
         ]).then((pages) {
           final byId = <String, FileRecord>{};
           for (final record in pages.expand((page) => page)) {
-            byId[record.id] = record;
+            // The same MediaStore row can be returned by both the broad image
+            // query and the screenshot collection.  Their logical ids include
+            // the query kind, so deduplicate the home-source facets by the
+            // stable content URI instead of counting one physical item twice.
+            byId[record.locator.value] = record;
           }
           return byId.values.toList(growable: false);
         });

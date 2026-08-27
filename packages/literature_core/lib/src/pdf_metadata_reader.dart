@@ -39,7 +39,7 @@ final class FilePdfByteSource implements PdfByteSource {
     final file = await File(path).open(mode: FileMode.read);
     try {
       await file.setPosition(offset);
-      return file.read(length);
+      return await file.read(length);
     } finally {
       await file.close();
     }

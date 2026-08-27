@@ -219,6 +219,34 @@ void main() {
     },
   );
 
+  test('local PDF source finishes each bounded read before closing', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'picklogic-local-pdf-source-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}${Platform.pathSeparator}fixture.pdf');
+    final bytes = List<int>.filled(12 * 1024, 0x20);
+    final header = latin1.encode(
+      r'%PDF-1.7 /Title (Local source fixture) '
+      r'/Author (Synthetic Author) /CreationDate (D:20260828010000Z)',
+    );
+    bytes.setRange(0, header.length, header);
+    final trailer = latin1.encode(r'DOI 10.5555/picklogic.local %%EOF');
+    bytes.setRange(bytes.length - trailer.length, bytes.length, trailer);
+    await file.writeAsBytes(bytes, flush: true);
+
+    final probe = await const BoundedPdfMetadataReader().read(
+      FilePdfByteSource(file.path),
+    );
+
+    expect(probe.hasPdfHeader, isTrue);
+    expect(probe.title, 'Local source fixture');
+    expect(probe.authors, ['Synthetic Author']);
+    expect(probe.year, 2026);
+    expect(probe.doiCandidates, ['10.5555/picklogic.local']);
+    expect(probe.readWindows.length, greaterThan(1));
+  });
+
   test(
     'PDF header may follow a short prefix and an unreadable tail is nonfatal',
     () async {

@@ -302,6 +302,46 @@ void main() {
     },
   );
 
+  testWidgets('home source facets count each MediaStore item once', (
+    tester,
+  ) async {
+    final locator = FileLocator(
+      value: 'content://media/external/images/media/42',
+      sourceKind: SourceKind.mediaStore,
+      platform: PickLogicPlatform.android,
+    );
+    final imageRecord = _sourceRecord(
+      id: 'images:42',
+      locator: locator,
+      category: VirtualCategory.images,
+    );
+    final screenshotRecord = _sourceRecord(
+      id: 'screenshots:42',
+      locator: locator,
+      category: VirtualCategory.screenshots,
+    );
+    final repository = _RetryMobileRepository(
+      failBootstrapOnce: false,
+      mediaByKind: <AndroidMediaKind, List<FileRecord>>{
+        AndroidMediaKind.images: <FileRecord>[imageRecord],
+        AndroidMediaKind.screenshots: <FileRecord>[screenshotRecord],
+        AndroidMediaKind.downloads: const <FileRecord>[],
+        AndroidMediaKind.documents: const <FileRecord>[],
+      },
+    );
+
+    await tester.pumpWidget(PickLogicMobileApp(repository: repository));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('截图 · 1'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('截图 · 1'), findsOneWidget);
+    expect(find.text('截图 · 2'), findsNothing);
+  });
+
   testWidgets('folder browser is a first-class read-only destination', (
     tester,
   ) async {
@@ -461,6 +501,7 @@ final class _RetryMobileRepository implements MobileRepository {
     this.failPermissionRequest = false,
     this.bootstrapState,
     this.photos,
+    this.mediaByKind,
   });
 
   final MobileRepository _delegate = const SyntheticMobileRepository();
@@ -468,6 +509,7 @@ final class _RetryMobileRepository implements MobileRepository {
   final bool failPermissionRequest;
   final MobileBootstrapState? bootstrapState;
   final List<FileRecord>? photos;
+  final Map<AndroidMediaKind, List<FileRecord>>? mediaByKind;
   final List<int> photoOffsets = <int>[];
   int bootstrapCalls = 0;
 
@@ -501,6 +543,11 @@ final class _RetryMobileRepository implements MobileRepository {
     int limit = 120,
     int offset = 0,
   }) {
+    if (mediaByKind case final media? when media.containsKey(kind)) {
+      return Future<List<FileRecord>>.value(
+        media[kind]!.skip(offset).take(limit).toList(growable: false),
+      );
+    }
     if (kind == AndroidMediaKind.photos && photos != null) {
       final records = photos!;
       photoOffsets.add(offset);
@@ -525,6 +572,9 @@ final class _RetryMobileRepository implements MobileRepository {
 
   @override
   Future<int> countMedia(AndroidMediaKind kind) {
+    if (mediaByKind case final media? when media.containsKey(kind)) {
+      return Future<int>.value(media[kind]!.length);
+    }
     if (kind == AndroidMediaKind.photos && photos != null) {
       final records = photos!;
       return Future<int>.value(records.length);
@@ -566,6 +616,35 @@ final class _RetryMobileRepository implements MobileRepository {
   @override
   Future<void> close() async {}
 }
+
+FileRecord _sourceRecord({
+  required String id,
+  required FileLocator locator,
+  required VirtualCategory category,
+}) => FileRecord(
+  id: id,
+  locator: locator,
+  displayName: 'picklogic_screenshot.png',
+  extension: 'png',
+  mimeType: 'image/png',
+  sizeBytes: 1024,
+  createdAt: DateTime.utc(2026, 8, 20),
+  modifiedAt: DateTime.utc(2026, 8, 20),
+  parentLocator: null,
+  sourceKind: SourceKind.mediaStore,
+  platform: PickLogicPlatform.android,
+  isHidden: false,
+  isSystem: false,
+  isAccessible: true,
+  isProtected: false,
+  category: category,
+  tags: const <String>[
+    'relative-path:Pictures/Screenshots/',
+    'source-hint:Screenshots',
+  ],
+  hashState: HashState.notRequested,
+  ocrState: OcrState.notRequested,
+);
 
 const _deniedBootstrap = MobileBootstrapState(
   permissions: AndroidMediaPermissionState(
