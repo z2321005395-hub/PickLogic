@@ -4,6 +4,8 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_insight_engine/picklogic_insight_engine.dart'
+    as shared_insight;
 
 import 'mobile_repository.dart';
 
@@ -99,7 +101,7 @@ final class AndroidFolderInsightEngine {
         observation: observation,
         role: AndroidFolderRole.unknown,
         riskLevel: RiskLevel.unknown,
-        confidence: 1,
+        confidence: 0,
         evidence: const <FolderInsightEvidence>[
           FolderInsightEvidence.providerFailure,
         ],
@@ -184,6 +186,33 @@ final class AndroidFolderInsightEngine {
       );
     }
 
+    final shared = const shared_insight.FolderInsightEngine().explain(
+      shared_insight.FolderObservation(
+        locator: observation.documentUri,
+        displayName: observation.displayName,
+        pathSegments: observation.pathSegments,
+        platform: PickLogicPlatform.android,
+        directFileCount: observation.directFileCount,
+        directDirectoryCount: observation.directDirectoryCount,
+        directFileBytes: observation.directFileBytes,
+        mimeFamilyCounts: observation.mimeFamilyCounts,
+      ),
+    );
+    final sharedRole = _fromSharedRole(shared.role);
+    if (sharedRole != AndroidFolderRole.unknown) {
+      return AndroidFolderInsight(
+        observation: observation,
+        role: sharedRole,
+        riskLevel: shared.riskLevel,
+        confidence: shared.confidence,
+        evidence: shared.evidence
+            .map(_fromSharedEvidence)
+            .toSet()
+            .toList(growable: false),
+        packageIdentifier: shared.probableOwner,
+      );
+    }
+
     return AndroidFolderInsight(
       observation: observation,
       role: AndroidFolderRole.unknown,
@@ -195,6 +224,61 @@ final class AndroidFolderInsightEngine {
       ],
     );
   }
+
+  AndroidFolderRole _fromSharedRole(
+    shared_insight.FolderRole role,
+  ) => switch (role) {
+    shared_insight.FolderRole.camera => AndroidFolderRole.camera,
+    shared_insight.FolderRole.screenshots => AndroidFolderRole.screenshots,
+    shared_insight.FolderRole.downloads => AndroidFolderRole.downloads,
+    shared_insight.FolderRole.documents ||
+    shared_insight.FolderRole.desktop ||
+    shared_insight.FolderRole.development ||
+    shared_insight.FolderRole.researchData => AndroidFolderRole.documents,
+    shared_insight.FolderRole.images => AndroidFolderRole.images,
+    shared_insight.FolderRole.videos => AndroidFolderRole.videos,
+    shared_insight.FolderRole.audio => AndroidFolderRole.audio,
+    shared_insight.FolderRole.recordings => AndroidFolderRole.recordings,
+    shared_insight.FolderRole.appSharedMedia ||
+    shared_insight.FolderRole.cloudSync => AndroidFolderRole.appSharedMedia,
+    shared_insight.FolderRole.applicationData ||
+    shared_insight.FolderRole.applicationInstall ||
+    shared_insight.FolderRole.systemManaged => AndroidFolderRole.androidManaged,
+    shared_insight.FolderRole.cache => AndroidFolderRole.cache,
+    shared_insight.FolderRole.thumbnails => AndroidFolderRole.thumbnails,
+    shared_insight.FolderRole.temporary => AndroidFolderRole.temporary,
+    shared_insight.FolderRole.logs => AndroidFolderRole.logs,
+    shared_insight.FolderRole.backups => AndroidFolderRole.backups,
+    shared_insight.FolderRole.trash => AndroidFolderRole.trash,
+    shared_insight.FolderRole.hidden => AndroidFolderRole.hidden,
+    shared_insight.FolderRole.mixedContent => AndroidFolderRole.mixedContent,
+    shared_insight.FolderRole.driveRoot ||
+    shared_insight.FolderRole.userHome ||
+    shared_insight.FolderRole.unknown => AndroidFolderRole.unknown,
+  };
+
+  FolderInsightEvidence _fromSharedEvidence(
+    shared_insight.FolderEvidence evidence,
+  ) => switch (evidence) {
+    shared_insight.FolderEvidence.readOnlyMetadata =>
+      FolderInsightEvidence.authorizedAccess,
+    shared_insight.FolderEvidence.standardFolderName =>
+      FolderInsightEvidence.standardFolderName,
+    shared_insight.FolderEvidence.platformPathConvention ||
+    shared_insight.FolderEvidence.parentContext =>
+      FolderInsightEvidence.androidPathConvention,
+    shared_insight.FolderEvidence.packageIdentifier =>
+      FolderInsightEvidence.packageIdentifier,
+    shared_insight.FolderEvidence.directChildMetadata ||
+    shared_insight.FolderEvidence.boundedObservation =>
+      FolderInsightEvidence.directChildMetadata,
+    shared_insight.FolderEvidence.hiddenName =>
+      FolderInsightEvidence.hiddenName,
+    shared_insight.FolderEvidence.emptyFolder =>
+      FolderInsightEvidence.emptyFolder,
+    shared_insight.FolderEvidence.providerFailure =>
+      FolderInsightEvidence.providerFailure,
+  };
 
   AndroidFolderRole? _namedRole(String name, String rawName) {
     if (rawName.startsWith('.')) {
@@ -283,13 +367,13 @@ final class AndroidFolderInsightEngine {
 }
 
 typedef FolderRootLoader = Future<List<AndroidBrowseRoot>> Function();
-typedef FolderPageLoader =
-    Future<AndroidBrowsePage?> Function({
+typedef FolderSummaryLoader =
+    Future<AndroidBrowseDirectorySummary?> Function({
       required String treeUri,
       required String directoryUri,
-      required int offset,
-      required int limit,
     });
+typedef AndroidFolderInsightCallback =
+    void Function(AndroidFolderInsight insight);
 
 final class FolderScanCancellation {
   bool _cancelled = false;
@@ -329,12 +413,13 @@ final class FolderScanResult {
   int get unresolvedCount => insights.where((item) => item.unresolved).length;
 }
 
-/// Breadth-first, paged traversal of every folder inside persisted SAF roots.
-/// No file body, thumbnail, hash, OCR, or mutating API is used.
+/// Breadth-first traversal of every folder inside persisted SAF roots. Each
+/// directory is summarized by one native cursor pass, so a folder containing
+/// thousands of media files is not repeatedly materialized for every page.
 final class AndroidFolderInsightScanner {
   AndroidFolderInsightScanner({
     required this.loadRoots,
-    required this.loadPage,
+    required this.loadSummary,
     this.engine = const AndroidFolderInsightEngine(),
   });
 
@@ -342,27 +427,18 @@ final class AndroidFolderInsightScanner {
     MobileRepository repository,
   ) => AndroidFolderInsightScanner(
     loadRoots: repository.loadBrowseRoots,
-    loadPage:
-        ({
-          required treeUri,
-          required directoryUri,
-          required offset,
-          required limit,
-        }) => repository.loadBrowseDirectory(
-          treeUri: treeUri,
-          directoryUri: directoryUri,
-          offset: offset,
-          limit: limit,
-        ),
+    loadSummary: ({required treeUri, required directoryUri}) => repository
+        .inspectBrowseDirectory(treeUri: treeUri, directoryUri: directoryUri),
   );
 
   final FolderRootLoader loadRoots;
-  final FolderPageLoader loadPage;
+  final FolderSummaryLoader loadSummary;
   final AndroidFolderInsightEngine engine;
 
   Future<FolderScanResult> scan({
     FolderScanCancellation? cancellation,
     ValueChanged<FolderScanProgress>? onProgress,
+    AndroidFolderInsightCallback? onInsight,
   }) async {
     final token = cancellation ?? FolderScanCancellation();
     final roots = await loadRoots();
@@ -385,6 +461,7 @@ final class AndroidFolderInsightScanner {
       if (!visited.add(task.directoryUri)) continue;
       final inspected = await _inspect(task);
       insights.add(inspected.insight);
+      onInsight?.call(inspected.insight);
       if (!inspected.insight.observation.accessible) failures++;
       for (final child in inspected.directories) {
         if (!visited.contains(child.documentUri)) {
@@ -437,48 +514,31 @@ final class AndroidFolderInsightScanner {
   )).insight;
 
   Future<_InspectedFolder> _inspect(_FolderTask task) async {
-    final entries = <AndroidBrowseEntry>[];
     try {
-      var offset = 0;
-      while (true) {
-        final page = await loadPage(
-          treeUri: task.root.treeUri,
-          directoryUri: task.directoryUri,
-          offset: offset,
-          limit: 250,
+      final summary = await loadSummary(
+        treeUri: task.root.treeUri,
+        directoryUri: task.directoryUri,
+      );
+      if (summary == null) {
+        throw StateError(
+          'The Android document provider returned no directory summary.',
         );
-        if (page == null) {
-          throw StateError('The Android document provider returned no page.');
-        }
-        entries.addAll(page.items);
-        if (!page.hasMore) break;
-        if (page.items.isEmpty) {
-          throw StateError('The Android document provider did not advance.');
-        }
-        offset += page.items.length;
-      }
-      final files = entries.where((entry) => !entry.directory).toList();
-      final families = <String, int>{};
-      for (final file in files) {
-        final family = _mimeFamily(file.mimeType, file.displayName);
-        families.update(family, (count) => count + 1, ifAbsent: () => 1);
       }
       final observation = AndroidFolderObservation(
         treeUri: task.root.treeUri,
         documentUri: task.directoryUri,
         displayName: task.displayName,
         pathSegments: List<String>.unmodifiable(task.pathSegments),
-        directFileCount: files.length,
-        directDirectoryCount: entries.where((entry) => entry.directory).length,
-        directFileBytes: files.fold<int>(
-          0,
-          (total, entry) => total + entry.sizeBytes,
+        directFileCount: summary.directFileCount,
+        directDirectoryCount: summary.directDirectoryCount,
+        directFileBytes: summary.directFileBytes,
+        mimeFamilyCounts: Map<String, int>.unmodifiable(
+          summary.mimeFamilyCounts,
         ),
-        mimeFamilyCounts: Map<String, int>.unmodifiable(families),
       );
       return _InspectedFolder(
         insight: engine.explain(observation),
-        directories: entries.where((entry) => entry.directory).toList(),
+        directories: summary.directories,
       );
     } on Object catch (error) {
       final observation = AndroidFolderObservation(
@@ -515,6 +575,7 @@ final class _AccessibleFolderInsightSectionState
   List<AndroidBrowseRoot> _roots = const <AndroidBrowseRoot>[];
   FolderScanProgress? _progress;
   FolderScanResult? _result;
+  final List<AndroidFolderInsight> _liveInsights = <AndroidFolderInsight>[];
   FolderScanCancellation? _cancellation;
   bool _loadingRoots = true;
   bool _addingRoot = false;
@@ -557,7 +618,10 @@ final class _AccessibleFolderInsightSectionState
     setState(() => _addingRoot = true);
     try {
       final selected = await widget.repository.chooseDocumentTree();
-      if (selected != null) await _refreshRoots();
+      if (selected != null) {
+        await _refreshRoots();
+        if (mounted && _roots.isNotEmpty) await _scan();
+      }
     } on Object {
       if (mounted) setState(() => _rootLoadFailed = true);
     } finally {
@@ -572,6 +636,8 @@ final class _AccessibleFolderInsightSectionState
     setState(() {
       _scanning = true;
       _progress = null;
+      _result = null;
+      _liveInsights.clear();
       _scanFailed = false;
     });
     var lastUiUpdate = DateTime.fromMillisecondsSinceEpoch(0);
@@ -589,6 +655,10 @@ final class _AccessibleFolderInsightSectionState
               }
               lastUiUpdate = now;
               setState(() => _progress = progress);
+            },
+            onInsight: (insight) {
+              if (!mounted) return;
+              setState(() => _liveInsights.add(insight));
             },
           );
       if (mounted) setState(() => _result = result);
@@ -608,8 +678,8 @@ final class _AccessibleFolderInsightSectionState
   Widget build(BuildContext context) {
     final strings = _strings;
     final result = _result;
-    final preview =
-        result?.insights.take(6).toList() ?? const <AndroidFolderInsight>[];
+    final visibleInsights = result?.insights ?? _liveInsights;
+    final preview = visibleInsights.take(6).toList(growable: false);
     return Card(
       key: const Key('accessible-folder-insight-section'),
       margin: EdgeInsets.zero,
@@ -660,17 +730,20 @@ final class _AccessibleFolderInsightSectionState
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  key: const Key('folder-insight-scan'),
-                  onPressed: _roots.isEmpty || _scanning ? null : _scan,
-                  icon: const Icon(Icons.manage_search_outlined),
-                  label: Text(strings.scan),
-                ),
-                OutlinedButton.icon(
                   key: const Key('folder-insight-add-root'),
                   onPressed: _addingRoot || _scanning ? null : _addRoot,
-                  icon: const Icon(Icons.add),
-                  label: Text(strings.addRoot),
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: Text(
+                    _roots.isEmpty ? strings.chooseFirstRoot : strings.addRoot,
+                  ),
                 ),
+                if (_roots.isNotEmpty)
+                  OutlinedButton.icon(
+                    key: const Key('folder-insight-scan'),
+                    onPressed: _scanning ? null : _scan,
+                    icon: const Icon(Icons.manage_search_outlined),
+                    label: Text(strings.scan),
+                  ),
                 if (_scanning)
                   TextButton.icon(
                     onPressed: _cancellation?.cancel,
@@ -679,16 +752,19 @@ final class _AccessibleFolderInsightSectionState
                   ),
               ],
             ),
-            if (result != null) ...[
+            if (preview.isNotEmpty) ...[
               const Divider(height: 24),
-              Text(
-                strings.summary(result),
-                key: const Key('folder-insight-summary'),
-              ),
+              if (result != null)
+                Text(
+                  strings.summary(result),
+                  key: const Key('folder-insight-summary'),
+                )
+              else
+                Text(strings.liveResults(_liveInsights.length)),
               const SizedBox(height: 6),
               for (final insight in preview)
                 _FolderInsightTile(insight: insight, strings: strings),
-              if (result.insights.length > preview.length)
+              if (result != null && result.insights.length > preview.length)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
@@ -726,7 +802,7 @@ final class FolderInsightResultsPage extends StatefulWidget {
 final class _FolderInsightResultsPageState
     extends State<FolderInsightResultsPage> {
   final TextEditingController _search = TextEditingController();
-  bool _unresolvedOnly = true;
+  bool _unresolvedOnly = false;
 
   @override
   void dispose() {
@@ -820,6 +896,20 @@ Future<void> showAndroidFolderInsightSheet({
       child: FutureBuilder<AndroidFolderInsight>(
         future: future,
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            final zh = Localizations.localeOf(context).languageCode == 'zh';
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  zh
+                      ? '无法读取该文件夹。授权可能已失效，或 Android 文档提供程序拒绝了访问。'
+                      : 'This folder could not be read. Its grant may have expired, or the Android document provider denied access.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -992,6 +1082,7 @@ final class _FolderInsightStrings {
       : 'Read authorized folder names and direct-child metadata recursively to explain every folder. Unknown never means junk.';
   String get scan => zh ? '分析全部已授权文件夹' : 'Analyze all authorized folders';
   String get addRoot => zh ? '添加只读目录' : 'Add read-only folder';
+  String get chooseFirstRoot => zh ? '选择目录并开始分析' : 'Choose folder and analyze';
   String get stop => zh ? '停止' : 'Stop';
   String get search => zh ? '搜索文件夹名称或路径' : 'Search folder name or path';
   String get unresolvedOnly => zh ? '只看尚未识别' : 'Unresolved only';
@@ -1011,6 +1102,10 @@ final class _FolderInsightStrings {
   String get safety => zh
       ? '只读：不打开文件正文，不做 OCR、哈希、移动、重命名或删除。Android 私有目录仍不可访问。'
       : 'Read-only: no file bodies, OCR, hashing, moves, renames, or deletion. Android private directories remain inaccessible.';
+
+  String liveResults(int count) => zh
+      ? '正在分析，已返回 $count 个文件夹；结果会边扫描边显示。'
+      : 'Analyzing: $count folder results are already available.';
 
   String rootCount(int count) => zh
       ? '已授权 $count 个根目录。可继续添加 Android 选择器允许访问的共享目录；系统可能禁止选择整个存储卷。'
@@ -1217,33 +1312,6 @@ bool _oneOf(String value, Set<String> choices) => choices.contains(value);
 bool _looksLikePackage(String value) =>
     RegExp(r'^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$').hasMatch(value);
 
-String _mimeFamily(String mimeType, String displayName) {
-  final mime = mimeType.toLowerCase();
-  if (mime.startsWith('image/')) return 'image';
-  if (mime.startsWith('video/')) return 'video';
-  if (mime.startsWith('audio/')) return 'audio';
-  if (mime.startsWith('text/') ||
-      mime == 'application/pdf' ||
-      mime.contains('document') ||
-      mime.contains('sheet') ||
-      mime.contains('presentation')) {
-    return 'document';
-  }
-  if (mime.contains('zip') ||
-      mime.contains('archive') ||
-      RegExp(
-        r'\.(zip|7z|rar|tar|gz)$',
-        caseSensitive: false,
-      ).hasMatch(displayName)) {
-    return 'archive';
-  }
-  if (mime == 'application/vnd.android.package-archive' ||
-      displayName.toLowerCase().endsWith('.apk')) {
-    return 'application';
-  }
-  return 'other';
-}
-
 String _folderBytes(int bytes) {
   if (bytes >= 1024 * 1024 * 1024) {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
@@ -1252,5 +1320,5 @@ String _folderBytes(int bytes) {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
   if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '$bytes B';
+  return bytes == 0 ? '0 KB' : '< 1 KB';
 }

@@ -118,6 +118,18 @@ class MethodChannelPicklogicAndroidBridge
   }
 
   @override
+  Future<AndroidBrowseDirectorySummary> inspectBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+  }) async {
+    final raw = await methodChannel.invokeMapMethod<Object?, Object?>(
+      'inspectBrowseDirectory',
+      <String, Object?>{'treeUri': treeUri, 'directoryUri': directoryUri},
+    );
+    return AndroidBrowseDirectorySummary.fromMap(raw!);
+  }
+
+  @override
   Future<bool> openContentUri(String contentUri) async =>
       await methodChannel.invokeMethod<bool>(
         'openContentUri',

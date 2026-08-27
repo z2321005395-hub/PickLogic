@@ -10,6 +10,7 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 import 'desktop_repository.dart';
+import 'desktop_folder_insight.dart';
 import 'file_preview.dart';
 import 'pro_workspace.dart';
 import 'shell_thumbnail.dart';
@@ -1083,6 +1084,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                           : _section == _WorkspaceSection.storage
                           ? _StorageView(
                               strings: strings,
+                              repository: widget.repository,
                               summary: _storageSummary,
                               loading: _storageLoading,
                               error: _storageError,
@@ -1153,6 +1155,7 @@ final class _StandardExplorerState extends State<StandardExplorer> {
                                       mode: _detailMode,
                                       entry: selected,
                                       strings: strings,
+                                      repository: widget.repository,
                                       onClose: () => setState(
                                         () => _detailMode = _DetailMode.hidden,
                                       ),
@@ -2362,30 +2365,28 @@ final class _HomePanel extends StatelessWidget {
 final class _StorageView extends StatelessWidget {
   const _StorageView({
     required this.strings,
+    required this.repository,
     required this.summary,
     required this.loading,
     required this.error,
   });
 
   final _ExplorerStrings strings;
+  final DesktopRepository repository;
   final WindowsStorageSummary? summary;
   final bool loading;
   final bool error;
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (error || summary == null) {
-      return Center(child: Text(strings.storageUnavailable));
-    }
-    final current = summary!;
-    final usedBytes = (current.totalBytes - current.availableBytes).clamp(
-      0,
-      current.totalBytes,
-    );
-    final usedFraction = current.totalBytes == 0
+    final current = summary;
+    final usedBytes = current == null
+        ? 0
+        : (current.totalBytes - current.availableBytes).clamp(
+            0,
+            current.totalBytes,
+          );
+    final usedFraction = current == null || current.totalBytes == 0
         ? 0.0
         : usedBytes / current.totalBytes;
     return ListView(
@@ -2399,36 +2400,46 @@ final class _StorageView extends StatelessWidget {
         const SizedBox(height: PickLogicTokens.spaceSm),
         Text(strings.storageReadOnly),
         const SizedBox(height: PickLogicTokens.spaceLg),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(PickLogicTokens.spaceLg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  current.root,
-                  key: const Key('storage-root'),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: PickLogicTokens.spaceLg),
-                LinearProgressIndicator(value: usedFraction),
-                const SizedBox(height: PickLogicTokens.spaceLg),
-                _Fact(
-                  label: strings.storageUsed,
-                  value: strings.bytes(usedBytes),
-                ),
-                _Fact(
-                  label: strings.storageAvailable,
-                  value: strings.bytes(current.availableBytes),
-                ),
-                _Fact(
-                  label: strings.storageTotal,
-                  value: strings.bytes(current.totalBytes),
-                ),
-              ],
+        DesktopFolderInsightCard(
+          repository: repository,
+          chinese: strings.chinese,
+        ),
+        const SizedBox(height: PickLogicTokens.spaceLg),
+        if (loading)
+          const LinearProgressIndicator()
+        else if (error || current == null)
+          Text(strings.storageUnavailable)
+        else
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(PickLogicTokens.spaceLg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    current.root,
+                    key: const Key('storage-root'),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: PickLogicTokens.spaceLg),
+                  LinearProgressIndicator(value: usedFraction),
+                  const SizedBox(height: PickLogicTokens.spaceLg),
+                  _Fact(
+                    label: strings.storageUsed,
+                    value: strings.bytes(usedBytes),
+                  ),
+                  _Fact(
+                    label: strings.storageAvailable,
+                    value: strings.bytes(current.availableBytes),
+                  ),
+                  _Fact(
+                    label: strings.storageTotal,
+                    value: strings.bytes(current.totalBytes),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -2439,6 +2450,7 @@ final class _DetailPane extends StatelessWidget {
     required this.mode,
     required this.entry,
     required this.strings,
+    required this.repository,
     required this.onClose,
     required this.onReveal,
     required this.onOpen,
@@ -2447,6 +2459,7 @@ final class _DetailPane extends StatelessWidget {
   final _DetailMode mode;
   final BrowseEntry? entry;
   final _ExplorerStrings strings;
+  final DesktopRepository repository;
   final VoidCallback onClose;
   final VoidCallback? onReveal;
   final VoidCallback? onOpen;
@@ -2501,65 +2514,72 @@ final class _DetailPane extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 10),
-                            _Fact(label: strings.name, value: selected.name),
-                            _Fact(
-                              label: strings.type,
-                              value: selected.isDirectory
-                                  ? strings.folder
-                                  : strings.category(selected.category),
-                            ),
-                            _Fact(label: strings.path, value: selected.path),
-                            _Fact(
-                              label: strings.size,
-                              value: selected.isDirectory
-                                  ? strings.estimatedInPreview
-                                  : strings.bytes(selected.sizeBytes),
-                            ),
-                            _Fact(
-                              label: strings.modified,
-                              value: selected.modifiedAt == null
-                                  ? strings.unknown
-                                  : strings.date(selected.modifiedAt!),
-                            ),
-                            _Fact(
-                              label: strings.source,
-                              value: strings.localMetadata,
-                            ),
-                            _Fact(
-                              label: strings.hidden,
-                              value: selected.record?.isHidden == true
-                                  ? strings.yes
-                                  : strings.no,
-                            ),
-                            _Fact(
-                              label: strings.systemRelated,
-                              value: selected.record?.isSystem == true
-                                  ? strings.yes
-                                  : strings.noEvidence,
-                            ),
-                            _Fact(
-                              label: strings.duplicates,
-                              value:
-                                  selected.record?.hashState ==
-                                      HashState.complete
-                                  ? strings.hashAvailable
-                                  : strings.notCalculated,
-                            ),
-                            _Fact(
-                              label: strings.risk,
-                              value: selected.record?.isProtected == true
-                                  ? strings.protected
-                                  : strings.reviewOnly,
-                            ),
-                            _Fact(
-                              label: strings.confidence,
-                              value:
-                                  selected.category == VirtualCategory.unknown
-                                  ? '35%'
-                                  : '80%',
-                            ),
-                            const SizedBox(height: 8),
-                            Text(strings.insightExplanation),
+                            if (selected.isDirectory)
+                              DesktopSelectedFolderInsight(
+                                key: ValueKey(
+                                  'folder-insight-${selected.path}',
+                                ),
+                                repository: repository,
+                                path: selected.path,
+                                chinese: strings.chinese,
+                              )
+                            else ...[
+                              _Fact(label: strings.name, value: selected.name),
+                              _Fact(
+                                label: strings.type,
+                                value: strings.category(selected.category),
+                              ),
+                              _Fact(label: strings.path, value: selected.path),
+                              _Fact(
+                                label: strings.size,
+                                value: strings.bytes(selected.sizeBytes),
+                              ),
+                              _Fact(
+                                label: strings.modified,
+                                value: selected.modifiedAt == null
+                                    ? strings.unknown
+                                    : strings.date(selected.modifiedAt!),
+                              ),
+                              _Fact(
+                                label: strings.source,
+                                value: strings.localMetadata,
+                              ),
+                              _Fact(
+                                label: strings.hidden,
+                                value: selected.record?.isHidden == true
+                                    ? strings.yes
+                                    : strings.no,
+                              ),
+                              _Fact(
+                                label: strings.systemRelated,
+                                value: selected.record?.isSystem == true
+                                    ? strings.yes
+                                    : strings.noEvidence,
+                              ),
+                              _Fact(
+                                label: strings.duplicates,
+                                value:
+                                    selected.record?.hashState ==
+                                        HashState.complete
+                                    ? strings.hashAvailable
+                                    : strings.notCalculated,
+                              ),
+                              _Fact(
+                                label: strings.risk,
+                                value: selected.record?.isProtected == true
+                                    ? strings.protected
+                                    : strings.reviewOnly,
+                              ),
+                              _Fact(
+                                label: strings.confidence,
+                                value:
+                                    selected.category == VirtualCategory.unknown
+                                    ? '35%'
+                                    : '80%',
+                              ),
+                              const SizedBox(height: 8),
+                              Text(strings.insightExplanation),
+                            ],
                           ],
                         ),
                       ),

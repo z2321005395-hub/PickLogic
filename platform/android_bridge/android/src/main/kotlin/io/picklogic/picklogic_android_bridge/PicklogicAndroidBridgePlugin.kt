@@ -118,6 +118,7 @@ class PicklogicAndroidBridgePlugin :
                 readOnlyBrowser.roots()
             }
             "listBrowseDirectory" -> listBrowseDirectory(call, result)
+            "inspectBrowseDirectory" -> inspectBrowseDirectory(call, result)
             "openContentUri" -> openContentUri(call, result)
             "loadPreviewImage" -> loadPreviewImage(call, result)
             "loadTextPreview" -> loadTextPreview(call, result)
@@ -285,6 +286,19 @@ class PicklogicAndroidBridgePlugin :
         }
         runReadTask(result, "browse_directory_failed") {
             readOnlyBrowser.list(tree, directory, offset, limit)
+        }
+    }
+
+    private fun inspectBrowseDirectory(call: MethodCall, result: MethodChannel.Result) {
+        val arguments = call.arguments as? Map<*, *>
+        val tree = (arguments?.get("treeUri") as? String)?.let(Uri::parse)
+        val directory = (arguments?.get("directoryUri") as? String)?.let(Uri::parse)
+        if (tree == null) {
+            result.error("invalid_browse_request", "A persisted SAF tree is required.", null)
+            return
+        }
+        runReadTask(result, "browse_directory_inspection_failed") {
+            readOnlyBrowser.inspect(tree, directory)
         }
     }
 

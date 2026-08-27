@@ -37,6 +37,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- Made Storage Insight immediately actionable on Mobile and added the same folder explanation workflow to Desktop Standard/Pro; both report facts, rule inference, confidence, limits, and unresolved folders without treating them as junk.
+- Replaced repeated Android SAF pagination during folder analysis with one native direct-child summary per directory, while preserving cancellable read-only traversal and live results.
 - Literature rename previews now use `year - journal - title.pdf`, with explicit fallbacks when metadata is unavailable.
 - Mobile file Insight now separates verified facts, rule inference, risk, confidence, and limitations instead of showing a fixed confidence value.
 - Refined Desktop Standard and Pro with one typography hierarchy, quieter surfaces, responsive literature panes, grouped PDF controls, and menus for lower-frequency view, workspace, and translation actions.

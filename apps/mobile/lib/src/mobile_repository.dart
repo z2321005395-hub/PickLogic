@@ -223,6 +223,16 @@ extension MobileRepositoryViewerCapabilities on MobileRepository {
         limit: limit,
       ) ??
       Future<AndroidBrowsePage?>.value();
+
+  Future<AndroidBrowseDirectorySummary?> inspectBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+  }) =>
+      _viewerBridge?.inspectBrowseDirectory(
+        treeUri: treeUri,
+        directoryUri: directoryUri,
+      ) ??
+      Future<AndroidBrowseDirectorySummary?>.value();
 }
 
 String _pdfPagePreferenceKey(String id) {

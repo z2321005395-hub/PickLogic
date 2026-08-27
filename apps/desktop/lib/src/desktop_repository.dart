@@ -70,6 +70,27 @@ final class DirectorySnapshot {
   final bool truncated;
 }
 
+/// One-pass direct-child summary for read-only Folder Insight traversal.
+final class DesktopDirectoryInspection {
+  const DesktopDirectoryInspection({
+    required this.path,
+    required this.displayName,
+    required this.directories,
+    required this.directFileCount,
+    required this.directFileBytes,
+    required this.mimeFamilyCounts,
+  });
+
+  final String path;
+  final String displayName;
+  final List<BrowseEntry> directories;
+  final int directFileCount;
+  final int directFileBytes;
+  final Map<String, int> mimeFamilyCounts;
+
+  int get directDirectoryCount => directories.length;
+}
+
 abstract interface class DesktopRepository {
   Future<List<WindowsBrowseRoot>> browseRoots();
 
@@ -99,6 +120,8 @@ abstract interface class DesktopRepository {
   Future<ExactDuplicateScanResult> findExactDuplicates(
     Iterable<FileRecord> records,
   );
+
+  Future<DesktopDirectoryInspection> inspectDirectory(String path);
 
   Future<WindowsStorageSummary?> systemDriveSummary();
 }
@@ -164,6 +187,42 @@ final class WindowsDesktopRepository implements DesktopRepository {
       crumbs: _crumbs(directory.absolute.path),
       entries: List<BrowseEntry>.unmodifiable(entries),
       truncated: truncated,
+    );
+  }
+
+  @override
+  Future<DesktopDirectoryInspection> inspectDirectory(String path) async {
+    final directory = Directory(path);
+    if (!await directory.exists()) {
+      throw FileSystemException('The directory is unavailable.', path);
+    }
+    final directories = <BrowseEntry>[];
+    final families = <String, int>{};
+    var directFileCount = 0;
+    var directFileBytes = 0;
+    await for (final entity in directory.list(followLinks: false)) {
+      final entry = await _browseEntry(entity);
+      if (entry == null) continue;
+      if (entry.isDirectory) {
+        directories.add(entry);
+        continue;
+      }
+      directFileCount++;
+      directFileBytes += entry.sizeBytes;
+      final family = _desktopMimeFamily(entry.category);
+      families.update(family, (count) => count + 1, ifAbsent: () => 1);
+    }
+    directories.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return DesktopDirectoryInspection(
+      path: directory.absolute.path,
+      displayName: _basename(directory.absolute.path),
+      directories: List<BrowseEntry>.unmodifiable(directories),
+      directFileCount: directFileCount,
+      directFileBytes: directFileBytes,
+      mimeFamilyCounts: Map<String, int>.unmodifiable(families),
     );
   }
 
@@ -452,6 +511,41 @@ final class SyntheticDesktopRepository implements DesktopRepository {
   }
 
   @override
+  Future<DesktopDirectoryInspection> inspectDirectory(String path) async {
+    if (path == _drivePath) {
+      return const DesktopDirectoryInspection(
+        path: _drivePath,
+        displayName: 'drive',
+        directories: <BrowseEntry>[
+          BrowseEntry(
+            id: 'directory:documents',
+            path: _documentsPath,
+            name: 'Documents',
+            isDirectory: true,
+            sizeBytes: 0,
+            modifiedAt: null,
+            category: VirtualCategory.unknown,
+          ),
+        ],
+        directFileCount: 0,
+        directFileBytes: 0,
+        mimeFamilyCounts: <String, int>{},
+      );
+    }
+    if (path == _documentsPath) {
+      return const DesktopDirectoryInspection(
+        path: _documentsPath,
+        displayName: 'Documents',
+        directories: <BrowseEntry>[],
+        directFileCount: 2,
+        directFileBytes: 7168,
+        mimeFamilyCounts: <String, int>{'document': 2},
+      );
+    }
+    throw FileSystemException('Synthetic directory is unavailable.', path);
+  }
+
+  @override
   Future<String?> chooseBrowseFolder({required bool chinese}) async =>
       _documentsPath;
 
@@ -525,6 +619,21 @@ String _basename(String path) {
   final normalized = path.replaceAll('\\', '/').replaceAll(RegExp(r'/+$'), '');
   return normalized.substring(normalized.lastIndexOf('/') + 1);
 }
+
+String _desktopMimeFamily(VirtualCategory category) => switch (category) {
+  VirtualCategory.images || VirtualCategory.screenshots => 'image',
+  VirtualCategory.videos => 'video',
+  VirtualCategory.audio => 'audio',
+  VirtualCategory.documents ||
+  VirtualCategory.spreadsheets ||
+  VirtualCategory.presentations ||
+  VirtualCategory.pdf ||
+  VirtualCategory.academicPapers => 'document',
+  VirtualCategory.code => 'development',
+  VirtualCategory.archives => 'archive',
+  VirtualCategory.installers => 'application',
+  _ => 'other',
+};
 
 String _rootKey(String path) {
   final normalized = Directory(path).absolute.path.replaceAll('\\', '/');

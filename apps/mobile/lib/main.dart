@@ -2354,6 +2354,8 @@ final class _StoragePageState extends State<_StoragePage> {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 12),
+        AccessibleFolderInsightSection(repository: widget.repository),
+        const SizedBox(height: 20),
         _MobileSectionTitle(strings.text('byType')),
         const SizedBox(height: 4),
         for (final row in typeRows)
@@ -2367,8 +2369,6 @@ final class _StoragePageState extends State<_StoragePage> {
               subtitle: Text(strings.text('observedDirectly')),
             ),
           ),
-        const SizedBox(height: 12),
-        AccessibleFolderInsightSection(repository: widget.repository),
         const SizedBox(height: 12),
         _MobileSectionTitle(strings.text('bySource')),
         ListTile(

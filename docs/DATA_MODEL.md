@@ -32,6 +32,14 @@ Developer Safe Mode now distinguishes an untrusted browse location from one exac
 
 Evidence entries distinguish `fact`, `ruleInference`, `lowConfidenceGuess`, and `platformRestriction`.
 
+## Folder Insight
+
+`FolderObservation` carries an opaque platform locator, display path, direct-child folder/file counts, aggregate direct-file bytes, MIME-family counts, visibility/access/protection flags, and an optional provider error. It contains metadata only and never file bodies.
+
+`FolderInsight` adds `role`, optional probable owner, risk level, confidence, evidence, recommended actions, and limitations. A folder remains unresolved when the available evidence is insufficient; unresolved never means disposable.
+
+`FolderTreeScanner` performs cancellable breadth-first traversal through a platform adapter. Android adapters inspect only user-authorized SAF roots; Windows adapters inspect only the directory selected by the user. Each directory is enumerated once for its direct-child summary.
+
 ## LiteratureRecord
 
 `id`, `localFileId`, optional `doi`, `title`, `authors`, `journal`, optional `year`, `volume`, `issue`, `pages`, `abstract`, `keywords`, `tags`, `readingProgress`, `lastOpenedAt`, `metadataSource`, and `metadataConfidence`.
@@ -82,5 +90,7 @@ Additive optional fields are backward compatible. Renames, removals, required-fi
 The Android bridge's additive private-index-path method is not a `FileLocator` and does not alter shared model serialization. It returns only a fixed app-private database location; the shared Dart SQLite implementation retains schema and search ownership.
 
 `AndroidBrowseRoot`, `AndroidBrowseEntry`, and `AndroidBrowsePage` are additive SAF bridge DTOs for user-authorized read-only hierarchy traversal. Files are converted to normal `FileRecord` values with opaque `content://` locators; existing MediaStore contracts are unchanged.
+
+`AndroidBrowseDirectorySummary` is an additive one-pass SAF aggregate used by Folder Insight. Shared folder roles and evidence are additive enums; unknown values remain safely unresolved, and existing `InsightRecord` serialization is unchanged.
 
 Literature catalog organization, reference-only entries, annotation geometry, local translation memory, citation import, and citation formatting are additive Pro contracts. Existing `LiteratureRecord` serialization is unchanged. Missing optional fields receive safe defaults, SQLite tables migrate additively, and callers that omit the new stores retain the prior read-only reader behavior.
