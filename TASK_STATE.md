@@ -381,7 +381,8 @@ On the phone, unlock PickLogic, open Storage, choose a shared folder through the
 - Standard is 43,115,385 bytes installed / 18,998,162-byte ZIP; Pro is 43,148,153 bytes installed / 19,012,783-byte ZIP. Both first-window smoke launches stayed alive, the packaged Pro synthetic PDF smoke exited 0, and every locally launched PickLogic Windows process was closed.
 - The v2-signed arm64-only user-test APK is 32,472,770 bytes with versionCode 2005. It updated `io.picklogic.mobile.usertest` on the authorized Z70 while preserving app data and three media read grants; app-scoped fatal/plugin/security log matches were 0. The display was not focused, so no lock-screen bypass or visual claim was attempted.
 - Local packages remain ignored under `codex_output/`; they are not routine Actions artifacts. No real Windows file or Android media item was moved, renamed, modified, or deleted.
+- PR #38 passed quality/audits, Android arm64, Windows Standard/Pro, and packaged PDF smoke, then merged into `develop` as `ef5ee5d`. Candidate upload steps were skipped; Actions artifacts and caches both remained at 0, and the merge skipped a duplicate push run.
 
 ## Next action
 
-Push one Private PR, run CI once without routine artifact uploads, merge after green, verify Actions artifacts/caches remain empty, then collect hands-on feedback from the current-folder Insight workflow.
+Collect hands-on feedback from the current-folder Insight workflow. On Android, authorize one suitable shared parent folder once and browse descendants normally; on Windows, open a drive or folder and review the automatically following right pane. Keep real-data operations read-only during this validation.
