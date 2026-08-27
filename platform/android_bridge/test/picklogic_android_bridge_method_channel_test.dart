@@ -86,6 +86,15 @@ void main() {
               'offset': 0,
               'hasMore': false,
             },
+            'inspectBrowseDirectory' => <String, Object>{
+              'treeUri': 'content://tree/test',
+              'directoryUri': 'content://tree/test/document/root',
+              'directoryName': 'Documents',
+              'directories': <Object>[],
+              'directFileCount': 4,
+              'directFileBytes': 8192,
+              'mimeFamilyCounts': <String, Object>{'document': 4},
+            },
             'openContentUri' => true,
             'loadPreviewImage' => Uint8List.fromList(<int>[1, 2, 3]),
             'loadTextPreview' => <String, Object>{
@@ -190,9 +199,15 @@ void main() {
       treeUri: roots.single.treeUri,
       directoryUri: roots.single.documentUri,
     );
+    final inspection = await platform.inspectBrowseDirectory(
+      treeUri: roots.single.treeUri,
+      directoryUri: roots.single.documentUri,
+    );
     expect(roots.single.displayName, 'Documents');
     expect(page.directoryName, 'Documents');
     expect(page.items.single.displayName, 'paper.pdf');
+    expect(inspection.directFileCount, 4);
+    expect(inspection.directFileBytes, 8192);
     expect(await platform.openContentUri('content://media/1'), isTrue);
   });
 

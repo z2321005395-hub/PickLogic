@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_android_bridge/picklogic_android_bridge.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
 import 'package:picklogic_mobile/src/mobile_folder_insight.dart';
+import 'package:picklogic_mobile/src/mobile_repository.dart';
 
 void main() {
   const engine = AndroidFolderInsightEngine();
@@ -80,31 +81,33 @@ void main() {
           _file('camera.jpg', 'content://test/document/DCIM', 'image/jpeg'),
         ],
       };
-      final offsets = <String, List<int>>{};
+      final inspected = <String>[];
       final scanner = AndroidFolderInsightScanner(
         loadRoots: () async => const <AndroidBrowseRoot>[root],
-        loadPage:
-            ({
-              required treeUri,
-              required directoryUri,
-              required offset,
-              required limit,
-            }) async {
-              offsets.putIfAbsent(directoryUri, () => <int>[]).add(offset);
-              if (directoryUri.endsWith('mystery_state')) {
-                throw StateError('synthetic provider denial');
-              }
-              final all = pages[directoryUri] ?? const <AndroidBrowseEntry>[];
-              final items = all.skip(offset).take(1).toList(growable: false);
-              return AndroidBrowsePage(
-                treeUri: treeUri,
-                directoryUri: directoryUri,
-                directoryName: directoryUri.split('/').last,
-                items: items,
-                offset: offset,
-                hasMore: offset + items.length < all.length,
-              );
-            },
+        loadSummary: ({required treeUri, required directoryUri}) async {
+          inspected.add(directoryUri);
+          if (directoryUri.endsWith('mystery_state')) {
+            throw StateError('synthetic provider denial');
+          }
+          final all = pages[directoryUri] ?? const <AndroidBrowseEntry>[];
+          final files = all.where((entry) => !entry.directory).toList();
+          return AndroidBrowseDirectorySummary(
+            treeUri: treeUri,
+            directoryUri: directoryUri,
+            directoryName: directoryUri.split('/').last,
+            directories: all
+                .where((entry) => entry.directory)
+                .toList(growable: false),
+            directFileCount: files.length,
+            directFileBytes: files.fold<int>(
+              0,
+              (total, entry) => total + entry.sizeBytes,
+            ),
+            mimeFamilyCounts: files.isEmpty
+                ? const <String, int>{}
+                : const <String, int>{'image': 1},
+          );
+        },
       );
 
       final result = await scanner.scan();
@@ -112,7 +115,7 @@ void main() {
       expect(result.complete, isTrue);
       expect(result.insights, hasLength(3));
       expect(result.failures, 1);
-      expect(offsets[root.documentUri], <int>[0, 1]);
+      expect(inspected, hasLength(3));
       expect(
         result.insights
             .singleWhere((item) => item.observation.displayName == 'DCIM')
@@ -161,6 +164,37 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('字节'), findsNothing);
+  });
+
+  testWidgets('empty storage Insight exposes the authorization action first', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        locale: Locale('zh'),
+        supportedLocales: <Locale>[Locale('zh'), Locale('en')],
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AccessibleFolderInsightSection(
+              repository: SyntheticMobileRepository(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择目录并开始分析'), findsOneWidget);
+    expect(find.byKey(const Key('folder-insight-scan')), findsNothing);
+    final button = tester.widget<FilledButton>(
+      find.byKey(const Key('folder-insight-add-root')),
+    );
+    expect(button.onPressed, isNotNull);
   });
 }
 

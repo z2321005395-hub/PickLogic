@@ -26,7 +26,8 @@
 - Mobile MediaStore metadata and per-collection checkpoints use the shared app-private SQLite index; bounded work resumes on next launch without scheduling OCR.
 - Mobile category/source navigation uses real bounded thumbnails; every accessible screenshot remains browsable by date through 120-item pagination.
 - Mobile Files now has a user-authorized hierarchical SAF browser, visible-only thumbnails, direct full-screen photo/video/audio/document opening, and app-local favorite/review marks.
-- Mobile Storage Insight can recursively explain every folder in user-authorized SAF trees from names, Android path conventions, and direct-child metadata; unresolved never means junk, and private app data remains inaccessible.
+- Mobile Storage Insight puts directory authorization first, streams live results, and recursively explains every folder in user-authorized SAF trees from one-pass direct-child summaries; unresolved never means junk, and private app data remains inaccessible.
+- Desktop Standard/Pro share the same evidence-based Folder Insight engine for a user-selected read-only tree, including unresolved-first review and contextual explanations.
 - A CI-built x86_64 APK passed the TTDT API 36 emulator bridge success path with zero media grants and zero fatal-log matches.
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
 - Pro Literature supports multi-PDF selection/drop, reference-only BibTeX/RIS import, nested/smart collections, tags/ratings/star/trash, high-confidence duplicate merging, reading-position and bilingual-page recovery, local page-coordinate annotations, six citation styles with Word-compatible rich-text copy, and explicit selection/page/document translation; source PDFs remain read-only.

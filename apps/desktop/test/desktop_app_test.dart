@@ -748,6 +748,38 @@ final class _TrackARepository implements DesktopRepository {
   }
 
   @override
+  Future<DesktopDirectoryInspection> inspectDirectory(String path) async {
+    if (path == drivePath) {
+      return const DesktopDirectoryInspection(
+        path: drivePath,
+        displayName: 'S:',
+        directories: <BrowseEntry>[
+          BrowseEntry(
+            id: 'directory:documents',
+            path: documentsPath,
+            name: 'Documents',
+            isDirectory: true,
+            sizeBytes: 0,
+            modifiedAt: null,
+            category: VirtualCategory.unknown,
+          ),
+        ],
+        directFileCount: 0,
+        directFileBytes: 0,
+        mimeFamilyCounts: <String, int>{},
+      );
+    }
+    return const DesktopDirectoryInspection(
+      path: documentsPath,
+      displayName: 'Documents',
+      directories: <BrowseEntry>[],
+      directFileCount: 4,
+      directFileBytes: 70,
+      mimeFamilyCounts: <String, int>{'document': 3, 'image': 1},
+    );
+  }
+
+  @override
   Future<String?> chooseBrowseFolder({required bool chinese}) async =>
       documentsPath;
 

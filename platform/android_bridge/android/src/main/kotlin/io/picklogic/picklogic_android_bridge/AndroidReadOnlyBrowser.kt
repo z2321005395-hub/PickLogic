@@ -94,6 +94,64 @@ internal class AndroidReadOnlyBrowser(private val context: Context) {
         )
     }
 
+    /**
+     * Reads one directory cursor once and returns only subdirectories plus
+     * aggregate direct-file metadata. This avoids repeatedly materializing and
+     * sorting thousands of media rows while Storage Insight walks a tree.
+     */
+    fun inspect(treeUri: Uri, directoryUri: Uri?): Map<String, Any?> {
+        assertRemembered(treeUri)
+        val directory = directoryUri ?: rootDocumentUri(treeUri)
+        assertWithinTree(treeUri, directory)
+        val parentMetadata = queryDocument(treeUri, directory)
+            ?: throw IllegalArgumentException("The selected directory is no longer available.")
+        require(parentMetadata.directory) { "The selected item is not a directory." }
+
+        val childUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            treeUri,
+            DocumentsContract.getDocumentId(directory),
+        )
+        val directories = mutableListOf<DocumentMetadata>()
+        val mimeFamilies = mutableMapOf<String, Int>()
+        var directFileCount = 0
+        var directFileBytes = 0L
+        resolver.query(childUri, PROJECTION, null, null, null)?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val metadata = cursorMetadata(treeUri, cursor)
+                if (metadata.directory) {
+                    directories += metadata
+                } else {
+                    directFileCount++
+                    directFileBytes += metadata.sizeBytes
+                    val family = mimeFamily(metadata.mimeType, metadata.displayName)
+                    mimeFamilies[family] = (mimeFamilies[family] ?: 0) + 1
+                }
+            }
+        }
+        directories.sortWith(
+            compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName },
+        )
+        return mapOf(
+            "treeUri" to treeUri.toString(),
+            "directoryUri" to directory.toString(),
+            "directoryName" to parentMetadata.displayName,
+            "directories" to directories.map { metadata ->
+                mapOf(
+                    "documentUri" to metadata.uri.toString(),
+                    "parentUri" to directory.toString(),
+                    "displayName" to metadata.displayName,
+                    "mimeType" to metadata.mimeType,
+                    "directory" to true,
+                    "sizeBytes" to 0L,
+                    "modifiedAtMillis" to metadata.modifiedAtMillis,
+                )
+            },
+            "directFileCount" to directFileCount,
+            "directFileBytes" to directFileBytes,
+            "mimeFamilyCounts" to mimeFamilies,
+        )
+    }
+
     private fun assertRemembered(treeUri: Uri) {
         val remembered = preferences.getStringSet(ROOTS_KEY, emptySet()).orEmpty()
         val persisted = resolver.persistedUriPermissions.any {
@@ -151,6 +209,30 @@ internal class AndroidReadOnlyBrowser(private val context: Context) {
         val sizeBytes: Long,
         val modifiedAtMillis: Long,
     )
+
+    private fun mimeFamily(mimeType: String, displayName: String): String {
+        val mime = mimeType.lowercase()
+        val name = displayName.lowercase()
+        return when {
+            mime.startsWith("image/") -> "image"
+            mime.startsWith("video/") -> "video"
+            mime.startsWith("audio/") -> "audio"
+            mime.startsWith("text/") ||
+                mime == "application/pdf" ||
+                "document" in mime ||
+                "sheet" in mime ||
+                "presentation" in mime -> "document"
+            "zip" in mime ||
+                "archive" in mime ||
+                name.endsWith(".7z") ||
+                name.endsWith(".rar") ||
+                name.endsWith(".tar") ||
+                name.endsWith(".gz") -> "archive"
+            mime == "application/vnd.android.package-archive" || name.endsWith(".apk") ->
+                "application"
+            else -> "other"
+        }
+    }
 
     private companion object {
         const val PREFERENCES_NAME = "picklogic-mobile-preferences"

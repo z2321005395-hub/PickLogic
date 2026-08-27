@@ -435,6 +435,45 @@ final class AndroidBrowsePage {
   final bool hasMore;
 }
 
+/// One-pass metadata summary used by Storage Insight. Only subdirectory names
+/// and aggregate direct-file metadata cross the platform channel.
+final class AndroidBrowseDirectorySummary {
+  const AndroidBrowseDirectorySummary({
+    required this.treeUri,
+    required this.directoryUri,
+    required this.directoryName,
+    required this.directories,
+    required this.directFileCount,
+    required this.directFileBytes,
+    required this.mimeFamilyCounts,
+  });
+
+  factory AndroidBrowseDirectorySummary.fromMap(Map<Object?, Object?> map) =>
+      AndroidBrowseDirectorySummary(
+        treeUri: map['treeUri']! as String,
+        directoryUri: map['directoryUri']! as String,
+        directoryName: map['directoryName']! as String,
+        directories: (map['directories']! as List<Object?>)
+            .cast<Map<Object?, Object?>>()
+            .map(AndroidBrowseEntry.fromMap)
+            .toList(growable: false),
+        directFileCount: map['directFileCount']! as int,
+        directFileBytes: map['directFileBytes']! as int,
+        mimeFamilyCounts: (map['mimeFamilyCounts']! as Map<Object?, Object?>)
+            .map((key, value) => MapEntry(key! as String, value! as int)),
+      );
+
+  final String treeUri;
+  final String directoryUri;
+  final String directoryName;
+  final List<AndroidBrowseEntry> directories;
+  final int directFileCount;
+  final int directFileBytes;
+  final Map<String, int> mimeFamilyCounts;
+
+  int get directDirectoryCount => directories.length;
+}
+
 final class AndroidMediaPage {
   const AndroidMediaPage({
     required this.items,

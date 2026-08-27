@@ -79,6 +79,20 @@ class MockPicklogicAndroidBridgePlatform
   );
 
   @override
+  Future<AndroidBrowseDirectorySummary> inspectBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+  }) async => AndroidBrowseDirectorySummary(
+    treeUri: treeUri,
+    directoryUri: directoryUri ?? 'content://tree/test/document/test',
+    directoryName: 'Test folder',
+    directories: const <AndroidBrowseEntry>[],
+    directFileCount: 3,
+    directFileBytes: 4096,
+    mimeFamilyCounts: const <String, int>{'document': 3},
+  );
+
+  @override
   Future<bool> openContentUri(String contentUri) async =>
       contentUri.startsWith('content://');
 
@@ -233,6 +247,10 @@ void main() {
       treeUri: roots.single.treeUri,
       directoryUri: roots.single.documentUri,
     );
+    final inspection = await bridge.inspectBrowseDirectory(
+      treeUri: roots.single.treeUri,
+      directoryUri: roots.single.documentUri,
+    );
     final opened = await bridge.openContentUri('content://media/1');
 
     expect(state.canReadVisualMedia, isFalse);
@@ -244,6 +262,8 @@ void main() {
     expect(tree, 'content://tree/test');
     expect(roots.single.displayName, 'Test folder');
     expect(directory.directoryName, 'Test folder');
+    expect(inspection.directFileCount, 3);
+    expect(inspection.mimeFamilyCounts, <String, int>{'document': 3});
     expect(opened, isTrue);
   });
 

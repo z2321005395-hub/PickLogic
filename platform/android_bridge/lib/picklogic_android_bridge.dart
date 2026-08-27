@@ -48,6 +48,14 @@ final class PicklogicAndroidBridge {
     limit: limit,
   );
 
+  Future<AndroidBrowseDirectorySummary> inspectBrowseDirectory({
+    required String treeUri,
+    String? directoryUri,
+  }) => PicklogicAndroidBridgePlatform.instance.inspectBrowseDirectory(
+    treeUri: treeUri,
+    directoryUri: directoryUri,
+  );
+
   Future<bool> openContentUri(String contentUri) =>
       PicklogicAndroidBridgePlatform.instance.openContentUri(contentUri);
 

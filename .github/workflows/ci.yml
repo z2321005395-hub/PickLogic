@@ -44,7 +44,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-          cache: true
+          # Flutter SDK archives exceed 1.5 GiB per ref and quickly exhaust the
+          # repository Actions cache quota. Hosted runs download them instead.
+          cache: false
       - name: Resolve workspace
         run: |
           flutter config --no-analytics
@@ -99,7 +101,7 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-          cache: true
+          cache: false
       - name: Resolve workspace
         run: |
           flutter config --no-analytics
@@ -224,7 +226,7 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-          cache: true
+          cache: false
       - name: Resolve workspace
         shell: pwsh
         run: |
