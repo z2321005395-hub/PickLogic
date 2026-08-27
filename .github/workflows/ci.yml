@@ -26,9 +26,11 @@ env:
   FLUTTER_VERSION: 3.44.9
 
 jobs:
+  # Pull requests already run the complete gate. Preserve direct develop pushes,
+  # but do not rebuild the same tree after GitHub creates its merge commit.
   quality:
     name: Format, analyze, tests, audits
-    if: ${{ github.event.action != 'labeled' && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') }}
+    if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/develop' && startsWith(github.event.head_commit.message, 'Merge pull request')) && github.event.action != 'labeled' && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -85,7 +87,7 @@ jobs:
 
   android:
     name: Android debug build
-    if: ${{ (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') && (github.event.action != 'labeled' || github.event.label.name == 'device-validation') }}
+    if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/develop' && startsWith(github.event.head_commit.message, 'Merge pull request')) && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') && (github.event.action != 'labeled' || github.event.label.name == 'device-validation') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -215,7 +217,7 @@ jobs:
 
   windows:
     name: Windows Standard and Pro builds
-    if: ${{ github.event.action != 'labeled' && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') }}
+    if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/develop' && startsWith(github.event.head_commit.message, 'Merge pull request')) && github.event.action != 'labeled' && (github.event_name != 'pull_request' || github.base_ref != 'main' || github.head_ref != 'develop') }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
