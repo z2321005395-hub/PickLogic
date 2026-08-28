@@ -451,3 +451,17 @@ Push the focused branch, run one PR gate without routine artifact uploads, merge
 ## Next action
 
 Integration complete: PR #43 passed all three CI jobs and merged normally into `develop` as `17ed3e4`. Actions artifacts and caches remain at zero; the redundant post-merge push run was skipped by policy. Keep the single installed Pro window available for maintainer hands-on testing and stop additional PDF feature work until feedback.
+
+## Automatic selection translation and reader-surface editing
+
+- Replaced the PDF selection Translate button/result dialog with a 220 ms debounced selection pipeline. Completing a selection opens the persistent right sidebar immediately, shows source/loading/result/error in place, cancels stale responses by generation, and replaces the result on the next selection. English text targets Simplified Chinese; CJK text targets English.
+- Translation remains opt-in at the provider level. If no provider exists, the same sidebar shows one compact `设置` / `Set up` action; after that one-time configuration it retries automatically. Only the selected text is sent, never PDF bytes or images.
+- Moved content editing from the full reader replacement into the existing central page surface. The library, thumbnails, annotations, parent page/zoom controls, and document header stay mounted; unselected editable objects have no visible boxes, while clicking text/images reveals the selection outline and right-hand properties on the original-looking page.
+- Open-source check: Saladict is MIT but is a React/WebExtension rather than a Flutter/Windows translation engine; Argos Translate is MIT but requires Python plus separately licensed models; LibreTranslate is AGPL; Bergamot is MPL and model-heavy. No dependency or binary was added; PickLogic reused the mature selection-to-sidebar interaction with the existing replaceable provider boundary.
+- Verification: targeted Pro/PDF tests 20/20; complete Desktop tests 38/38; targeted analysis clean; privacy findings 0; packaged PDF reader and content-edit smokes exited 0. Final Pro Release remains 43,328,377 bytes installed.
+- Computer Use verified real drag selection: the right `划词翻译` sidebar opened without a dialog and showed the compact setup action. It also verified that `编辑 PDF` changes to `完成编辑` while thumbnails and the library remain visible, and selecting page text exposes editing controls directly over the current page.
+- Installed `0.1.0-alpha-fd29391`, updated Desktop/Start-menu shortcuts, preserved app data, and left exactly one final Pro instance open on the synthetic selection-translation view. No real PDF was written or overwritten.
+
+## Next action
+
+Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, then verify Actions artifacts/caches stay at zero. Stop feature expansion after integration and collect maintainer hands-on feedback.

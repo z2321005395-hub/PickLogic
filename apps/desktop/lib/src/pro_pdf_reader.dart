@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -35,6 +36,7 @@ final class ProLocalPdfReader extends StatelessWidget {
     this.annotations = const <LiteratureAnnotation>[],
     this.onSaveAnnotation,
     this.onDeleteAnnotation,
+    @visibleForTesting this.selectionTextForTesting,
   });
 
   final String path;
@@ -44,11 +46,12 @@ final class ProLocalPdfReader extends StatelessWidget {
   final WidgetBuilder? viewerBuilder;
   final TranslationProvider translationProvider;
   final LiteratureTranslationStore? translationStore;
-  final VoidCallback? onConfigureTranslation;
+  final AsyncCallback? onConfigureTranslation;
   final String literatureId;
   final List<LiteratureAnnotation> annotations;
   final LiteratureAnnotationSaved? onSaveAnnotation;
   final LiteratureAnnotationDeleted? onDeleteAnnotation;
+  final ValueListenable<String>? selectionTextForTesting;
 
   @override
   Widget build(BuildContext context) => _ProPdfReader(
@@ -64,6 +67,7 @@ final class ProLocalPdfReader extends StatelessWidget {
     annotations: annotations,
     onSaveAnnotation: onSaveAnnotation,
     onDeleteAnnotation: onDeleteAnnotation,
+    selectionTextForTesting: selectionTextForTesting,
   );
 }
 
@@ -102,6 +106,7 @@ final class _ProPdfReader extends StatefulWidget {
     this.annotations = const <LiteratureAnnotation>[],
     this.onSaveAnnotation,
     this.onDeleteAnnotation,
+    this.selectionTextForTesting,
   }) : assert((filePath == null) != (documentBytes == null));
 
   final String? filePath;
@@ -112,11 +117,12 @@ final class _ProPdfReader extends StatefulWidget {
   final WidgetBuilder? viewerBuilder;
   final TranslationProvider translationProvider;
   final LiteratureTranslationStore? translationStore;
-  final VoidCallback? onConfigureTranslation;
+  final AsyncCallback? onConfigureTranslation;
   final String literatureId;
   final List<LiteratureAnnotation> annotations;
   final LiteratureAnnotationSaved? onSaveAnnotation;
   final LiteratureAnnotationDeleted? onDeleteAnnotation;
+  final ValueListenable<String>? selectionTextForTesting;
 
   bool get isSynthetic => documentBytes != null;
 
@@ -143,9 +149,18 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   List<PdfPageTextRange> _selectedRanges = const <PdfPageTextRange>[];
   bool _selectionLoading = false;
   bool _translationBusy = false;
+  bool _selectionTranslationBusy = false;
+  bool _selectionTranslationNeedsConfiguration = false;
+  String _selectionTranslationSource = '';
+  String? _selectionTranslationText;
+  String? _selectionTranslationProviderLabel;
+  String? _selectionTranslationError;
+  Timer? _selectionTranslationDebounce;
+  int _selectionTranslationGeneration = 0;
   bool _annotationBusy = false;
   bool _pdfEditBusy = false;
   bool _contentEditing = false;
+  double? _contentEditZoom;
   Offset? _contentEditViewportFraction;
   bool _annotationsVisible = false;
   final Map<int, String> _pageTranslations = <int, String>{};
@@ -165,6 +180,26 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     _pageNumber = widget.initialPageNumber < 1 ? 1 : widget.initialPageNumber;
     _pageController.text = '$_pageNumber';
     _viewerController.addListener(_onViewerTransformChanged);
+    widget.selectionTextForTesting?.addListener(_onTestingSelectionChanged);
+    if (widget.selectionTextForTesting?.value.trim().isNotEmpty == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onTestingSelectionChanged();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProPdfReader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(
+      oldWidget.selectionTextForTesting,
+      widget.selectionTextForTesting,
+    )) {
+      oldWidget.selectionTextForTesting?.removeListener(
+        _onTestingSelectionChanged,
+      );
+      widget.selectionTextForTesting?.addListener(_onTestingSelectionChanged);
+    }
   }
 
   @override
@@ -178,6 +213,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   @override
   void dispose() {
+    _selectionTranslationDebounce?.cancel();
+    widget.selectionTextForTesting?.removeListener(_onTestingSelectionChanged);
     _viewerController.removeListener(_onViewerTransformChanged);
     _searcher?.dispose();
     _searchController.dispose();
@@ -187,6 +224,16 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   String _targetLanguage(_PdfReaderStrings strings) =>
       strings.isChinese ? 'Simplified Chinese' : 'English';
+
+  String _selectionTargetLanguage(String source) {
+    final containsCjk = source.runes.any(
+      (rune) =>
+          (rune >= 0x3400 && rune <= 0x4DBF) ||
+          (rune >= 0x4E00 && rune <= 0x9FFF) ||
+          (rune >= 0xF900 && rune <= 0xFAFF),
+    );
+    return containsCjk ? 'English' : 'Simplified Chinese';
+  }
 
   Map<String, String> get _terminologyMap => <String, String>{
     for (final term in _terminology) term.sourceTerm: term.translatedTerm,
@@ -421,7 +468,27 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       return;
     }
     setState(() => _pageJumpInvalid = false);
+    if (_contentEditing) {
+      _contentEditorController.goToPage(page);
+      return;
+    }
     await _viewerController.goToPage(pageNumber: page);
+  }
+
+  void _zoomOut() {
+    if (_contentEditing) {
+      _contentEditorController.zoomOut();
+    } else if (_viewerController.isReady) {
+      _viewerController.zoomDown();
+    }
+  }
+
+  void _zoomIn() {
+    if (_contentEditing) {
+      _contentEditorController.zoomIn();
+    } else if (_viewerController.isReady) {
+      _viewerController.zoomUp();
+    }
   }
 
   void _paintSearchMatches(ui.Canvas canvas, Rect pageRect, PdfPage page) {
@@ -508,6 +575,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     final viewportFraction = _captureCurrentPageViewport();
     setState(() {
       _contentEditing = true;
+      _contentEditZoom = (_zoom ?? 1).clamp(0.25, 4).toDouble();
       _contentEditViewportFraction = viewportFraction;
       _pageJumpInvalid = false;
       _selectedText = '';
@@ -519,8 +587,14 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     if (!mounted) return;
     setState(() {
       _contentEditing = false;
+      _contentEditZoom = null;
       _contentEditViewportFraction = null;
     });
+  }
+
+  void _onContentEditorZoomChanged(double zoom) {
+    if (!mounted) return;
+    setState(() => _contentEditZoom = zoom);
   }
 
   Offset? _captureCurrentPageViewport() {
@@ -615,6 +689,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         setState(() {
           _selectedText = '';
           _selectedRanges = const <PdfPageTextRange>[];
+          _selectionLoading = false;
         });
       }
       return;
@@ -624,10 +699,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       final text = (await selection.getSelectedText()).trim();
       final ranges = await selection.getSelectedTextRanges();
       if (mounted) {
-        setState(() {
-          _selectedText = text;
-          _selectedRanges = ranges;
-        });
+        _acceptSelectedText(text, ranges);
       }
     } on Object {
       if (mounted) {
@@ -639,6 +711,97 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     } finally {
       if (mounted) setState(() => _selectionLoading = false);
     }
+  }
+
+  void _onTestingSelectionChanged() {
+    final text = widget.selectionTextForTesting?.value ?? '';
+    _acceptSelectedText(text, const <PdfPageTextRange>[]);
+  }
+
+  void _acceptSelectedText(String text, List<PdfPageTextRange> ranges) {
+    if (!mounted) return;
+    final source = text.trim();
+    if (source.isEmpty) {
+      setState(() {
+        _selectedText = '';
+        _selectedRanges = const <PdfPageTextRange>[];
+        _selectionLoading = false;
+      });
+      return;
+    }
+    setState(() {
+      _selectedText = source;
+      _selectedRanges = ranges;
+      _selectionLoading = false;
+    });
+    _queueSelectionTranslation(source);
+  }
+
+  void _queueSelectionTranslation(String source, {bool force = false}) {
+    final normalized = source.trim();
+    if (normalized.isEmpty) return;
+    if (!force &&
+        normalized == _selectionTranslationSource &&
+        _selectionTranslationText?.isNotEmpty == true) {
+      if (!_bilingualVisible) setState(() => _bilingualVisible = true);
+      return;
+    }
+    _selectionTranslationDebounce?.cancel();
+    final generation = ++_selectionTranslationGeneration;
+    setState(() {
+      _bilingualVisible = true;
+      _selectionTranslationSource = normalized;
+      _selectionTranslationText = null;
+      _selectionTranslationProviderLabel = null;
+      _selectionTranslationError = null;
+      _selectionTranslationNeedsConfiguration = false;
+      _selectionTranslationBusy = true;
+    });
+    _selectionTranslationDebounce = Timer(
+      const Duration(milliseconds: 220),
+      () {
+        unawaited(_translateSelectionAutomatically(normalized, generation));
+      },
+    );
+  }
+
+  Future<void> _translateSelectionAutomatically(
+    String source,
+    int generation,
+  ) async {
+    if (!mounted) return;
+    try {
+      final configured = await widget.translationProvider.isConfigured();
+      if (!mounted || generation != _selectionTranslationGeneration) return;
+      if (!configured) {
+        setState(() {
+          _selectionTranslationBusy = false;
+          _selectionTranslationNeedsConfiguration = true;
+        });
+        return;
+      }
+      final result = await widget.translationProvider.translateSelectedText(
+        source,
+        targetLanguage: _selectionTargetLanguage(source),
+        terminology: _terminologyMap,
+      );
+      if (!mounted || generation != _selectionTranslationGeneration) return;
+      setState(() {
+        _selectionTranslationBusy = false;
+        _selectionTranslationText = result.translatedText;
+        _selectionTranslationProviderLabel = result.providerLabel;
+      });
+    } on Object catch (error) {
+      if (!mounted || generation != _selectionTranslationGeneration) return;
+      setState(() {
+        _selectionTranslationBusy = false;
+        _selectionTranslationError = error.toString();
+      });
+    }
+  }
+
+  void _retrySelectionTranslation() {
+    _queueSelectionTranslation(_selectionTranslationSource, force: true);
   }
 
   Future<void> _copySelection() async {
@@ -657,67 +820,18 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     );
   }
 
-  Future<void> _translateSelection() async {
-    final strings = _PdfReaderStrings.of(context);
-    final source = _selectedText.trim();
-    if (source.isEmpty || _translationBusy) return;
-    final configured = await widget.translationProvider.isConfigured();
-    if (!mounted) return;
-    if (!configured) {
-      widget.onConfigureTranslation?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.translationNeedsConfiguration)),
-      );
-      return;
-    }
-    setState(() => _translationBusy = true);
-    try {
-      final result = await widget.translationProvider.translateSelectedText(
-        source,
-        targetLanguage: _targetLanguage(strings),
-        terminology: _terminologyMap,
-      );
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          key: const Key('pdf-translation-result-dialog'),
-          title: Text(strings.translationResult),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640, maxHeight: 520),
-            child: SingleChildScrollView(
-              child: SelectableText(result.translatedText),
-            ),
-          ),
-          actions: [
-            TextButton.icon(
-              onPressed: () =>
-                  Clipboard.setData(ClipboardData(text: result.translatedText)),
-              icon: const Icon(Icons.copy_outlined),
-              label: Text(strings.copyTranslation),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(strings.close),
-            ),
-          ],
-        ),
-      );
-    } on Object catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${strings.translationFailed}: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _translationBusy = false);
-    }
-  }
-
   Future<bool> _ensureTranslationConfigured(_PdfReaderStrings strings) async {
     final configured = await widget.translationProvider.isConfigured();
     if (!mounted) return false;
     if (configured) return true;
-    widget.onConfigureTranslation?.call();
+    final configure = widget.onConfigureTranslation;
+    if (configure != null) {
+      await configure();
+      if (!mounted) return false;
+      final nowConfigured = await widget.translationProvider.isConfigured();
+      if (!mounted) return false;
+      if (nowConfigured) return true;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(strings.translationNeedsConfiguration)),
     );
@@ -1174,8 +1288,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 IconButton(
                   key: const Key('pdf-zoom-out'),
                   tooltip: strings.zoomOut,
-                  onPressed: _viewerController.isReady
-                      ? () => _viewerController.zoomDown()
+                  onPressed: _contentEditing || _viewerController.isReady
+                      ? _zoomOut
                       : null,
                   icon: const Icon(Icons.remove),
                 ),
@@ -1191,8 +1305,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 IconButton(
                   key: const Key('pdf-zoom-in'),
                   tooltip: strings.zoomIn,
-                  onPressed: _viewerController.isReady
-                      ? () => _viewerController.zoomUp()
+                  onPressed: _contentEditing || _viewerController.isReady
+                      ? _zoomIn
                       : null,
                   icon: const Icon(Icons.add),
                 ),
@@ -1487,13 +1601,19 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             icon: const Icon(Icons.copy_outlined),
             label: Text(strings.copySelection),
           ),
-          FilledButton.tonalIcon(
-            key: const Key('pdf-translate-selection-action'),
-            onPressed: _selectedText.isEmpty || _translationBusy
-                ? null
-                : _translateSelection,
-            icon: const Icon(Icons.translate),
-            label: Text(strings.translateSelection),
+          Chip(
+            key: const Key('pdf-selection-auto-translation-status'),
+            avatar: _selectionTranslationBusy
+                ? const SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.translate, size: 16),
+            label: Text(
+              _selectionTranslationBusy
+                  ? strings.translatingSelection
+                  : strings.selectionAutoTranslate,
+            ),
           ),
           TextButton.icon(
             key: const Key('pdf-annotate-selection-action'),
@@ -1564,9 +1684,10 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             (searcher.currentIndex ?? 0) + 1,
             searcher.matches.length,
           );
-    final zoomLabel = _zoom == null
+    final activeZoom = _contentEditing ? _contentEditZoom : _zoom;
+    final zoomLabel = activeZoom == null
         ? strings.zoomPreparing
-        : '${(_zoom! * 100).round()}%';
+        : '${(activeZoom * 100).round()}%';
 
     return Column(
       key: const Key('pro-pdf-reader'),
@@ -1597,133 +1718,147 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         ],
         const SizedBox(height: 6),
         Expanded(
-          child: IndexedStack(
-            key: const Key('pdf-reader-mode-stack'),
-            index: _contentEditing ? 1 : 0,
-            sizing: StackFit.expand,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  SizedBox(
-                    width: 76,
-                    child: document == null
-                        ? const Center(child: CircularProgressIndicator())
-                        : ListView.builder(
-                            key: const Key('pdf-thumbnail-list'),
-                            itemCount: document.pages.length,
-                            itemBuilder: (context, index) {
-                              final page = index + 1;
-                              final selected = page == _pageNumber;
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: InkWell(
-                                  key: Key('pdf-thumbnail-$page'),
-                                  onTap: () => _viewerController.goToPage(
-                                    pageNumber: page,
-                                  ),
-                                  child: Container(
-                                    height: 96,
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: selected
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.primary
-                                            : Theme.of(context).dividerColor,
-                                        width: selected ? 2 : 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
+              SizedBox(
+                width: 76,
+                child: document == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                        key: const Key('pdf-thumbnail-list'),
+                        itemCount: document.pages.length,
+                        itemBuilder: (context, index) {
+                          final page = index + 1;
+                          final selected = page == _pageNumber;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              key: Key('pdf-thumbnail-$page'),
+                              onTap: () {
+                                if (_contentEditing) {
+                                  _contentEditorController.goToPage(page);
+                                } else {
+                                  unawaited(
+                                    _viewerController.goToPage(
+                                      pageNumber: page,
                                     ),
-                                    child: Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: PdfPageView(
-                                            document: document,
-                                            pageNumber: page,
-                                            maximumDpi: 96,
-                                            decoration: const BoxDecoration(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          right: 2,
-                                          bottom: 2,
-                                          child: DecoratedBox(
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.65,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 5,
-                                                    vertical: 2,
-                                                  ),
-                                              child: Text(
-                                                '$page',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .labelSmall
-                                                    ?.copyWith(
-                                                      color: Colors.white,
-                                                    ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                  );
+                                }
+                              },
+                              child: Container(
+                                height: 96,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: selected
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context).dividerColor,
+                                    width: selected ? 2 : 1,
                                   ),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                              );
-                            },
-                          ),
-                  ),
-                  const VerticalDivider(width: 10),
-                  if (_annotationsVisible) ...[
-                    SizedBox(width: 240, child: _buildAnnotationPanel(strings)),
-                    const VerticalDivider(width: 10),
-                  ],
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: _buildViewer(),
-                          ),
-                        ),
-                        if (_bilingualVisible) ...[
-                          const VerticalDivider(width: 10),
-                          Expanded(child: _buildTranslationPanel(strings)),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: PdfPageView(
+                                        document: document,
+                                        pageNumber: page,
+                                        maximumDpi: 96,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 2,
+                                      bottom: 2,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.65,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 2,
+                                          ),
+                                          child: Text(
+                                            '$page',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(color: Colors.white),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
-              if (_contentEditing && document != null)
-                PdfContentEditorDialog.embedded(
-                  key: ValueKey('pdf-inline-editor-${widget.sourceName}'),
-                  document: document,
-                  initialPageNumber: _pageNumber,
-                  initialZoom: _zoom,
-                  initialViewportFraction: _contentEditViewportFraction,
-                  controller: _contentEditorController,
-                  onClosed: _onContentEditorClosed,
-                  onPageChanged: _onContentEditorPageChanged,
-                  onSaveRequested: (contentPlan) => _saveEditedPdfCopy(
-                    plan: PdfEditPlan.identity(document.pages.length),
-                    contentEdits: contentPlan,
-                  ),
-                )
-              else
-                const SizedBox.shrink(),
+              const VerticalDivider(width: 10),
+              if (_annotationsVisible) ...[
+                SizedBox(width: 240, child: _buildAnnotationPanel(strings)),
+                const VerticalDivider(width: 10),
+              ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: IndexedStack(
+                          key: const Key('pdf-reader-mode-stack'),
+                          index: _contentEditing ? 1 : 0,
+                          sizing: StackFit.expand,
+                          children: [
+                            _buildViewer(),
+                            if (_contentEditing && document != null)
+                              PdfContentEditorDialog.readerSurface(
+                                key: ValueKey(
+                                  'pdf-reader-surface-editor-${widget.sourceName}',
+                                ),
+                                document: document,
+                                initialPageNumber: _pageNumber,
+                                initialZoom: _contentEditZoom ?? _zoom,
+                                initialViewportFraction:
+                                    _contentEditViewportFraction,
+                                controller: _contentEditorController,
+                                onClosed: _onContentEditorClosed,
+                                onPageChanged: _onContentEditorPageChanged,
+                                onZoomChanged: _onContentEditorZoomChanged,
+                                onSaveRequested: (contentPlan) =>
+                                    _saveEditedPdfCopy(
+                                      plan: PdfEditPlan.identity(
+                                        document.pages.length,
+                                      ),
+                                      contentEdits: contentPlan,
+                                    ),
+                              )
+                            else
+                              const SizedBox.shrink(),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_bilingualVisible && !_contentEditing) ...[
+                      const VerticalDivider(width: 10),
+                      SizedBox(
+                        width: 380,
+                        child: _buildTranslationPanel(strings),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1830,6 +1965,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   }
 
   Widget _buildTranslationPanel(_PdfReaderStrings strings) {
+    final selectionSource = _selectionTranslationSource.trim();
+    final selectionTranslation = _selectionTranslationText?.trim();
+    final showingSelection = selectionSource.isNotEmpty;
     final translation = _pageTranslations[_pageNumber];
     final source = _pageTranslationSources[_pageNumber];
     return Material(
@@ -1845,11 +1983,36 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
               children: [
                 Expanded(
                   child: Text(
-                    strings.translatedPage(_pageNumber),
+                    showingSelection
+                        ? strings.selectionTranslation
+                        : strings.translatedPage(_pageNumber),
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
-                if (translation != null)
+                if (showingSelection &&
+                    selectionTranslation?.isNotEmpty == true)
+                  IconButton(
+                    key: const Key('pdf-copy-selection-translation-action'),
+                    tooltip: strings.copyTranslation,
+                    onPressed: () => Clipboard.setData(
+                      ClipboardData(text: selectionTranslation!),
+                    ),
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                  ),
+                if (showingSelection)
+                  IconButton(
+                    key: const Key('pdf-show-page-translation-action'),
+                    tooltip: strings.showPageTranslation,
+                    onPressed: () => setState(() {
+                      _selectionTranslationSource = '';
+                      _selectionTranslationText = null;
+                      _selectionTranslationProviderLabel = null;
+                      _selectionTranslationError = null;
+                      _selectionTranslationNeedsConfiguration = false;
+                    }),
+                    icon: const Icon(Icons.article_outlined, size: 18),
+                  )
+                else if (translation != null)
                   IconButton(
                     key: const Key('pdf-retranslate-page-action'),
                     tooltip: strings.retranslate,
@@ -1868,7 +2031,13 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: translation == null
+            child: showingSelection
+                ? _buildSelectionTranslationBody(
+                    strings,
+                    source: selectionSource,
+                    translated: selectionTranslation,
+                  )
+                : translation == null
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(20),
@@ -1938,6 +2107,117 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       ),
     );
   }
+
+  Widget _buildSelectionTranslationBody(
+    _PdfReaderStrings strings, {
+    required String source,
+    required String? translated,
+  }) => SelectionArea(
+    key: const Key('pdf-selection-translation-panel'),
+    child: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          strings.selectedOriginal,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          source,
+          key: const Key('pdf-selection-translation-source'),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
+        ),
+        const Divider(height: 28),
+        Text(
+          strings.translatedText,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        if (_selectionTranslationBusy) ...[
+          const LinearProgressIndicator(
+            key: Key('pdf-selection-translation-loading'),
+          ),
+          const SizedBox(height: 10),
+          Text(strings.translatingSelection),
+        ] else if (_selectionTranslationNeedsConfiguration) ...[
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.tune,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      strings.translationNeedsConfiguration,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  if (widget.onConfigureTranslation != null) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message: strings.configureTranslation,
+                      child: TextButton(
+                        key: const Key(
+                          'pdf-configure-selection-translation-action',
+                        ),
+                        onPressed: () async {
+                          await widget.onConfigureTranslation?.call();
+                          if (mounted) _retrySelectionTranslation();
+                        },
+                        child: Text(strings.configureTranslationShort),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ] else if (_selectionTranslationError != null) ...[
+          Text(
+            '${strings.translationFailed}: $_selectionTranslationError',
+            key: const Key('pdf-selection-translation-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const Key('pdf-retry-selection-translation-action'),
+              onPressed: _retrySelectionTranslation,
+              icon: const Icon(Icons.refresh),
+              label: Text(strings.retryTranslation),
+            ),
+          ),
+        ] else
+          Text(
+            translated ?? '',
+            key: const Key('pdf-selection-translation-text'),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(height: 1.65),
+          ),
+        if (_selectionTranslationProviderLabel?.isNotEmpty == true) ...[
+          const SizedBox(height: 16),
+          Text(
+            strings.translationProvider(_selectionTranslationProviderLabel!),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ],
+    ),
+  );
 
   Widget _buildViewer() {
     final viewerBuilder = widget.viewerBuilder;
@@ -2092,6 +2372,21 @@ final class _PdfReaderStrings {
       isChinese ? '已选择 $count 个字符' : '$count characters selected';
   String get copySelection => isChinese ? '复制' : 'Copy';
   String get translateSelection => isChinese ? '翻译' : 'Translate';
+  String get selectionAutoTranslate =>
+      isChinese ? '已自动送入右侧翻译' : 'Auto-translating in sidebar';
+  String get translatingSelection =>
+      isChinese ? '正在翻译所选文字…' : 'Translating selection…';
+  String get selectionTranslation =>
+      isChinese ? '划词翻译' : 'Selection translation';
+  String get selectedOriginal => isChinese ? '所选原文' : 'Selected text';
+  String get showPageTranslation =>
+      isChinese ? '切换到整页译文' : 'Show page translation';
+  String get configureTranslation =>
+      isChinese ? '配置一次翻译服务' : 'Configure translation once';
+  String get configureTranslationShort => isChinese ? '设置' : 'Set up';
+  String get retryTranslation => isChinese ? '重试翻译' : 'Retry translation';
+  String translationProvider(String provider) =>
+      isChinese ? '翻译来源：$provider' : 'Provider: $provider';
   String get bilingualReading => isChinese ? '双语阅读' : 'Bilingual view';
   String get translationTools => isChinese ? '翻译工具' : 'Translation tools';
   String get terminology => isChinese ? '术语表' : 'Terminology';
@@ -2183,8 +2478,8 @@ final class _PdfReaderStrings {
   String get selectionCopyUnavailable =>
       isChinese ? '此 PDF 不允许复制文字。' : 'This PDF does not allow text copying.';
   String get translationNeedsConfiguration => isChinese
-      ? '翻译默认关闭；请先配置 Provider。复制仍可使用。'
-      : 'Translation is disabled until a provider is configured. Copy remains available.';
+      ? '划词翻译尚未配置服务。只需设置一次，之后每次划词都会自动在这里显示结果。'
+      : 'Selection translation is not configured. Set it up once; future selections will appear here automatically.';
   String get translationResult => isChinese ? '翻译结果' : 'Translation result';
   String get copyTranslation => isChinese ? '复制译文' : 'Copy translation';
   String get translationFailed => isChinese ? '翻译失败' : 'Translation failed';

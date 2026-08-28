@@ -33,6 +33,12 @@ final class PdfContentEditorController {
     await _state?._requestClose();
   }
 
+  void goToPage(int pageNumber) => _state?._goToPage(pageNumber);
+
+  void zoomIn() => _state?._changeCanvasZoom(1.25);
+
+  void zoomOut() => _state?._changeCanvasZoom(1 / 1.25);
+
   void _attach(_PdfContentEditorDialogState state) => _state = state;
 
   void _detach(_PdfContentEditorDialogState state) {
@@ -89,6 +95,8 @@ final class PdfContentEditorDialog extends StatefulWidget {
     this.initialZoom,
     this.initialViewportFraction,
     this.embedded = false,
+    this.readerSurface = false,
+    this.onZoomChanged,
   }) : pageSizesForTesting = null,
        objectsForTesting = null;
 
@@ -105,6 +113,7 @@ final class PdfContentEditorDialog extends StatefulWidget {
     ValueChanged<int>? onPageChanged,
     double? initialZoom,
     Offset? initialViewportFraction,
+    ValueChanged<double>? onZoomChanged,
   }) => PdfContentEditorDialog(
     key: key,
     document: document,
@@ -119,6 +128,39 @@ final class PdfContentEditorDialog extends StatefulWidget {
     initialZoom: initialZoom,
     initialViewportFraction: initialViewportFraction,
     embedded: true,
+    onZoomChanged: onZoomChanged,
+  );
+
+  factory PdfContentEditorDialog.readerSurface({
+    Key? key,
+    required PdfDocument document,
+    required int initialPageNumber,
+    PdfContentPageInspector? inspector,
+    PdfContentImagePicker? imagePicker,
+    PdfContentPagePreviewBuilder? pagePreviewBuilder,
+    PdfContentSaveRequested? onSaveRequested,
+    PdfContentEditorController? controller,
+    ValueChanged<PdfContentEditPlan?>? onClosed,
+    ValueChanged<int>? onPageChanged,
+    ValueChanged<double>? onZoomChanged,
+    double? initialZoom,
+    Offset? initialViewportFraction,
+  }) => PdfContentEditorDialog(
+    key: key,
+    document: document,
+    initialPageNumber: initialPageNumber,
+    inspector: inspector ?? const PdfContentObjectService().inspectPage,
+    imagePicker: imagePicker ?? _pickImage,
+    pagePreviewBuilder: pagePreviewBuilder,
+    onSaveRequested: onSaveRequested,
+    controller: controller,
+    onClosed: onClosed,
+    onPageChanged: onPageChanged,
+    onZoomChanged: onZoomChanged,
+    initialZoom: initialZoom,
+    initialViewportFraction: initialViewportFraction,
+    embedded: true,
+    readerSurface: true,
   );
 
   @visibleForTesting
@@ -136,6 +178,8 @@ final class PdfContentEditorDialog extends StatefulWidget {
     this.initialZoom,
     this.initialViewportFraction,
     this.embedded = false,
+    this.readerSurface = false,
+    this.onZoomChanged,
   }) : document = null,
        inspector = null;
 
@@ -153,6 +197,8 @@ final class PdfContentEditorDialog extends StatefulWidget {
   final double? initialZoom;
   final Offset? initialViewportFraction;
   final bool embedded;
+  final bool readerSurface;
+  final ValueChanged<double>? onZoomChanged;
 
   @override
   State<PdfContentEditorDialog> createState() => _PdfContentEditorDialogState();
@@ -338,6 +384,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     final horizontalRatio = _scrollRatio(_horizontalCanvasController);
     final verticalRatio = _scrollRatio(_verticalCanvasController);
     setState(() => _canvasZoom = next);
+    widget.onZoomChanged?.call(next);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _restoreScrollRatio(_horizontalCanvasController, horizontalRatio);
@@ -753,10 +800,15 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     final mediaSize = MediaQuery.sizeOf(context);
     final editor = Column(
       children: [
-        _buildHeader(strings, compact: widget.embedded),
+        if (widget.readerSurface)
+          _buildReaderSurfaceToolbar(strings)
+        else
+          _buildHeader(strings, compact: widget.embedded),
         const Divider(height: 1),
-        _buildToolbar(strings),
-        const Divider(height: 1),
+        if (!widget.readerSurface) ...[
+          _buildToolbar(strings),
+          const Divider(height: 1),
+        ],
         Expanded(
           child: Row(
             children: [
@@ -795,7 +847,11 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
           },
           child: widget.embedded
               ? Material(
-                  key: const Key('pdf-content-editor-inline'),
+                  key: Key(
+                    widget.readerSurface
+                        ? 'pdf-content-editor-reader-surface'
+                        : 'pdf-content-editor-inline',
+                  ),
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(10),
                   clipBehavior: Clip.antiAlias,
@@ -815,6 +871,83 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       ),
     );
   }
+
+  Widget _buildReaderSurfaceToolbar(_ContentEditorStrings strings) => Material(
+    key: const Key('pdf-content-reader-toolbar'),
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Row(
+        children: [
+          Icon(
+            Icons.edit_document,
+            size: 19,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            strings.editingOnPage,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            strings.clickObjectToEdit,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(width: 14),
+          FilledButton.tonalIcon(
+            key: const Key('pdf-content-add-text-action'),
+            onPressed: _loading ? null : _addText,
+            icon: const Icon(Icons.title, size: 18),
+            label: Text(strings.addText),
+          ),
+          const SizedBox(width: 6),
+          FilledButton.tonalIcon(
+            key: const Key('pdf-content-add-image-action'),
+            onPressed: _loading ? null : _addImage,
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+            label: Text(strings.addImage),
+          ),
+          const SizedBox(width: 10),
+          Chip(
+            avatar: const Icon(Icons.layers_outlined, size: 16),
+            label: Text(strings.objectCount(_pageObjects.length)),
+          ),
+          const SizedBox(width: 10),
+          IconButton(
+            key: const Key('pdf-content-undo-action'),
+            tooltip: strings.undoShortcut,
+            onPressed: _undo.isEmpty || _saving ? null : _undoChange,
+            icon: const Icon(Icons.undo),
+          ),
+          IconButton(
+            key: const Key('pdf-content-redo-action'),
+            tooltip: strings.redoShortcut,
+            onPressed: _redo.isEmpty || _saving ? null : _redoChange,
+            icon: const Icon(Icons.redo),
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: strings.saveShortcut,
+            child: FilledButton.tonalIcon(
+              key: const Key('pdf-content-save-copy-action'),
+              onPressed: _hasUnsavedChanges && !_saving
+                  ? () => unawaited(_saveCurrent(closeAfterSave: false))
+                  : null,
+              icon: _saving
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined, size: 18),
+              label: Text(_saving ? strings.saving : strings.saveCopy),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _buildHeader(_ContentEditorStrings strings, {required bool compact}) =>
       Padding(
@@ -1086,46 +1219,53 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
           onPanUpdate: (details) =>
               _moveObject(_edits[edit.id] ?? edit, details, scale),
           onPanEnd: _endGesture,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: visualChanged
-                  ? Colors.white.withValues(alpha: 0.92)
-                  : color.withValues(alpha: selected ? 0.08 : 0.02),
-              border: Border.all(
-                color: color.withValues(alpha: selected ? 1 : 0.40),
-                width: selected ? 2 : 1,
-              ),
-            ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: _buildObjectPreview(edit, descriptor, strings),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: visualChanged
+                    ? Colors.white.withValues(alpha: 0.92)
+                    : selected
+                    ? color.withValues(alpha: 0.08)
+                    : Colors.transparent,
+                border: Border.all(
+                  color: selected || visualChanged
+                      ? color.withValues(alpha: selected ? 1 : 0.55)
+                      : Colors.transparent,
+                  width: selected ? 2 : 1,
                 ),
-                if (selected)
-                  Positioned(
-                    right: -7,
-                    bottom: -7,
-                    child: GestureDetector(
-                      key: const Key('pdf-content-resize-handle'),
-                      onPanStart: (_) => _beginGesture(edit),
-                      onPanUpdate: (details) => _resizeObject(
-                        _edits[edit.id] ?? edit,
-                        details,
-                        scale,
-                      ),
-                      onPanEnd: _endGesture,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: color,
-                          border: Border.all(color: Colors.white, width: 2),
-                          shape: BoxShape.circle,
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: _buildObjectPreview(edit, descriptor, strings),
+                  ),
+                  if (selected)
+                    Positioned(
+                      right: -7,
+                      bottom: -7,
+                      child: GestureDetector(
+                        key: const Key('pdf-content-resize-handle'),
+                        onPanStart: (_) => _beginGesture(edit),
+                        onPanUpdate: (details) => _resizeObject(
+                          _edits[edit.id] ?? edit,
+                          details,
+                          scale,
                         ),
-                        child: const SizedBox.square(dimension: 14),
+                        onPanEnd: _endGesture,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: color,
+                            border: Border.all(color: Colors.white, width: 2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const SizedBox.square(dimension: 14),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1417,6 +1557,10 @@ final class _ContentEditorStrings {
   final bool chinese;
 
   String get title => chinese ? '编辑文字和图片' : 'Edit text and images';
+  String get editingOnPage => chinese ? '正在原页编辑' : 'Editing on page';
+  String get clickObjectToEdit => chinese
+      ? '直接点击当前 PDF 页面中的文字或图片'
+      : 'Click text or an image directly on the current PDF page';
   String get sourcePreserved => chinese
       ? '修改先保存在当前编辑会话；关闭时再决定另存副本或放弃，原文件不会改写。'
       : 'Changes stay in this editing session. Choose save copy or discard when closing; the source is never rewritten.';

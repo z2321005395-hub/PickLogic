@@ -254,8 +254,8 @@ Future<void> showTranslationConfigurationDialog(
             children: [
               Text(
                 chinese
-                    ? '默认关闭。只发送你主动请求的选中文字、当前页或全文提取文字；绝不发送 PDF 文件。API Key 由 Windows DPAPI 保护。'
-                    : 'Disabled by default. Only text from a selection, page, or document scope you explicitly request is sent; the PDF file is never sent. The API key is protected by Windows DPAPI.',
+                    ? '默认关闭。配置后，完成 PDF 划词即发送该段文字并在右侧显示译文；当前页和全文翻译仍需手动触发。绝不发送 PDF 文件或图片。API Key 由 Windows DPAPI 保护。'
+                    : 'Disabled by default. Once configured, completing a PDF text selection sends only that text and shows the result in the right sidebar; page and document translation remain manual. The PDF file and images are never sent. The API key is protected by Windows DPAPI.',
               ),
               const SizedBox(height: 12),
               TextField(
