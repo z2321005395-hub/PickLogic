@@ -146,6 +146,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   bool _annotationBusy = false;
   bool _pdfEditBusy = false;
   bool _contentEditing = false;
+  Offset? _contentEditViewportFraction;
   bool _annotationsVisible = false;
   final Map<int, String> _pageTranslations = <int, String>{};
   final Map<int, String> _pageTranslationSources = <int, String>{};
@@ -504,8 +505,10 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       await _contentEditorController.requestClose();
       return;
     }
+    final viewportFraction = _captureCurrentPageViewport();
     setState(() {
       _contentEditing = true;
+      _contentEditViewportFraction = viewportFraction;
       _pageJumpInvalid = false;
       _selectedText = '';
       _selectedRanges = const <PdfPageTextRange>[];
@@ -514,7 +517,24 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   void _onContentEditorClosed(PdfContentEditPlan? _) {
     if (!mounted) return;
-    setState(() => _contentEditing = false);
+    setState(() {
+      _contentEditing = false;
+      _contentEditViewportFraction = null;
+    });
+  }
+
+  Offset? _captureCurrentPageViewport() {
+    if (!_viewerController.isReady) return null;
+    final pageLayouts = _viewerController.layout.pageLayouts;
+    final pageIndex = _pageNumber - 1;
+    if (pageIndex < 0 || pageIndex >= pageLayouts.length) return null;
+    final pageRect = pageLayouts[pageIndex];
+    final visiblePage = _viewerController.visibleRect.intersect(pageRect);
+    final center = visiblePage.isEmpty ? pageRect.center : visiblePage.center;
+    return Offset(
+      ((center.dx - pageRect.left) / pageRect.width).clamp(0, 1).toDouble(),
+      ((center.dy - pageRect.top) / pageRect.height).clamp(0, 1).toDouble(),
+    );
   }
 
   void _onContentEditorPageChanged(int pageNumber) {
@@ -1692,6 +1712,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                   key: ValueKey('pdf-inline-editor-${widget.sourceName}'),
                   document: document,
                   initialPageNumber: _pageNumber,
+                  initialZoom: _zoom,
+                  initialViewportFraction: _contentEditViewportFraction,
                   controller: _contentEditorController,
                   onClosed: _onContentEditorClosed,
                   onPageChanged: _onContentEditorPageChanged,

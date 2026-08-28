@@ -597,6 +597,7 @@ void main() {
                             controller: controller,
                             embedded: true,
                             initialPageNumber: currentPage,
+                            initialZoom: 1.25,
                             imagePicker: () async => null,
                             pagePreviewBuilder: (_, _) =>
                                 const ColoredBox(color: Colors.white),
@@ -628,6 +629,7 @@ void main() {
       );
       expect(find.byKey(const Key('pdf-content-editor-dialog')), findsNothing);
       expect(find.text('Page 2 of 2'), findsOneWidget);
+      expect(find.text('125%'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('pdf-content-previous-page')));
       await tester.pumpAndSettle();
