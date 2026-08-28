@@ -465,3 +465,15 @@ Integration complete: PR #43 passed all three CI jobs and merged normally into `
 ## Next action
 
 Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, then verify Actions artifacts/caches stay at zero. Stop feature expansion after integration and collect maintainer hands-on feedback.
+
+## Pro reader focus and one-click translation
+
+- Goal: let the PDF occupy the Literature workspace while reading and remove API setup from the normal selection-translation path.
+- Literature now supports one-click focus mode plus independent collection, library, and page-thumbnail visibility controls. Focus mode hides all three reading-side panes and restores them together.
+- The translation result sidebar now contains its engine selector. `Instant · No key required` uses the bounded MyMemory public short-text API, retries the current selection immediately, remembers the choice locally, and can show up to three distinct translation-memory alternatives. Advanced OpenAI-compatible translation remains optional.
+- Online translation remains off in a fresh distribution until an engine is selected. The instant path needs no endpoint, model, API key, runtime, dependency, or copied source; only the selected text (maximum 500 characters) leaves the device.
+- Verification so far: targeted analyzer clean; Literature Core 27/27; focused Pro translation/workspace tests 17/17. A root-invoked full Desktop test attempt passed 37 tests but could not load SQLite/PDFium native assets and timed out in the native exporter; the supported packaged Windows executable remains the final native gate.
+
+## Next action
+
+Build Pro from an isolated ASCII-path worktree, run both packaged PDF smokes, install side-by-side, select the instant engine once for this maintainer profile, and visually verify focus/restore plus selection-to-sidebar translation before GitHub integration.

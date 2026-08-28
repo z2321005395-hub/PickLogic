@@ -6,6 +6,146 @@ import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
+enum TranslationEngineChoice { off, instant, openAiCompatible }
+
+typedef PublicTranslationRequest =
+    Future<Map<String, Object?>> Function(Uri uri);
+
+/// No-key short-text translation available from the selection workflow.
+///
+/// MyMemory accepts anonymous public requests with a 500-character query
+/// limit. PickLogic sends only the text the user selected and keeps the PDF
+/// bytes, images, paths, and library metadata local.
+final class PickLogicInstantTranslationProvider implements TranslationProvider {
+  PickLogicInstantTranslationProvider({PublicTranslationRequest? request})
+    : _request = request ?? _requestJson;
+
+  static const _maxCharacters = 500;
+  static const _maxResponseBytes = 512 * 1024;
+  final PublicTranslationRequest _request;
+
+  @override
+  TranslationProviderKind get kind => TranslationProviderKind.publicAnonymous;
+
+  @override
+  String get label => 'PickLogic Instant · MyMemory';
+
+  @override
+  Future<bool> isConfigured() async => true;
+
+  @override
+  Future<SelectedTextTranslation> translateSelectedText(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  }) async {
+    final source = selectedText.trim();
+    if (source.isEmpty) throw const FormatException('Select text first.');
+    if (source.length > _maxCharacters) {
+      throw const FormatException(
+        'Instant translation accepts up to 500 characters per request.',
+      );
+    }
+    final targetCode = targetLanguage.toLowerCase().startsWith('english')
+        ? 'en'
+        : 'zh-CN';
+    final sourceCode = targetCode == 'en' ? 'zh-CN' : 'en';
+    final uri = Uri.https('api.mymemory.translated.net', '/get', {
+      'q': source,
+      'langpair': '$sourceCode|$targetCode',
+    });
+    final decoded = await _request(uri);
+    final responseStatus = decoded['responseStatus'];
+    if (responseStatus != null && responseStatus.toString() != '200') {
+      throw HttpException(
+        decoded['responseDetails']?.toString() ??
+            'Instant translation returned $responseStatus.',
+        uri: uri,
+      );
+    }
+    final responseData = decoded['responseData'];
+    final primary = responseData is Map
+        ? _decodeEntities(responseData['translatedText']?.toString() ?? '')
+        : '';
+    if (primary.trim().isEmpty) {
+      throw const FormatException('Instant translation returned no text.');
+    }
+
+    final alternatives = <TranslationAlternative>[];
+    final seen = <String>{primary.trim().toLowerCase()};
+    final matches = decoded['matches'];
+    if (matches is List) {
+      for (final match in matches) {
+        if (match is! Map) continue;
+        final translated = _decodeEntities(
+          match['translation']?.toString() ?? '',
+        ).trim();
+        if (translated.isEmpty || !seen.add(translated.toLowerCase())) continue;
+        final quality = match['quality']?.toString().trim();
+        alternatives.add(
+          TranslationAlternative(
+            label: quality?.isNotEmpty == true
+                ? 'MyMemory · $quality%'
+                : 'MyMemory · Alternative',
+            translatedText: translated,
+          ),
+        );
+        if (alternatives.length == 3) break;
+      }
+    }
+    return SelectedTextTranslation(
+      sourceText: source,
+      translatedText: primary.trim(),
+      targetLanguage: targetLanguage,
+      providerLabel: label,
+      alternatives: List<TranslationAlternative>.unmodifiable(alternatives),
+    );
+  }
+
+  static Future<Map<String, Object?>> _requestJson(Uri uri) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 12)
+      ..idleTimeout = const Duration(seconds: 15)
+      ..maxConnectionsPerHost = 1;
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.set(HttpHeaders.userAgentHeader, 'PickLogic/0.1');
+      final response = await request.close();
+      final bytes = <int>[];
+      await for (final chunk in response) {
+        bytes.addAll(chunk);
+        if (bytes.length > _maxResponseBytes) {
+          throw const FormatException(
+            'Instant translation response is too large.',
+          );
+        }
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          'Instant translation returned HTTP ${response.statusCode}.',
+          uri: uri,
+        );
+      }
+      final value = jsonDecode(utf8.decode(bytes));
+      if (value is! Map) {
+        throw const FormatException(
+          'Instant translation returned invalid JSON.',
+        );
+      }
+      return Map<String, Object?>.from(value);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static String _decodeEntities(String value) => value
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&amp;', '&');
+}
+
 final class TranslationConfiguration {
   const TranslationConfiguration({
     required this.endpoint,
@@ -227,6 +367,97 @@ final class WindowsOpenAiCompatibleTranslationProvider
   }
 }
 
+/// Switches between a zero-configuration public engine and the optional
+/// user-configured OpenAI-compatible engine without changing reader code.
+final class WindowsTranslationProviderHub implements TranslationProvider {
+  WindowsTranslationProviderHub({
+    PickLogicInstantTranslationProvider? instantProvider,
+    WindowsOpenAiCompatibleTranslationProvider? openAiProvider,
+    String? choicePath,
+  }) : instantProvider =
+           instantProvider ?? PickLogicInstantTranslationProvider(),
+       openAiProvider =
+           openAiProvider ?? WindowsOpenAiCompatibleTranslationProvider(),
+       _choicePath = choicePath ?? _defaultChoicePath();
+
+  final PickLogicInstantTranslationProvider instantProvider;
+  final WindowsOpenAiCompatibleTranslationProvider openAiProvider;
+  final String _choicePath;
+  TranslationEngineChoice _selectedEngine = TranslationEngineChoice.off;
+  bool _initialized = false;
+
+  TranslationEngineChoice get selectedEngine => _selectedEngine;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+    final file = File(_choicePath);
+    if (!await file.exists()) return;
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded case {'engine': final String engine}) {
+        _selectedEngine = TranslationEngineChoice.values.firstWhere(
+          (candidate) => candidate.name == engine,
+          orElse: () => TranslationEngineChoice.off,
+        );
+      }
+    } on Object {
+      _selectedEngine = TranslationEngineChoice.off;
+    }
+  }
+
+  Future<void> selectEngine(TranslationEngineChoice choice) async {
+    await initialize();
+    _selectedEngine = choice;
+    final file = File(_choicePath);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      const JsonEncoder.withIndent(' ').convert({'engine': choice.name}),
+      flush: true,
+    );
+  }
+
+  TranslationProvider get _activeProvider => switch (_selectedEngine) {
+    TranslationEngineChoice.off => const DisabledTranslationProvider(),
+    TranslationEngineChoice.instant => instantProvider,
+    TranslationEngineChoice.openAiCompatible => openAiProvider,
+  };
+
+  @override
+  TranslationProviderKind get kind => _activeProvider.kind;
+
+  @override
+  String get label => _activeProvider.label;
+
+  @override
+  Future<bool> isConfigured() async {
+    await initialize();
+    return _activeProvider.isConfigured();
+  }
+
+  @override
+  Future<SelectedTextTranslation> translateSelectedText(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  }) async {
+    await initialize();
+    return _activeProvider.translateSelectedText(
+      selectedText,
+      targetLanguage: targetLanguage,
+      terminology: terminology,
+    );
+  }
+
+  static String _defaultChoicePath() {
+    final base = Platform.environment['LOCALAPPDATA'];
+    if (base == null || base.trim().isEmpty) {
+      throw StateError('LOCALAPPDATA is unavailable.');
+    }
+    return '$base${Platform.pathSeparator}PickLogic${Platform.pathSeparator}translation_engine.json';
+  }
+}
+
 Future<void> showTranslationConfigurationDialog(
   BuildContext context,
   WindowsOpenAiCompatibleTranslationProvider provider,
@@ -245,7 +476,9 @@ Future<void> showTranslationConfigurationDialog(
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
         key: const Key('translation-configuration-dialog'),
-        title: Text(chinese ? '配置文献翻译' : 'Configure literature translation'),
+        title: Text(
+          chinese ? '配置高级 AI 翻译' : 'Configure advanced AI translation',
+        ),
         content: SizedBox(
           width: 520,
           child: Column(
@@ -254,8 +487,8 @@ Future<void> showTranslationConfigurationDialog(
             children: [
               Text(
                 chinese
-                    ? '默认关闭。配置后，完成 PDF 划词即发送该段文字并在右侧显示译文；当前页和全文翻译仍需手动触发。绝不发送 PDF 文件或图片。API Key 由 Windows DPAPI 保护。'
-                    : 'Disabled by default. Once configured, completing a PDF text selection sends only that text and shows the result in the right sidebar; page and document translation remain manual. The PDF file and images are never sent. The API key is protected by Windows DPAPI.',
+                    ? '这是可选高级引擎。免密“即时翻译”无需这里的任何设置。使用 AI 模型时只发送所选文字；绝不发送 PDF 文件或图片，API Key 由 Windows DPAPI 保护。'
+                    : 'This is an optional advanced engine. Instant translation needs no setup here. The AI engine receives only selected text, never PDF files or images, and its API key is protected by Windows DPAPI.',
               ),
               const SizedBox(height: 12),
               TextField(
