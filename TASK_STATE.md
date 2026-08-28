@@ -424,3 +424,16 @@ Merge the focused CI policy fix after its PR gate, confirm the resulting `develo
 ## Next action
 
 Push the focused CI-gate fix to PR #41, rerun its single quality/build gate, and merge only after all three jobs pass. Keep routine packages local and leave no PickLogic GUI process running.
+
+## Microsoft-style Pro PDF editing workflow
+
+- The primary `Edit PDF` command now enters text/image editing immediately. A compact split-menu arrow exposes page organization as the secondary action; opening the editor no longer asks for a managed-folder authorization or save destination.
+- Both content and page editors keep changes in memory, mark unsaved state with `*`, support `Ctrl+S`, `Ctrl+Z`, and `Ctrl+Y`, and use the Windows document-close choices `Save edited copy`, `Don't save`, and `Cancel`.
+- Save-path selection happens only when Save is chosen. Cancelling the picker or a failed export leaves the editor and unsaved changes open. Successful saves create a new PDF; the source and existing destinations are never overwritten.
+- Verification: targeted Dart analysis clean; PDF editing 6/6, Pro workspace 12/12, and complete Desktop 36/36 tests passed. No dependency, binary, shared data contract, or real user file changed.
+- ASCII-path Pro Release build passed at 43,311,993 bytes installed. Packaged PDF reader and direct text/image editing smoke checks both exited 0.
+- Installed `0.1.0-alpha-298945a` beside the previous version, repointed Desktop/Start-menu shortcuts, preserved app data, and visually verified that the primary `编辑 PDF` command opens the editor directly. Exactly one Pro instance remains open on the synthetic PDF editor for maintainer testing.
+
+## Next action
+
+Push the focused branch, run one PR gate without routine artifact uploads, merge green work into `develop`, and verify Actions artifacts/caches remain empty. Stop new PDF work until maintainer hands-on feedback.

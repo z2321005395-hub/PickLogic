@@ -394,7 +394,8 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('pdf-edit-copy-action')), findsOneWidget);
-    expect(find.byTooltip('Edit PDF'), findsOneWidget);
+    expect(find.byTooltip('Edit text and images'), findsOneWidget);
+    expect(find.byKey(const Key('pdf-edit-menu-action')), findsOneWidget);
     await tester.tap(find.byKey(const Key('pdf-toggle-annotations-action')));
     await tester.pump();
     expect(find.byKey(const Key('pdf-annotation-panel')), findsOneWidget);
@@ -542,6 +543,13 @@ void main() {
     expect(find.text('本地渲染'), findsOneWidget);
     expect(find.text('搜索 PDF 文本'), findsOneWidget);
     expect(find.text('跳至页'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pdf-edit-copy-action')),
+        matching: find.text('编辑 PDF'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('pdf-translation-menu')), findsOneWidget);
     expect(find.text('Local rendering'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -551,6 +559,13 @@ void main() {
     expect(find.text('Local rendering'), findsOneWidget);
     expect(find.text('Search PDF text'), findsOneWidget);
     expect(find.text('Go to page'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pdf-edit-copy-action')),
+        matching: find.text('Edit PDF'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('本地渲染'), findsNothing);
     expect(tester.takeException(), isNull);
   });

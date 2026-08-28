@@ -81,7 +81,11 @@ void main() {
           )
           .first,
     );
-    await tester.tap(find.byKey(const Key('pdf-content-apply-object-action')));
+    tester
+        .widget<FilledButton>(
+          find.byKey(const Key('pdf-content-apply-object-action')),
+        )
+        .onPressed!();
     await tester.pump();
     expect(find.text('Edited headline'), findsWidgets);
 
@@ -96,6 +100,89 @@ void main() {
     await tester.pumpAndSettle();
     expect(accepted?.edits.single.replacementText, 'Edited headline');
   });
+
+  testWidgets(
+    'content editor uses Windows save, do not save, and cancel on close',
+    (tester) async {
+      var saveRequests = 0;
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _localizedApp(
+          home: Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                onPressed: () async {
+                  await showDialog<PdfContentEditPlan>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => PdfContentEditorDialog.testing(
+                      initialPageNumber: 1,
+                      imagePicker: () async => null,
+                      pagePreviewBuilder: (_, _) =>
+                          const ColoredBox(color: Colors.white),
+                      pageSizesForTesting: const [Size(612, 792)],
+                      objectsForTesting: const {1: []},
+                      onSaveRequested: (_) async {
+                        saveRequests++;
+                        return false;
+                      },
+                    ),
+                  );
+                },
+                child: const Text('Open content editor'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open content editor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pdf-content-add-text-action')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('pdf-add-text-field')),
+        'Unsaved draft',
+      );
+      await tester.tap(find.byKey(const Key('pdf-confirm-add-text')));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit text and images *'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('pdf-content-close-action')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('pdf-content-unsaved-dialog')),
+        findsOneWidget,
+      );
+      expect(find.text('Save edited copy'), findsWidgets);
+      expect(find.text("Don't save"), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('pdf-content-continue-editing-action')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('pdf-content-editor-dialog')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('pdf-content-save-copy-action')));
+      await tester.pumpAndSettle();
+      expect(saveRequests, 1);
+      expect(
+        find.byKey(const Key('pdf-content-editor-dialog')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('pdf-content-close-action')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pdf-content-discard-action')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pdf-content-editor-dialog')), findsNothing);
+    },
+  );
 
   testWidgets(
     'page editor supports rotate, duplicate, undo, and save preview',
@@ -149,6 +236,51 @@ void main() {
       expect(accepted!.duplicatedPageCount, 1);
     },
   );
+
+  testWidgets('page editor protects unsaved changes on close', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1100, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _localizedApp(
+        home: Builder(
+          builder: (context) => Center(
+            child: FilledButton(
+              onPressed: () async {
+                await showPdfPageEditor(
+                  context: context,
+                  pageCount: 2,
+                  annotationCount: 0,
+                );
+              },
+              child: const Text('Open page editor'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open page editor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pdf-edit-rotate-right-0')));
+    await tester.pump();
+    expect(find.text('Edit PDF pages *'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pdf-edit-close-action')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pdf-edit-unsaved-dialog')), findsOneWidget);
+    expect(find.text('Save edited copy'), findsWidgets);
+    expect(find.text("Don't save"), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pdf-edit-continue-editing-action')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pdf-page-editor-dialog')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('pdf-edit-close-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pdf-edit-discard-action')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pdf-page-editor-dialog')), findsNothing);
+  });
 
   test(
     'exporter preserves source and writes rearranged annotated PDF copy',
