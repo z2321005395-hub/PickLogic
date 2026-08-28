@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_core_models/picklogic_core_models.dart'
+    hide TranslationProvider;
 import 'package:picklogic_desktop/src/pro_pdf_content_editor.dart';
 import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
 import 'package:picklogic_desktop/src/pro_workspace.dart';
@@ -354,6 +355,73 @@ void main() {
     );
   });
 
+  testWidgets(
+    'PDF selection translates automatically into the persistent right sidebar',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final selection = ValueNotifier<String>('');
+      addTearDown(selection.dispose);
+      final provider = _ImmediateTranslationProvider();
+
+      await tester.pumpWidget(
+        _localizedApp(
+          locale: const Locale('zh'),
+          home: Scaffold(
+            body: ProLocalPdfReader(
+              path: r'X:\synthetic\reader.pdf',
+              fileName: 'reader.pdf',
+              initialPageNumber: 1,
+              onPositionChanged: (_, _) {},
+              viewerBuilder: (_) => const SizedBox.expand(),
+              translationProvider: provider,
+              selectionTextForTesting: selection,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      selection.value = 'Selected scientific sentence.';
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('pdf-selection-translation-panel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('pdf-translation-result-dialog')),
+        findsNothing,
+      );
+      expect(find.text('Selected scientific sentence.'), findsOneWidget);
+      expect(find.text('译文：Selected scientific sentence.'), findsOneWidget);
+      expect(provider.sources, ['Selected scientific sentence.']);
+
+      selection.value = 'A second term.';
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump();
+
+      expect(find.text('A second term.'), findsOneWidget);
+      expect(find.text('译文：A second term.'), findsOneWidget);
+      expect(find.text('译文：Selected scientific sentence.'), findsNothing);
+      expect(provider.sources, [
+        'Selected scientific sentence.',
+        'A second term.',
+      ]);
+      expect(provider.targets, ['Simplified Chinese', 'Simplified Chinese']);
+
+      selection.value = '材料科学';
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump();
+      expect(find.text('译文：材料科学'), findsOneWidget);
+      expect(provider.targets.last, 'English');
+    },
+  );
+
   testWidgets('PDF annotation panel exposes page-linked local notes', (
     tester,
   ) async {
@@ -571,78 +639,89 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'PDF content editing stays embedded in the current Pro reader workspace',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final controller = PdfContentEditorController();
-      var editorVisible = true;
-      var currentPage = 2;
+  testWidgets('PDF content editing stays on the current reader surface', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = PdfContentEditorController();
+    var editorVisible = true;
+    var currentPage = 2;
+    var currentZoom = 1.25;
 
-      await tester.pumpWidget(
-        _localizedApp(
-          locale: const Locale('en'),
-          home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, setState) => Column(
-                children: [
-                  const Text(
-                    'Literature reader',
-                    key: Key('reader-shell-test-double'),
-                  ),
-                  Expanded(
-                    child: editorVisible
-                        ? PdfContentEditorDialog.testing(
-                            controller: controller,
-                            embedded: true,
-                            initialPageNumber: currentPage,
-                            initialZoom: 1.25,
-                            imagePicker: () async => null,
-                            pagePreviewBuilder: (_, _) =>
-                                const ColoredBox(color: Colors.white),
-                            pageSizesForTesting: const [
-                              Size(612, 792),
-                              Size(612, 792),
-                            ],
-                            objectsForTesting: const {1: [], 2: []},
-                            onPageChanged: (page) => currentPage = page,
-                            onClosed: (_) =>
-                                setState(() => editorVisible = false),
-                          )
-                        : const SizedBox.expand(
-                            key: Key('reader-page-test-double'),
-                          ),
-                  ),
-                ],
-              ),
+    await tester.pumpWidget(
+      _localizedApp(
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => Column(
+              children: [
+                const Text(
+                  'Literature reader',
+                  key: Key('reader-shell-test-double'),
+                ),
+                Expanded(
+                  child: editorVisible
+                      ? PdfContentEditorDialog.testing(
+                          controller: controller,
+                          embedded: true,
+                          readerSurface: true,
+                          initialPageNumber: currentPage,
+                          initialZoom: 1.25,
+                          imagePicker: () async => null,
+                          pagePreviewBuilder: (_, _) =>
+                              const ColoredBox(color: Colors.white),
+                          pageSizesForTesting: const [
+                            Size(612, 792),
+                            Size(612, 792),
+                          ],
+                          objectsForTesting: const {1: [], 2: []},
+                          onPageChanged: (page) => currentPage = page,
+                          onZoomChanged: (zoom) => currentZoom = zoom,
+                          onClosed: (_) =>
+                              setState(() => editorVisible = false),
+                        )
+                      : const SizedBox.expand(
+                          key: Key('reader-page-test-double'),
+                        ),
+                ),
+              ],
             ),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('reader-shell-test-double')), findsOneWidget);
-      expect(
-        find.byKey(const Key('pdf-content-editor-inline')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('pdf-content-editor-dialog')), findsNothing);
-      expect(find.text('Page 2 of 2'), findsOneWidget);
-      expect(find.text('125%'), findsOneWidget);
+    expect(find.byKey(const Key('reader-shell-test-double')), findsOneWidget);
+    expect(
+      find.byKey(const Key('pdf-content-editor-reader-surface')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('pdf-content-editor-dialog')), findsNothing);
+    expect(find.text('Editing on page'), findsOneWidget);
+    expect(find.text('Edit text and images'), findsNothing);
+    expect(
+      find.byKey(const Key('pdf-content-add-text-action')),
+      findsOneWidget,
+    );
 
-      await tester.tap(find.byKey(const Key('pdf-content-previous-page')));
-      await tester.pumpAndSettle();
-      expect(currentPage, 1);
-      expect(find.text('Page 1 of 2'), findsOneWidget);
+    controller.goToPage(1);
+    await tester.pumpAndSettle();
+    expect(currentPage, 1);
+    controller.zoomIn();
+    await tester.pump();
+    expect(currentZoom, 1.5625);
 
-      await controller.requestClose();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('pdf-content-editor-inline')), findsNothing);
-      expect(find.byKey(const Key('reader-page-test-double')), findsOneWidget);
-      expect(find.byKey(const Key('reader-shell-test-double')), findsOneWidget);
-    },
-  );
+    await controller.requestClose();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('pdf-content-editor-reader-surface')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('reader-page-test-double')), findsOneWidget);
+    expect(find.byKey(const Key('reader-shell-test-double')), findsOneWidget);
+  });
 }
 
 Widget _localizedApp({required Locale locale, required Widget home}) =>
@@ -708,5 +787,35 @@ final class _MemoryPdfSource implements PdfByteSource {
   }) async {
     if (offset >= bytes.length) return const <int>[];
     return bytes.sublist(offset, (offset + length).clamp(0, bytes.length));
+  }
+}
+
+final class _ImmediateTranslationProvider implements TranslationProvider {
+  final List<String> sources = <String>[];
+  final List<String> targets = <String>[];
+
+  @override
+  TranslationProviderKind get kind => TranslationProviderKind.openAiCompatible;
+
+  @override
+  String get label => 'Synthetic translator';
+
+  @override
+  Future<bool> isConfigured() async => true;
+
+  @override
+  Future<SelectedTextTranslation> translateSelectedText(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  }) async {
+    sources.add(selectedText);
+    targets.add(targetLanguage);
+    return SelectedTextTranslation(
+      sourceText: selectedText,
+      translatedText: '译文：$selectedText',
+      targetLanguage: targetLanguage,
+      providerLabel: label,
+    );
   }
 }

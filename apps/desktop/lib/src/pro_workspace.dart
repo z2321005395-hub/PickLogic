@@ -2483,12 +2483,11 @@ final class _LiteratureManagerLiteViewState
                     _recordPosition(selected.id, currentPage, totalPages),
                 translationProvider: _translationProvider,
                 translationStore: _translationStore,
-                onConfigureTranslation: () => unawaited(
-                  showTranslationConfigurationDialog(
-                    context,
-                    _translationProvider,
-                  ),
-                ),
+                onConfigureTranslation: () =>
+                    showTranslationConfigurationDialog(
+                      context,
+                      _translationProvider,
+                    ),
                 literatureId: selected.id,
                 annotations:
                     _annotations[selected.id] ?? const <LiteratureAnnotation>[],
