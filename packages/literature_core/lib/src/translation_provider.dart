@@ -42,6 +42,19 @@ abstract interface class TranslationProvider {
   });
 }
 
+/// Optional capability for providers that can return independent translation
+/// results as soon as each source finishes.
+///
+/// The first event is suitable for immediate display. Later events add
+/// comparison results without delaying or replacing the first translation.
+abstract interface class ProgressiveTranslationProvider {
+  Stream<SelectedTextTranslation> translateSelectedTextProgressively(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  });
+}
+
 extension ExplicitTranslationChunks on TranslationProvider {
   /// Translates an explicitly requested text scope in bounded sequential
   /// chunks. This keeps provider request size predictable without uploading

@@ -439,7 +439,7 @@ void main() {
         find.byKey(const Key('pdf-translation-engine-selector')),
         findsOneWidget,
       );
-      expect(find.text('即时翻译 · 无需密钥'), findsOneWidget);
+      expect(find.text('MyMemory · 单引擎'), findsOneWidget);
       expect(
         find.byKey(const Key('pdf-configure-selection-translation-action')),
         findsNothing,
@@ -479,6 +479,59 @@ void main() {
       await tester.pump();
       expect(find.text('译文：材料科学'), findsOneWidget);
       expect(provider.targets.last, 'English');
+    },
+  );
+
+  testWidgets(
+    'aggregate selection shows the fast result while slower sources continue',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final selection = ValueNotifier<String>('');
+      addTearDown(selection.dispose);
+
+      await tester.pumpWidget(
+        _localizedApp(
+          locale: const Locale('zh'),
+          home: Scaffold(
+            body: ProLocalPdfReader(
+              path: r'X:\synthetic\reader.pdf',
+              fileName: 'reader.pdf',
+              initialPageNumber: 1,
+              onPositionChanged: (_, _) {},
+              viewerBuilder: (_) => const SizedBox.expand(),
+              translationProvider: _ProgressiveTranslationProvider(),
+              translationEngine: TranslationEngineChoice.aggregate,
+              selectionTextForTesting: selection,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      selection.value = 'grain boundary';
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+
+      expect(find.text('晶界'), findsOneWidget);
+      expect(find.text('首条译文已显示，正在并行比对其他可用来源…'), findsOneWidget);
+      expect(
+        find.byKey(const Key('pdf-selection-translation-loading')),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.text('晶粒边界'), findsOneWidget);
+      expect(
+        find.byKey(const Key('pdf-selection-translation-alternative-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('pdf-selection-translation-loading')),
+        findsNothing,
+      );
     },
   );
 
@@ -889,6 +942,51 @@ final class _ImmediateTranslationProvider implements TranslationProvider {
           translatedText: '候选：$selectedText',
         ),
       ],
+    );
+  }
+}
+
+final class _ProgressiveTranslationProvider
+    implements TranslationProvider, ProgressiveTranslationProvider {
+  @override
+  TranslationProviderKind get kind => TranslationProviderKind.publicAnonymous;
+
+  @override
+  String get label => 'Synthetic aggregate';
+
+  @override
+  Future<bool> isConfigured() async => true;
+
+  @override
+  Future<SelectedTextTranslation> translateSelectedText(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  }) async => SelectedTextTranslation(
+    sourceText: selectedText,
+    translatedText: '晶界',
+    targetLanguage: targetLanguage,
+    providerLabel: 'Fast source',
+  );
+
+  @override
+  Stream<SelectedTextTranslation> translateSelectedTextProgressively(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  }) async* {
+    yield SelectedTextTranslation(
+      sourceText: selectedText,
+      translatedText: '晶界',
+      targetLanguage: targetLanguage,
+      providerLabel: 'Fast source',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    yield SelectedTextTranslation(
+      sourceText: selectedText,
+      translatedText: '晶粒边界',
+      targetLanguage: targetLanguage,
+      providerLabel: 'Slow source',
     );
   }
 }
