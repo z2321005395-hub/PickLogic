@@ -59,13 +59,27 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.inspector,
     required this.imagePicker,
     this.pagePreviewBuilder,
-  });
+  }) : pageSizesForTesting = null,
+       objectsForTesting = null;
 
-  final PdfDocument document;
+  @visibleForTesting
+  const PdfContentEditorDialog.testing({
+    super.key,
+    required this.initialPageNumber,
+    required this.imagePicker,
+    required this.pagePreviewBuilder,
+    required this.pageSizesForTesting,
+    required this.objectsForTesting,
+  }) : document = null,
+       inspector = null;
+
+  final PdfDocument? document;
   final int initialPageNumber;
-  final PdfContentPageInspector inspector;
+  final PdfContentPageInspector? inspector;
   final PdfContentImagePicker imagePicker;
   final PdfContentPagePreviewBuilder? pagePreviewBuilder;
+  final List<Size>? pageSizesForTesting;
+  final Map<int, List<PdfContentObjectDescriptor>>? objectsForTesting;
 
   @override
   State<PdfContentEditorDialog> createState() => _PdfContentEditorDialogState();
@@ -94,10 +108,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   @override
   void initState() {
     super.initState();
-    _pageNumber = widget.initialPageNumber.clamp(
-      1,
-      widget.document.pages.length,
-    );
+    _pageNumber = widget.initialPageNumber.clamp(1, _pageCount);
     unawaited(_loadPage());
   }
 
@@ -113,7 +124,17 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     super.dispose();
   }
 
-  PdfPage get _page => widget.document.pages[_pageNumber - 1];
+  int get _pageCount =>
+      widget.document?.pages.length ?? widget.pageSizesForTesting!.length;
+
+  Size get _pageSize {
+    final document = widget.document;
+    if (document != null) {
+      final page = document.pages[_pageNumber - 1];
+      return Size(page.width, page.height);
+    }
+    return widget.pageSizesForTesting![_pageNumber - 1];
+  }
 
   List<PdfContentObjectDescriptor> get _pageObjects =>
       _objectsByPage[_pageNumber] ?? const [];
@@ -146,12 +167,19 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       if (mounted) setState(() {});
       return;
     }
+    final testingObjects = widget.objectsForTesting;
+    if (testingObjects != null) {
+      _objectsByPage[_pageNumber] = testingObjects[_pageNumber] ?? const [];
+      _loading = false;
+      _loadError = null;
+      return;
+    }
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final objects = await widget.inspector(widget.document, _pageNumber);
+      final objects = await widget.inspector!(widget.document!, _pageNumber);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _objectsByPage[_pageNumber] = objects;
@@ -167,7 +195,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   }
 
   void _goToPage(int pageNumber) {
-    final bounded = pageNumber.clamp(1, widget.document.pages.length);
+    final bounded = pageNumber.clamp(1, _pageCount);
     if (bounded == _pageNumber) return;
     setState(() {
       _pageNumber = bounded;
@@ -268,7 +296,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       bottom: bottom,
       right: left + width,
       top: bottom + height,
-    ).clampToPage(pageWidth: _page.width, pageHeight: _page.height);
+    ).clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
     final text = _textController.text;
     _commit(
       edit.copyWith(
@@ -326,10 +354,10 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       if (text == null || !mounted) return;
       final bounds = PdfContentBounds(
         left: 72,
-        bottom: math.max(24, _page.height - 120),
-        right: math.min(_page.width - 24, 332),
-        top: math.max(52, _page.height - 88),
-      ).clampToPage(pageWidth: _page.width, pageHeight: _page.height);
+        bottom: math.max(24, _pageSize.height - 120),
+        right: math.min(_pageSize.width - 24, 332),
+        top: math.max(52, _pageSize.height - 88),
+      ).clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
       _commit(
         PdfContentObjectEdit.addText(
           id: 'new:${_pageNumber}:${_newObjectId++}',
@@ -357,10 +385,10 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     }
     final bounds = PdfContentBounds(
       left: 72,
-      bottom: math.max(24, _page.height - 240),
-      right: math.min(_page.width - 24, 272),
-      top: math.max(124, _page.height - 80),
-    ).clampToPage(pageWidth: _page.width, pageHeight: _page.height);
+      bottom: math.max(24, _pageSize.height - 240),
+      right: math.min(_pageSize.width - 24, 272),
+      top: math.max(124, _pageSize.height - 80),
+    ).clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
     _commit(
       PdfContentObjectEdit.addImage(
         id: 'new:${_pageNumber}:${_newObjectId++}',
@@ -413,7 +441,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   ) {
     final moved = edit.targetBounds
         .translate(details.delta.dx / scale, -details.delta.dy / scale)
-        .clampToPage(pageWidth: _page.width, pageHeight: _page.height);
+        .clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
     setState(() {
       _edits[edit.id] = edit.copyWith(targetBounds: moved);
       _syncInspector(_edits[edit.id]!);
@@ -435,7 +463,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     );
     final resized = edit.targetBounds
         .resize(width: width, height: height)
-        .clampToPage(pageWidth: _page.width, pageHeight: _page.height);
+        .clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
     setState(() {
       _edits[edit.id] = edit.copyWith(targetBounds: resized);
       _syncInspector(_edits[edit.id]!);
@@ -520,9 +548,11 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     ),
   );
 
-  Widget _buildToolbar(_ContentEditorStrings strings) => Padding(
+  Widget _buildToolbar(_ContentEditorStrings strings) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     child: Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           key: const Key('pdf-content-previous-page'),
@@ -530,11 +560,11 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
           onPressed: _pageNumber > 1 ? () => _goToPage(_pageNumber - 1) : null,
           icon: const Icon(Icons.chevron_left),
         ),
-        Text(strings.pagePosition(_pageNumber, widget.document.pages.length)),
+        Text(strings.pagePosition(_pageNumber, _pageCount)),
         IconButton(
           key: const Key('pdf-content-next-page'),
           tooltip: strings.nextPage,
-          onPressed: _pageNumber < widget.document.pages.length
+          onPressed: _pageNumber < _pageCount
               ? () => _goToPage(_pageNumber + 1)
               : null,
           icon: const Icon(Icons.chevron_right),
@@ -553,7 +583,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
           icon: const Icon(Icons.add_photo_alternate_outlined),
           label: Text(strings.addImage),
         ),
-        const Spacer(),
+        const SizedBox(width: 16),
         Chip(
           avatar: const Icon(Icons.layers_outlined, size: 18),
           label: Text(strings.objectCount(_pageObjects.length)),
@@ -583,15 +613,15 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final scale = math.min(
-            (constraints.maxWidth - 48) / _page.width,
-            (constraints.maxHeight - 48) / _page.height,
+            (constraints.maxWidth - 48) / _pageSize.width,
+            (constraints.maxHeight - 48) / _pageSize.height,
           );
           final safeScale = math.max(0.05, scale);
           return Center(
             child: SizedBox(
               key: const Key('pdf-content-page-canvas'),
-              width: _page.width * safeScale,
-              height: _page.height * safeScale,
+              width: _pageSize.width * safeScale,
+              height: _pageSize.height * safeScale,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -599,7 +629,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
                     child:
                         widget.pagePreviewBuilder?.call(context, _pageNumber) ??
                         PdfPageView(
-                          document: widget.document,
+                          document: widget.document!,
                           pageNumber: _pageNumber,
                           maximumDpi: 144,
                           decoration: const BoxDecoration(color: Colors.white),
@@ -648,7 +678,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     return Positioned(
       key: ValueKey('pdf-content-object-${edit.id}'),
       left: bounds.left * scale,
-      top: (_page.height - bounds.top) * scale,
+      top: (_pageSize.height - bounds.top) * scale,
       width: math.max(8, bounds.width * scale),
       height: math.max(8, bounds.height * scale),
       child: Transform.rotate(
@@ -828,6 +858,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
             else
               Expanded(
                 child: ListView(
+                  key: const Key('pdf-content-inspector-fields'),
                   children: [
                     Text(
                       selected.kind == PdfContentObjectKind.text
