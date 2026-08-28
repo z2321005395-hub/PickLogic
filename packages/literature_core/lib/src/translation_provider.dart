@@ -1,4 +1,14 @@
-enum TranslationProviderKind { disabled, openAiCompatible }
+enum TranslationProviderKind { disabled, publicAnonymous, openAiCompatible }
+
+final class TranslationAlternative {
+  const TranslationAlternative({
+    required this.label,
+    required this.translatedText,
+  });
+
+  final String label;
+  final String translatedText;
+}
 
 final class SelectedTextTranslation {
   const SelectedTextTranslation({
@@ -6,12 +16,14 @@ final class SelectedTextTranslation {
     required this.translatedText,
     required this.targetLanguage,
     required this.providerLabel,
+    this.alternatives = const <TranslationAlternative>[],
   });
 
   final String sourceText;
   final String translatedText;
   final String targetLanguage;
   final String providerLabel;
+  final List<TranslationAlternative> alternatives;
 }
 
 abstract interface class TranslationProvider {

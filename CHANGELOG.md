@@ -38,6 +38,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- Pro Literature now offers independent collection/library/page-thumbnail pane controls plus one-click Focus reading, so the PDF can use the full workspace width without losing restore controls.
+- PDF selection translation now offers a one-click, no-key 500-character instant engine, exposes the engine selector directly in the right sidebar, and can display bounded alternative translation-memory matches as separate cards; the OpenAI-compatible engine remains optional and advanced.
 - Pro PDF text selection now translates automatically into a persistent right sidebar after a short debounce, auto-selects Chinese/English direction, replaces stale results on the next selection, and no longer opens a translation result dialog or requires a per-selection action.
 - Pro PDF text/image editing now occupies the existing reader canvas: the literature list, thumbnails, page/zoom controls, and reading context stay in place, while editable objects remain visually identical to the source page until selected.
 - Pro PDF text/image editing now stays inside the current reader surface, preserves the active page, zoom, and approximate viewport, and uses a scrollable editing canvas instead of opening a separate editor page or dialog.

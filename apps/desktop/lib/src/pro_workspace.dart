@@ -225,8 +225,8 @@ final class LiteratureManagerLiteView extends StatefulWidget {
 
 final class _LiteratureManagerLiteViewState
     extends State<LiteratureManagerLiteView> {
-  late final WindowsOpenAiCompatibleTranslationProvider _translationProvider =
-      WindowsOpenAiCompatibleTranslationProvider();
+  late final WindowsTranslationProviderHub _translationProvider =
+      WindowsTranslationProviderHub();
   late final WindowsWorkspaceController _workspaceController =
       WindowsWorkspaceController();
   late final Future<WindowsBrowseRoot> _workspaceReady;
@@ -252,6 +252,10 @@ final class _LiteratureManagerLiteViewState
   bool _adding = false;
   bool _dragging = false;
   bool _catalogAvailable = true;
+  bool _collectionPaneVisible = true;
+  bool _libraryPaneVisible = true;
+  bool _pageThumbnailsVisible = true;
+  TranslationEngineChoice _translationEngine = TranslationEngineChoice.off;
   int _statusCount = 0;
 
   @override
@@ -278,7 +282,34 @@ final class _LiteratureManagerLiteViewState
           )
         : _createDefaultTranslationStore();
     _workspaceReady = _workspaceController.initialize();
+    unawaited(_initializeTranslationProvider());
     unawaited(_loadLibrary());
+  }
+
+  Future<void> _initializeTranslationProvider() async {
+    await _translationProvider.initialize();
+    if (!mounted) return;
+    setState(() => _translationEngine = _translationProvider.selectedEngine);
+  }
+
+  Future<void> _selectTranslationEngine(TranslationEngineChoice choice) async {
+    await _translationProvider.selectEngine(choice);
+    if (!mounted) return;
+    setState(() => _translationEngine = choice);
+  }
+
+  bool get _focusReading =>
+      !_collectionPaneVisible &&
+      !_libraryPaneVisible &&
+      !_pageThumbnailsVisible;
+
+  void _toggleFocusReading() {
+    final focused = _focusReading;
+    setState(() {
+      _collectionPaneVisible = focused;
+      _libraryPaneVisible = focused;
+      _pageThumbnailsVisible = focused;
+    });
   }
 
   @override
@@ -1858,6 +1889,81 @@ final class _LiteratureManagerLiteViewState
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      if (selected != null)
+                        OutlinedButton.icon(
+                          key: const Key('literature-focus-reading-action'),
+                          onPressed: _toggleFocusReading,
+                          icon: Icon(
+                            _focusReading
+                                ? Icons.fullscreen_exit
+                                : Icons.fullscreen,
+                          ),
+                          label: Text(
+                            _focusReading
+                                ? strings.exitFocusReading
+                                : strings.focusReading,
+                          ),
+                        ),
+                      if (selected != null)
+                        MenuAnchor(
+                          key: const Key('literature-pane-menu'),
+                          menuChildren: [
+                            MenuItemButton(
+                              key: const Key(
+                                'literature-toggle-collections-action',
+                              ),
+                              onPressed: () => setState(
+                                () => _collectionPaneVisible =
+                                    !_collectionPaneVisible,
+                              ),
+                              leadingIcon: Icon(
+                                _collectionPaneVisible
+                                    ? Icons.check_box_outlined
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              child: Text(strings.collectionPane),
+                            ),
+                            MenuItemButton(
+                              key: const Key(
+                                'literature-toggle-library-action',
+                              ),
+                              onPressed: () => setState(
+                                () =>
+                                    _libraryPaneVisible = !_libraryPaneVisible,
+                              ),
+                              leadingIcon: Icon(
+                                _libraryPaneVisible
+                                    ? Icons.check_box_outlined
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              child: Text(strings.libraryPane),
+                            ),
+                            MenuItemButton(
+                              key: const Key(
+                                'literature-toggle-thumbnails-action',
+                              ),
+                              onPressed: () => setState(
+                                () => _pageThumbnailsVisible =
+                                    !_pageThumbnailsVisible,
+                              ),
+                              leadingIcon: Icon(
+                                _pageThumbnailsVisible
+                                    ? Icons.check_box_outlined
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              child: Text(strings.pageThumbnailsPane),
+                            ),
+                          ],
+                          builder: (context, controller, child) =>
+                              IconButton.filledTonal(
+                                key: const Key('literature-pane-menu-action'),
+                                tooltip: strings.readerLayout,
+                                onPressed: () => controller.isOpen
+                                    ? controller.close()
+                                    : controller.open(),
+                                icon: const Icon(Icons.view_sidebar_outlined),
+                              ),
+                        ),
                       OutlinedButton.icon(
                         key: const Key('literature-import-reference-action'),
                         onPressed: _loading || _adding || !_catalogAvailable
@@ -1919,7 +2025,9 @@ final class _LiteratureManagerLiteViewState
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final showCollectionSidebar =
-                            constraints.maxWidth >= 1320;
+                            constraints.maxWidth >= 1320 &&
+                            _collectionPaneVisible;
+                        final showLibrary = _libraryPaneVisible;
                         final library = _buildLibraryList(
                           strings,
                           showScopeFilter: !showCollectionSidebar,
@@ -1932,6 +2040,7 @@ final class _LiteratureManagerLiteViewState
                               )
                             : _buildReaderPane(selected, strings);
                         if (constraints.maxWidth < 980) {
+                          if (!showLibrary) return reader;
                           final libraryHeight = constraints.maxHeight < 520
                               ? 170.0
                               : 210.0;
@@ -1943,26 +2052,23 @@ final class _LiteratureManagerLiteViewState
                             ],
                           );
                         }
-                        if (showCollectionSidebar) {
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (showCollectionSidebar) ...[
                               SizedBox(
                                 width: 216,
                                 child: _buildCollectionSidebar(strings),
                               ),
                               const SizedBox(width: 10),
-                              SizedBox(width: 350, child: library),
-                              const SizedBox(width: 10),
-                              Expanded(child: reader),
                             ],
-                          );
-                        }
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            SizedBox(width: 340, child: library),
-                            const SizedBox(width: 10),
+                            if (showLibrary) ...[
+                              SizedBox(
+                                width: showCollectionSidebar ? 350 : 340,
+                                child: library,
+                              ),
+                              const SizedBox(width: 10),
+                            ],
                             Expanded(child: reader),
                           ],
                         );
@@ -2482,12 +2588,17 @@ final class _LiteratureManagerLiteViewState
                 onPositionChanged: (currentPage, totalPages) =>
                     _recordPosition(selected.id, currentPage, totalPages),
                 translationProvider: _translationProvider,
+                translationEngine: _translationEngine,
+                onTranslationEngineChanged: _selectTranslationEngine,
                 translationStore: _translationStore,
                 onConfigureTranslation: () =>
                     showTranslationConfigurationDialog(
                       context,
-                      _translationProvider,
+                      _translationProvider.openAiProvider,
                     ),
+                thumbnailsVisible: _pageThumbnailsVisible,
+                onThumbnailsVisibilityChanged: (visible) =>
+                    setState(() => _pageThumbnailsVisible = visible),
                 literatureId: selected.id,
                 annotations:
                     _annotations[selected.id] ?? const <LiteratureAnnotation>[],
@@ -3025,6 +3136,12 @@ final class _LiteratureStrings {
       ? '本地阅读与文献管理 · 原 PDF 保持不变'
       : 'Local reading and reference management · source PDFs stay unchanged';
   String get localReadOnly => isChinese ? '本地只读' : 'LOCAL READ-ONLY';
+  String get focusReading => isChinese ? '专注阅读' : 'Focus reading';
+  String get exitFocusReading => isChinese ? '退出专注' : 'Exit focus';
+  String get readerLayout => isChinese ? '阅读布局' : 'Reader layout';
+  String get collectionPane => isChinese ? '集合栏' : 'Collections pane';
+  String get libraryPane => isChinese ? '文献列表' : 'Library pane';
+  String get pageThumbnailsPane => isChinese ? '页面缩略图' : 'Page thumbnails';
   String get addLiterature => isChinese ? '添加文献' : 'Add literature';
   String get importReferences => isChinese ? '导入文献库' : 'Import library';
   String get pdfPickerTitle => isChinese ? '添加本地 PDF 文献' : 'Add a local PDF';

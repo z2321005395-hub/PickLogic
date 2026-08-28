@@ -5,7 +5,9 @@
 - No account, telemetry, ads, cloud backend, or file upload.
 - Index, OCR output, preferences, thumbnails, and Insight records remain local.
 - API keys, if a future provider needs one, use OS secure storage and are never logged or committed.
-- Online translation is disabled until configured and receives only bounded extracted selection, page, or document text after an explicit user request; PDF bytes are never uploaded.
+- Online translation is off until the user selects an engine in the result sidebar. Choosing `Instant · No key required` once enables and remembers the no-key engine; each selection sends at most 500 selected characters to the labeled MyMemory public translation service and never sends PDF bytes, images, paths, filenames, library metadata, or unrelated text.
+- The reader exposes its engine selector beside every selection result. OpenAI-compatible translation remains optional and keeps endpoint/model preferences local while protecting its API key with Windows DPAPI.
+- Current-page and document translation remain explicit menu actions. They send bounded extracted text only, never the PDF file, and may be limited by the selected service's public quota.
 - Page translations and terminology are stored in the app-owned local SQLite catalog. A bounded terminology list accompanies only an explicit translation request.
 
 ## Developer Safe Mode

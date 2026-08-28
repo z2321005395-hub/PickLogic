@@ -465,3 +465,18 @@ Integration complete: PR #43 passed all three CI jobs and merged normally into `
 ## Next action
 
 Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, then verify Actions artifacts/caches stay at zero. Stop feature expansion after integration and collect maintainer hands-on feedback.
+
+## Pro reader focus and one-click translation
+
+- Goal: let the PDF occupy the Literature workspace while reading and remove API setup from the normal selection-translation path.
+- Literature now supports one-click focus mode plus independent collection, library, and page-thumbnail visibility controls. Focus mode hides all three reading-side panes and restores them together.
+- The translation result sidebar now contains its engine selector. `Instant · No key required` uses the bounded MyMemory public short-text API, retries the current selection immediately, remembers the choice locally, and can show up to three distinct translation-memory alternatives. Advanced OpenAI-compatible translation remains optional.
+- Online translation remains off in a fresh distribution until an engine is selected. The instant path needs no endpoint, model, API key, runtime, dependency, or copied source; only the selected text (maximum 500 characters) leaves the device.
+- Verification: targeted analyzer clean; Literature Core 27/27; focused Pro translation/workspace tests 17/17; privacy findings 0; dependency audit 114 external + 5 Flutter SDK packages with zero findings. A root-invoked full Desktop test attempt passed 37 tests but could not load SQLite/PDFium native assets and timed out in the native exporter; no focused test failed.
+- Commit `4c32377` built from an isolated ASCII-path worktree. The Pro Release is 43,361,145 bytes installed; packaged PDF reader and in-place text/image editing smokes both exited 0. The ignored local ZIP is 19,096,875 bytes with SHA-256 `4523D7B4C265120A69FA58C236AF052793D7A2D1FF5B86D257B39F71F1F2DDF6`.
+- Installed `0.1.0-alpha-4c32377` beside prior builds, repointed Desktop/Start-menu shortcuts, preserved app data, and set the app-owned engine preference to `instant` for this maintainer profile. Exactly one responsive new Pro process remains open.
+- Computer Use captured the installed Home window, but Windows input injection failed twice with `foreground window did not report a process id`; stale coordinates were not reused. Focus/hide/restore and selector/retry behavior are therefore covered by widget tests rather than claimed as a successful real-window click-through. No real PDF was opened, uploaded, changed, or overwritten.
+
+## Next action
+
+Push this focused branch, run one artifact-free PR gate, merge green work into `develop`, verify Actions artifacts/caches stay at zero, then leave the installed Pro window ready for maintainer testing.

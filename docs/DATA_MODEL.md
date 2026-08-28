@@ -64,7 +64,9 @@ The plan is applied only to an in-memory document before Save As. It never conta
 
 ## LiteratureTranslationState
 
-Explicit page translation stores `literatureId`, `pageNumber`, `targetLanguage`, `sourceText`, `translatedText`, `providerLabel`, `updatedAt`, and a source fingerprint. Terminology entries store source term, target term, and update time. Both remain local; a configured provider receives bounded extracted text and bounded terminology only after the user requests translation.
+Explicit page translation stores `literatureId`, `pageNumber`, `targetLanguage`, `sourceText`, `translatedText`, `providerLabel`, `updatedAt`, and a source fingerprint. Selection results may add zero or more labeled `TranslationAlternative` values for side-by-side candidate display; alternatives are session-only unless promoted to the normal local page memory. Terminology entries store source term, target term, and update time.
+
+`TranslationProviderKind.publicAnonymous` is additive. It identifies the no-key short-text service used after the user explicitly chooses that engine and selects PDF text; online translation remains off by default, and only the bounded selected text leaves the device. Existing disabled and OpenAI-compatible providers retain their behavior.
 
 ## ScreenshotGroup
 
@@ -100,5 +102,7 @@ The Android bridge's additive private-index-path method is not a `FileLocator` a
 `AndroidBrowseDirectorySummary` is an additive one-pass SAF aggregate used by Folder Insight. Shared folder roles and evidence are additive enums; unknown values remain safely unresolved, and existing `InsightRecord` serialization is unchanged.
 
 Literature catalog organization, reference-only entries, annotation geometry, local translation memory, citation import, and citation formatting are additive Pro contracts. Existing `LiteratureRecord` serialization is unchanged. Missing optional fields receive safe defaults, SQLite tables migrate additively, and callers that omit the new stores retain the prior read-only reader behavior.
+
+Translation alternatives and `publicAnonymous` are additive, non-serialized provider results. Existing provider implementations compile unchanged because `SelectedTextTranslation.alternatives` defaults to an empty list; persisted translation rows and `LiteratureRecord` require no migration.
 
 PDF content editing is an additive non-serialized Pro contract. Existing exporter callers omit `contentEdits` and retain page/annotation behavior; no `LiteratureRecord`, catalog, annotation, or locator migration is required.

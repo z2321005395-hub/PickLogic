@@ -6,6 +6,7 @@ import 'package:picklogic_core_models/picklogic_core_models.dart'
     hide TranslationProvider;
 import 'package:picklogic_desktop/src/pro_pdf_content_editor.dart';
 import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
+import 'package:picklogic_desktop/src/pro_translation.dart';
 import 'package:picklogic_desktop/src/pro_workspace.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
@@ -21,7 +22,7 @@ void main() {
   testWidgets(
     'Literature uses a bounded list-reader layout with opt-in details',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      await tester.binding.setSurfaceSize(const Size(1500, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final store = _MemoryLiteratureStore([_entry()]);
 
@@ -43,6 +44,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('literature-library-list')), findsOneWidget);
+      expect(
+        find.byKey(const Key('literature-collection-sidebar')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('reader-area-test-double')), findsOneWidget);
       expect(find.byKey(const Key('literature-metadata-dialog')), findsNothing);
       expect(
@@ -50,6 +55,28 @@ void main() {
         findsNothing,
       );
       expect(find.text('10.5555/picklogic.synthetic'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const Key('literature-focus-reading-action')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('literature-library-list')), findsNothing);
+      expect(
+        find.byKey(const Key('literature-collection-sidebar')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('reader-area-test-double')), findsOneWidget);
+      expect(find.text('退出专注'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('literature-focus-reading-action')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('literature-library-list')), findsOneWidget);
+      expect(
+        find.byKey(const Key('literature-collection-sidebar')),
+        findsOneWidget,
+      );
 
       await tester.tap(find.byKey(const Key('literature-metadata-action')));
       await tester.pumpAndSettle();
@@ -363,6 +390,7 @@ void main() {
       final selection = ValueNotifier<String>('');
       addTearDown(selection.dispose);
       final provider = _ImmediateTranslationProvider();
+      final engineChanges = <TranslationEngineChoice>[];
 
       await tester.pumpWidget(
         _localizedApp(
@@ -375,6 +403,10 @@ void main() {
               onPositionChanged: (_, _) {},
               viewerBuilder: (_) => const SizedBox.expand(),
               translationProvider: provider,
+              translationEngine: TranslationEngineChoice.instant,
+              onTranslationEngineChanged: (choice) async {
+                engineChanges.add(choice);
+              },
               selectionTextForTesting: selection,
             ),
           ),
@@ -397,7 +429,30 @@ void main() {
       );
       expect(find.text('Selected scientific sentence.'), findsOneWidget);
       expect(find.text('译文：Selected scientific sentence.'), findsOneWidget);
+      expect(
+        find.byKey(const Key('pdf-selection-translation-alternative-0')),
+        findsOneWidget,
+      );
+      expect(find.text('候选：Selected scientific sentence.'), findsOneWidget);
       expect(provider.sources, ['Selected scientific sentence.']);
+      expect(
+        find.byKey(const Key('pdf-translation-engine-selector')),
+        findsOneWidget,
+      );
+      expect(find.text('即时翻译 · 无需密钥'), findsOneWidget);
+      expect(
+        find.byKey(const Key('pdf-configure-selection-translation-action')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('pdf-translation-engine-selector')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('AI 模型 · 高级').last);
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(engineChanges, [TranslationEngineChoice.openAiCompatible]);
 
       selection.value = 'A second term.';
       await tester.pump();
@@ -409,9 +464,14 @@ void main() {
       expect(find.text('译文：Selected scientific sentence.'), findsNothing);
       expect(provider.sources, [
         'Selected scientific sentence.',
+        'Selected scientific sentence.',
         'A second term.',
       ]);
-      expect(provider.targets, ['Simplified Chinese', 'Simplified Chinese']);
+      expect(provider.targets, [
+        'Simplified Chinese',
+        'Simplified Chinese',
+        'Simplified Chinese',
+      ]);
 
       selection.value = '材料科学';
       await tester.pump();
@@ -620,6 +680,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('pdf-translation-menu')), findsOneWidget);
+    expect(find.byKey(const Key('pdf-thumbnail-pane')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('pdf-toggle-thumbnails-action')));
+    await tester.pump();
+    expect(find.byKey(const Key('pdf-thumbnail-pane')), findsNothing);
+    await tester.tap(find.byKey(const Key('pdf-toggle-thumbnails-action')));
+    await tester.pump();
+    expect(find.byKey(const Key('pdf-thumbnail-pane')), findsOneWidget);
     expect(find.text('Local rendering'), findsNothing);
     expect(tester.takeException(), isNull);
 
@@ -816,6 +883,12 @@ final class _ImmediateTranslationProvider implements TranslationProvider {
       translatedText: '译文：$selectedText',
       targetLanguage: targetLanguage,
       providerLabel: label,
+      alternatives: [
+        TranslationAlternative(
+          label: 'Synthetic alternative',
+          translatedText: '候选：$selectedText',
+        ),
+      ],
     );
   }
 }
