@@ -2257,56 +2257,60 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     );
   }
 
-  Widget _buildTranslationEngineSelector(_PdfReaderStrings strings) =>
-      DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-          child: Row(
-            children: [
-              const Icon(Icons.translate, size: 17),
-              const SizedBox(width: 7),
-              Text(
-                strings.translationEngine,
-                style: Theme.of(context).textTheme.labelMedium,
+  Widget _buildTranslationEngineSelector(
+    _PdfReaderStrings strings, {
+    bool compact = false,
+  }) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Row(
+        children: [
+          const Icon(Icons.translate, size: 17),
+          const SizedBox(width: 7),
+          if (!compact) ...[
+            Text(
+              strings.translationEngine,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<TranslationEngineChoice>(
+                key: const Key('pdf-translation-engine-selector'),
+                value: widget.translationEngine,
+                isDense: true,
+                isExpanded: true,
+                items: TranslationEngineChoice.values
+                    .map(
+                      (choice) => DropdownMenuItem(
+                        key: Key('pdf-translation-engine-${choice.name}'),
+                        value: choice,
+                        child: Text(
+                          strings.translationEngineName(choice),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: _translationBusy || _documentTranslationBusy
+                    ? null
+                    : (choice) {
+                        if (choice != null) {
+                          unawaited(_changeTranslationEngine(choice));
+                        }
+                      },
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<TranslationEngineChoice>(
-                    key: const Key('pdf-translation-engine-selector'),
-                    value: widget.translationEngine,
-                    isDense: true,
-                    isExpanded: true,
-                    items: TranslationEngineChoice.values
-                        .map(
-                          (choice) => DropdownMenuItem(
-                            key: Key('pdf-translation-engine-${choice.name}'),
-                            value: choice,
-                            child: Text(
-                              strings.translationEngineName(choice),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(growable: false),
-                    onChanged: _translationBusy || _documentTranslationBusy
-                        ? null
-                        : (choice) {
-                            if (choice != null) {
-                              unawaited(_changeTranslationEngine(choice));
-                            }
-                          },
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 
   Widget _buildTranslationPanel(_PdfReaderStrings strings) {
     final selectionSource = _selectionTranslationSource.trim();
@@ -2328,14 +2332,29 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
               children: [
                 Row(
                   children: [
-                    Expanded(
-                      child: Text(
-                        showingSelection
-                            ? strings.selectionTranslation
-                            : strings.translatedPage(_pageNumber),
-                        style: Theme.of(context).textTheme.titleSmall,
+                    if (widget.translationEngine != null &&
+                        widget.onTranslationEngineChanged != null)
+                      Expanded(
+                        child: Semantics(
+                          label: showingSelection
+                              ? strings.selectionTranslation
+                              : strings.translatedPage(_pageNumber),
+                          child: _buildTranslationEngineSelector(
+                            strings,
+                            compact: true,
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: Text(
+                          showingSelection
+                              ? strings.selectionTranslation
+                              : strings.translatedPage(_pageNumber),
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
                       ),
-                    ),
+                    const SizedBox(width: 4),
                     if (showingSelection &&
                         selectionTranslation?.isNotEmpty == true)
                       IconButton(
@@ -2386,11 +2405,6 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                     ),
                   ],
                 ),
-                if (widget.translationEngine != null &&
-                    widget.onTranslationEngineChanged != null) ...[
-                  const SizedBox(height: 4),
-                  _buildTranslationEngineSelector(strings),
-                ],
               ],
             ),
           ),
@@ -2513,7 +2527,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           controller: _selectionSourceController,
           readOnly: !_selectionSourceEditing,
           minLines: 1,
-          maxLines: _selectionSourceEditing ? 6 : 2,
+          maxLines: _selectionSourceEditing ? 6 : 1,
           onChanged: _onSelectionSourceEdited,
           decoration: InputDecoration(
             isDense: true,
