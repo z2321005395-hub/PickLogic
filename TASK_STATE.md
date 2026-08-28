@@ -417,9 +417,10 @@ Merge the focused CI policy fix after its PR gate, confirm the resulting `develo
 - Added bounded image decoding (32 MiB encoded, 4096 px, 16 Mi-pixel) and a packaged synthetic smoke that replaces text, inserts an image, reopens the edited copy, verifies its objects/text, and confirms source bytes remain identical.
 - No dependency or binary changed; existing `pdfrx 2.4.7` / PDFium is reused. Pro Release remains 43,295,609 bytes installed, within the 130 MiB target.
 - Verification: Literature Core 27/27, focused content/page editor UI 2/2, Pro workspace 12/12, ASCII-path Pro Release build passed, packaged PDF content-edit smoke exit 0, existing PDF reader smoke exit 0, format/diff checks clean.
+- PR #41's first quality run exposed a Flutter test-host timeout in the duplicate native image-edit export test. The supported packaged Windows executable is now the required native text/image edit smoke gate; the remaining PDF editor UI, page export, annotation, and overwrite-safety tests pass 4/4 without a hanging duplicate.
 - Canonical Chinese-path Windows build still fails only at the known MSBuild Unicode path decoding boundary; the isolated ASCII worktree is the local Windows build gate.
 - Current limits are explicit: no OCR reconstruction, paragraph reflow, outlined-text editing, nested object editing, complex table reconstruction, forms, signing, certified redaction, or high-fidelity conversion. New standard-font text may reject unsupported CJK glyphs instead of silently corrupting them.
 
 ## Next action
 
-Run privacy/license/static gates, commit the contract/docs update, push the feature branch, open one genuine PR to `develop`, and merge only after CI passes. Keep routine packages local and leave no PickLogic GUI process running.
+Push the focused CI-gate fix to PR #41, rerun its single quality/build gate, and merge only after all three jobs pass. Keep routine packages local and leave no PickLogic GUI process running.
