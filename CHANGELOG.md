@@ -8,6 +8,7 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Added
 
+- Pro PDF text/image object editing with selection, replacement/addition, move, resize, rotation, deletion, undo/redo, and source-preserving Save As.
 - Pro PDF page editing with reorder, rotate, duplicate, remove, undo/redo, embedded local annotations, and source-preserving Save As output.
 - Mobile folder Insight for every folder inside user-authorized SAF trees, with recursive metadata-only scanning, evidence, confidence, platform limits, and per-folder explanations.
 - Android hierarchical read-only SAF folder browsing with visible-only thumbnails and first-class internal photo, video, audio, PDF, text, archive, APK, and Office viewers.

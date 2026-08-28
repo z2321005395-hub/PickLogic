@@ -11,7 +11,7 @@ PickLogic is a local-first file understanding and organization project. One Flut
 ## Product targets
 
 - **PickLogic Desktop** — Windows Standard: local scan, virtual categories, search, preview, exact duplicates, planned organization, and Insight.
-- **PickLogic Pro** — the same Windows codebase plus Literature Manager Lite, Research Workspace, and read-only System Insight.
+- **PickLogic Pro** — the same Windows codebase plus Literature Manager Lite, local PDF reading and source-preserving text/image/page editing, Research Workspace, and read-only System Insight.
 - **PickLogic Mobile** — Android: files, screenshots, photos, storage insight, fast review, and Insight.
 
 ## Safety and privacy

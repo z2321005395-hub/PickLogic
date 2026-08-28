@@ -56,6 +56,12 @@ Regular and smart collections contain `id`, `name`, optional `parentId`, `create
 
 App-owned annotation state contains `id`, `literatureId`, `pageNumber`, `kind`, `selectedText`, `note`, `colorName`, `createdAt`, `updatedAt`, and zero or more page-coordinate `boxes`. Kinds are highlight, underline, strikethrough, and note. It is stored beside the local catalog, redraws over the matching PDF page, and never implies writing into the source PDF.
 
+## PdfContentEditPlan
+
+`PdfContentObjectDescriptor` identifies one top-level PDFium text or image object by page number and source object index, with PDF-coordinate bounds plus optional extracted text/font size. `PdfContentObjectEdit` records source and target bounds, optional replacement text or local image path, font size, rotation, and deletion state. `PdfContentEditPlan` is immutable and additive.
+
+The plan is applied only to an in-memory document before Save As. It never contains a destination and never authorizes overwriting the source. Unsupported nested objects, scans, outlined text, and complex layout remain unchanged.
+
 ## LiteratureTranslationState
 
 Explicit page translation stores `literatureId`, `pageNumber`, `targetLanguage`, `sourceText`, `translatedText`, `providerLabel`, `updatedAt`, and a source fingerprint. Terminology entries store source term, target term, and update time. Both remain local; a configured provider receives bounded extracted text and bounded terminology only after the user requests translation.
@@ -94,3 +100,5 @@ The Android bridge's additive private-index-path method is not a `FileLocator` a
 `AndroidBrowseDirectorySummary` is an additive one-pass SAF aggregate used by Folder Insight. Shared folder roles and evidence are additive enums; unknown values remain safely unresolved, and existing `InsightRecord` serialization is unchanged.
 
 Literature catalog organization, reference-only entries, annotation geometry, local translation memory, citation import, and citation formatting are additive Pro contracts. Existing `LiteratureRecord` serialization is unchanged. Missing optional fields receive safe defaults, SQLite tables migrate additively, and callers that omit the new stores retain the prior read-only reader behavior.
+
+PDF content editing is an additive non-serialized Pro contract. Existing exporter callers omit `contentEdits` and retain page/annotation behavior; no `LiteratureRecord`, catalog, annotation, or locator migration is required.
