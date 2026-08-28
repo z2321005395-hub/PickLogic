@@ -151,6 +151,65 @@ void main() {
     expect(() => plan.remove(0), throwsStateError);
   });
 
+  test('PDF content edit tracks replacement and bounded geometry', () {
+    const descriptor = PdfContentObjectDescriptor(
+      pageNumber: 1,
+      objectIndex: 3,
+      kind: PdfContentObjectKind.text,
+      bounds: PdfContentBounds(left: 10, bottom: 20, right: 110, top: 40),
+      text: 'Original',
+      fontSize: 12,
+    );
+    final edit = PdfContentObjectEdit.fromDescriptor(descriptor).copyWith(
+      replacementText: 'Updated',
+      targetBounds: descriptor.bounds.translate(5, 8),
+    );
+    final plan = PdfContentEditPlan(edits: [edit]);
+
+    expect(plan.changed, isTrue);
+    expect(plan.forPage(1), hasLength(1));
+    expect(plan.forPage(1).single.replacementText, 'Updated');
+    expect(plan.forPage(2), isEmpty);
+  });
+
+  test('PDF content edit requires unique ids and new-object content', () {
+    const bounds = PdfContentBounds(left: 10, bottom: 10, right: 80, top: 30);
+    final edit = PdfContentObjectEdit.addText(
+      id: 'new:1',
+      pageNumber: 1,
+      bounds: bounds,
+      text: 'Added',
+    );
+    expect(() => PdfContentEditPlan(edits: [edit, edit]), throwsArgumentError);
+    expect(
+      () => PdfContentEditPlan(
+        edits: [
+          PdfContentObjectEdit.addText(
+            id: 'new:2',
+            pageNumber: 1,
+            bounds: bounds,
+            text: '',
+          ),
+        ],
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('PDF content bounds clamp to the PDF page', () {
+    const bounds = PdfContentBounds(
+      left: -20,
+      bottom: 90,
+      right: 140,
+      top: 130,
+    );
+    final clamped = bounds.clampToPage(pageWidth: 100, pageHeight: 120);
+    expect(clamped.left, 0);
+    expect(clamped.right, 100);
+    expect(clamped.bottom, 80);
+    expect(clamped.top, 120);
+  });
+
   test('bounded PDF probe reads only small head and tail ranges', () async {
     final bytes = List<int>.filled(4096, 0x20);
     final header = latin1.encode(

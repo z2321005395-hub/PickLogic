@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
@@ -7,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfium_dart/pdfium_dart.dart' as pdfium_bindings;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:picklogic_desktop/src/pdf_edit_exporter.dart';
+import 'package:picklogic_desktop/src/pdf_content_object_service.dart';
 import 'package:picklogic_desktop/src/pro_pdf_editor.dart';
 import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
@@ -146,6 +148,82 @@ void main() {
       expect(annotationCount, greaterThanOrEqualTo(1));
     },
   );
+
+  testWidgets('exporter replaces PDF text and inserts a bounded image object', (
+    tester,
+  ) async {
+    await pdfrxFlutterInitialize();
+    final directory = await Directory.systemTemp.createTemp(
+      'picklogic-pdf-content-edit-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final source = File('${directory.path}${Platform.pathSeparator}source.pdf');
+    final destination = File(
+      '${directory.path}${Platform.pathSeparator}edited.pdf',
+    );
+    final image = File(
+      '${directory.path}${Platform.pathSeparator}replacement.png',
+    );
+    final sourceBytes = buildSyntheticLiteraturePdf();
+    await source.writeAsBytes(sourceBytes, flush: true);
+    await image.writeAsBytes(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHgQCAZg6pXQAAAAASUVORK5CYII=',
+      ),
+      flush: true,
+    );
+
+    final sourceDocument = await PdfDocument.openFile(source.path);
+    final service = const PdfContentObjectService();
+    final objects = await service.inspectPage(sourceDocument, 1);
+    await sourceDocument.dispose();
+    final textObject = objects.firstWhere(
+      (object) =>
+          object.kind == PdfContentObjectKind.text &&
+          object.text.contains('PickLogic'),
+    );
+    final contentPlan = PdfContentEditPlan(
+      edits: [
+        PdfContentObjectEdit.fromDescriptor(
+          textObject,
+        ).copyWith(replacementText: 'PickLogic object editing works'),
+        PdfContentObjectEdit.addImage(
+          id: 'new:1:image',
+          pageNumber: 1,
+          bounds: const PdfContentBounds(
+            left: 72,
+            bottom: 520,
+            right: 172,
+            top: 620,
+          ),
+          imagePath: image.path,
+        ),
+      ],
+    );
+
+    final result = await const PdfEditedCopyExporter().export(
+      sourcePath: source.path,
+      destinationPath: destination.path,
+      plan: PdfEditPlan.identity(2),
+      contentEdits: contentPlan,
+    );
+
+    expect(await source.readAsBytes(), sourceBytes);
+    expect(result.editedObjectCount, 2);
+    final edited = await PdfDocument.openFile(destination.path);
+    addTearDown(edited.dispose);
+    expect(
+      (await edited.pages.first.loadText())?.fullText,
+      contains('PickLogic object editing works'),
+    );
+    final editedObjects = await service.inspectPage(edited, 1);
+    expect(
+      editedObjects.where(
+        (object) => object.kind == PdfContentObjectKind.image,
+      ),
+      isNotEmpty,
+    );
+  });
 
   test('exporter refuses to overwrite an existing PDF', () async {
     final directory = await Directory.systemTemp.createTemp(

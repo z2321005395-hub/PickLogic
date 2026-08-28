@@ -10,6 +10,7 @@ import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
 import 'pdf_edit_exporter.dart';
+import 'pro_pdf_content_editor.dart';
 import 'pro_pdf_editor.dart';
 
 typedef LiteratureReadingPositionChanged =
@@ -508,6 +509,62 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             strings.editedCopySaved(
               result.pageCount,
               result.embeddedAnnotationCount,
+              result.editedObjectCount,
+              result.sizeBytes,
+            ),
+          ),
+          action: SnackBarAction(
+            label: strings.showInFolder,
+            onPressed: () => unawaited(
+              const PicklogicWindowsBridge().revealItem(result.destinationPath),
+            ),
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${strings.pdfEditFailed}: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pdfEditBusy = false);
+    }
+  }
+
+  Future<void> _editPdfContent() async {
+    final document = _document;
+    final sourcePath = widget.filePath;
+    if (document == null || sourcePath == null || _pdfEditBusy) return;
+    final strings = _PdfReaderStrings.of(context);
+    final contentPlan = await showPdfContentEditor(
+      context: context,
+      document: document,
+      initialPageNumber: _pageNumber,
+    );
+    if (contentPlan == null || !contentPlan.changed || !mounted) return;
+    final destination = await const PicklogicWindowsBridge().pickPdfSavePath(
+      title: strings.saveEditedCopy,
+      suggestedName: _suggestedEditedFileName(widget.sourceName),
+    );
+    if (destination == null || !mounted) return;
+    setState(() => _pdfEditBusy = true);
+    try {
+      final result = await const PdfEditedCopyExporter().export(
+        sourcePath: sourcePath,
+        destinationPath: destination,
+        plan: PdfEditPlan.identity(document.pages.length),
+        contentEdits: contentPlan,
+        annotations: widget.annotations,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            strings.editedCopySaved(
+              result.pageCount,
+              result.embeddedAnnotationCount,
+              result.editedObjectCount,
               result.sizeBytes,
             ),
           ),
@@ -1174,21 +1231,40 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             final readingControls = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton.filledTonal(
-                  key: const Key('pdf-edit-copy-action'),
-                  onPressed:
-                      widget.filePath != null &&
-                          document != null &&
-                          !_pdfEditBusy
-                      ? _editPdfCopy
-                      : null,
-                  tooltip: strings.editPdfCopy,
-                  icon: _pdfEditBusy
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.edit_document),
+                MenuAnchor(
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const Key('pdf-edit-content-action'),
+                      onPressed: _editPdfContent,
+                      leadingIcon: const Icon(Icons.edit_note_outlined),
+                      child: Text(strings.editPdfContent),
+                    ),
+                    MenuItemButton(
+                      key: const Key('pdf-edit-pages-action'),
+                      onPressed: _editPdfCopy,
+                      leadingIcon: const Icon(Icons.view_carousel_outlined),
+                      child: Text(strings.organizePdfPages),
+                    ),
+                  ],
+                  builder: (context, controller, child) =>
+                      IconButton.filledTonal(
+                        key: const Key('pdf-edit-copy-action'),
+                        onPressed:
+                            widget.filePath != null &&
+                                document != null &&
+                                !_pdfEditBusy
+                            ? controller.open
+                            : null,
+                        tooltip: strings.editPdf,
+                        icon: _pdfEditBusy
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.edit_document),
+                      ),
                 ),
                 const SizedBox(width: 6),
                 IconButton(
@@ -1842,19 +1918,27 @@ final class _PdfReaderStrings {
   String get zoomPreparing => isChinese ? '缩放准备中' : 'Zoom is preparing';
   String get syntheticPdf => isChinese ? '合成 PDF' : 'SYNTHETIC PDF';
   String get localPdf => isChinese ? '本地 PDF' : 'LOCAL PDF';
-  String get editPdfCopy => isChinese ? '编辑 PDF 副本' : 'Edit PDF copy';
+  String get editPdf => isChinese ? '编辑 PDF' : 'Edit PDF';
+  String get editPdfContent => isChinese ? '编辑文字和图片' : 'Edit text and images';
+  String get organizePdfPages =>
+      isChinese ? '整理、旋转和删除页面' : 'Organize, rotate, and remove pages';
   String get saveEditedCopy =>
       isChinese ? '另存编辑后的 PDF' : 'Save edited PDF copy';
   String get showInFolder => isChinese ? '在文件夹中显示' : 'Show in folder';
   String get pdfEditFailed =>
       isChinese ? 'PDF 编辑副本保存失败' : 'Could not save edited PDF copy';
-  String editedCopySaved(int pages, int annotations, int bytes) {
+  String editedCopySaved(
+    int pages,
+    int annotations,
+    int editedObjects,
+    int bytes,
+  ) {
     final size = bytes >= 1024 * 1024
         ? '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB'
         : '${(bytes / 1024).toStringAsFixed(1)} KB';
     return isChinese
-        ? '已保存 $pages 页编辑副本，写入 $annotations 条批注（$size）。原 PDF 未修改。'
-        : 'Saved a $pages-page edited copy with $annotations embedded annotations ($size). The source PDF was unchanged.';
+        ? '已保存 $pages 页编辑副本，修改 $editedObjects 个页面对象、写入 $annotations 条批注（$size）。原 PDF 未修改。'
+        : 'Saved a $pages-page copy with $editedObjects object edits and $annotations embedded annotations ($size). The source PDF was unchanged.';
   }
 
   String get localRendering => isChinese ? '本地渲染' : 'Local rendering';
