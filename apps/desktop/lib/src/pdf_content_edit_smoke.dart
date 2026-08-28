@@ -90,7 +90,9 @@ Future<int> runSyntheticPdfContentEditSmoke() async {
       return 4;
     }
     return 0;
-  } on Object {
+  } on Object catch (error, stackTrace) {
+    stderr.writeln('PDF_CONTENT_EDIT_SMOKE_FAILED error=$error');
+    stderr.writeln(stackTrace);
     return 1;
   } finally {
     await editedDocument?.dispose();
