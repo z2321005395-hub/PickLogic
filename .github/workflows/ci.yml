@@ -294,7 +294,7 @@ jobs:
             Write-Output 'Retrying Pro build in 15s after a transient native-asset failure.'
             Start-Sleep -Seconds 15
           }
-      - name: Smoke packaged Pro PDF engine
+      - name: Smoke packaged Pro PDF engine and content editing
         shell: pwsh
         run: |
           $release = (Resolve-Path -LiteralPath 'apps/desktop/build/windows/x64/runner/Release').Path
@@ -302,6 +302,9 @@ jobs:
           $process = Start-Process -FilePath $exe -ArgumentList '--synthetic-pdf-smoke' -WorkingDirectory $release -Wait -PassThru
           Write-Output "PRO_PDF_ENGINE_SMOKE_EXIT=$($process.ExitCode)"
           if ($process.ExitCode -ne 0) { throw 'Packaged Pro PDF engine smoke failed.' }
+          $editProcess = Start-Process -FilePath $exe -ArgumentList '--synthetic-pdf-content-edit-smoke' -WorkingDirectory $release -Wait -PassThru
+          Write-Output "PRO_PDF_CONTENT_EDIT_SMOKE_EXIT=$($editProcess.ExitCode)"
+          if ($editProcess.ExitCode -ne 0) { throw 'Packaged Pro PDF content editing smoke failed.' }
       - name: Verify and measure Pro
         shell: pwsh
         run: |

@@ -7,12 +7,96 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfium_dart/pdfium_dart.dart' as pdfium_bindings;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:picklogic_desktop/src/pdf_edit_exporter.dart';
+import 'package:picklogic_desktop/src/pro_pdf_content_editor.dart';
 import 'package:picklogic_desktop/src/pro_pdf_editor.dart';
 import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 
 void main() {
+  testWidgets('content editor replaces text with undo and redo', (
+    tester,
+  ) async {
+    PdfContentEditPlan? accepted;
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _localizedApp(
+        home: Builder(
+          builder: (context) => Center(
+            child: FilledButton(
+              onPressed: () async {
+                accepted = await showDialog<PdfContentEditPlan>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => PdfContentEditorDialog.testing(
+                    initialPageNumber: 1,
+                    imagePicker: () async => null,
+                    pagePreviewBuilder: (_, _) =>
+                        const ColoredBox(color: Colors.white),
+                    pageSizesForTesting: const [Size(612, 792)],
+                    objectsForTesting: const {
+                      1: [
+                        PdfContentObjectDescriptor(
+                          pageNumber: 1,
+                          objectIndex: 0,
+                          kind: PdfContentObjectKind.text,
+                          bounds: PdfContentBounds(
+                            left: 72,
+                            bottom: 680,
+                            right: 390,
+                            top: 730,
+                          ),
+                          text: 'Original headline',
+                          fontSize: 22,
+                        ),
+                      ],
+                    },
+                  ),
+                );
+              },
+              child: const Text('Open content editor'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open content editor'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pdf-content-editor-dialog')), findsOneWidget);
+    await tester.tap(find.text('Original headline').last);
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('pdf-content-text-field')),
+      'Edited headline',
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('pdf-content-apply-object-action')),
+      160,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('pdf-content-inspector-fields')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.byKey(const Key('pdf-content-apply-object-action')));
+    await tester.pump();
+    expect(find.text('Edited headline'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('pdf-content-undo-action')));
+    await tester.pump();
+    expect(find.text('Original headline'), findsWidgets);
+    await tester.tap(find.byKey(const Key('pdf-content-redo-action')));
+    await tester.pump();
+    expect(find.text('Edited headline'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('pdf-content-save-copy-action')));
+    await tester.pumpAndSettle();
+    expect(accepted?.edits.single.replacementText, 'Edited headline');
+  });
+
   testWidgets(
     'page editor supports rotate, duplicate, undo, and save preview',
     (tester) async {

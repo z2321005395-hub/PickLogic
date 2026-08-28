@@ -1,6 +1,6 @@
 # Task State
 
-Updated: 2026-08-27
+Updated: 2026-08-28
 
 ## Goal
 
@@ -408,3 +408,19 @@ Run final privacy/diff checks, push this focused branch, require one green CI, m
 ## Next action
 
 Merge the focused CI policy fix after its PR gate, confirm the resulting `develop` merge run skips heavy jobs, re-audit artifacts/caches, and close all locally launched PickLogic/emulator processes.
+
+## Pro PDF content object editing
+
+- Goal: add the core direct text/image editing workflow expected from a mature PDF editor without copying proprietary UI/code or introducing another PDF SDK.
+- Added shared `PdfContentEditPlan` contracts plus a Pro editor that enumerates top-level PDFium text/image objects, supports selection, text/image replacement or addition, drag movement, resize, rotation, deletion, undo/redo, and clear Chinese/English limits.
+- Extended the existing source-preserving exporter: edits are applied only to an in-memory document, changed pages regenerate content, and Windows Save As refuses source or existing-target overwrite.
+- Added bounded image decoding (32 MiB encoded, 4096 px, 16 Mi-pixel) and a packaged synthetic smoke that replaces text, inserts an image, reopens the edited copy, verifies its objects/text, and confirms source bytes remain identical.
+- No dependency or binary changed; existing `pdfrx 2.4.7` / PDFium is reused. Pro Release remains 43,295,609 bytes installed, within the 130 MiB target.
+- Verification: Literature Core 27/27, focused content/page editor UI 2/2, Pro workspace 12/12, ASCII-path Pro Release build passed, packaged PDF content-edit smoke exit 0, existing PDF reader smoke exit 0, format/diff checks clean.
+- PR #41's first quality run exposed a Flutter test-host timeout in the duplicate native image-edit export test. The supported packaged Windows executable is now the required native text/image edit smoke gate; the remaining PDF editor UI, page export, annotation, and overwrite-safety tests pass 4/4 without a hanging duplicate.
+- Canonical Chinese-path Windows build still fails only at the known MSBuild Unicode path decoding boundary; the isolated ASCII worktree is the local Windows build gate.
+- Current limits are explicit: no OCR reconstruction, paragraph reflow, outlined-text editing, nested object editing, complex table reconstruction, forms, signing, certified redaction, or high-fidelity conversion. New standard-font text may reject unsupported CJK glyphs instead of silently corrupting them.
+
+## Next action
+
+Push the focused CI-gate fix to PR #41, rerun its single quality/build gate, and merge only after all three jobs pass. Keep routine packages local and leave no PickLogic GUI process running.

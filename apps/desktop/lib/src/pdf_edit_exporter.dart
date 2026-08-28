@@ -7,17 +7,21 @@ import 'package:pdfium_dart/pdfium_dart.dart' as pdfium_bindings;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 
+import 'pdf_content_object_service.dart';
+
 final class PdfEditExportResult {
   const PdfEditExportResult({
     required this.destinationPath,
     required this.pageCount,
     required this.embeddedAnnotationCount,
+    required this.editedObjectCount,
     required this.sizeBytes,
   });
 
   final String destinationPath;
   final int pageCount;
   final int embeddedAnnotationCount;
+  final int editedObjectCount;
   final int sizeBytes;
 }
 
@@ -31,6 +35,7 @@ final class PdfEditedCopyExporter {
     required String sourcePath,
     required String destinationPath,
     required PdfEditPlan plan,
+    PdfContentEditPlan? contentEdits,
     List<LiteratureAnnotation> annotations = const <LiteratureAnnotation>[],
   }) async {
     final source = File(sourcePath).absolute;
@@ -84,6 +89,17 @@ final class PdfEditedCopyExporter {
         throw StateError('This PDF does not permit annotation changes.');
       }
 
+      final contentPlan = contentEdits ?? PdfContentEditPlan.empty();
+      if (contentPlan.changed &&
+          permissions != null &&
+          (permissions.permissions & 0x0008) == 0) {
+        throw StateError('This PDF does not permit content changes.');
+      }
+      await const PdfContentObjectService().applyToDocument(
+        sourceDocument,
+        contentPlan,
+      );
+
       final embeddedAnnotationCount = annotations.isEmpty
           ? 0
           : await _embedAnnotations(sourceDocument, annotations);
@@ -127,6 +143,9 @@ final class PdfEditedCopyExporter {
         destinationPath: destination.path,
         pageCount: plan.pages.length,
         embeddedAnnotationCount: embeddedAnnotationCount,
+        editedObjectCount: contentPlan.edits
+            .where((edit) => edit.changed)
+            .length,
         sizeBytes: encoded.length,
       );
     } finally {

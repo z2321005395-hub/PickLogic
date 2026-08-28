@@ -31,7 +31,7 @@
 - A CI-built x86_64 APK passed the TTDT API 36 emulator bridge success path with zero media grants and zero fatal-log matches.
 - PDF engine: `pdfrx 2.4.7`/PDFium is accepted after notice, native-engine, size, and Mobile-regression gates.
 - Pro Literature supports multi-PDF selection/drop, reference-only BibTeX/RIS import, nested/smart collections, tags/ratings/star/trash, high-confidence duplicate merging, reading-position and bilingual-page recovery, local page-coordinate annotations, six citation styles with Word-compatible rich-text copy, and explicit selection/page/document translation; source PDFs remain read-only.
-- Pro PDF editing can reorder, rotate, duplicate, or remove pages and embed local annotations into a new PDF; source files and existing targets are never overwritten. Rename previews use year-journal-title order.
+- Pro PDF editing can select top-level text/image objects; replace/add content; move, resize, rotate, delete, undo/redo; organize pages; embed annotations; and save a new PDF. Source files and existing targets are never overwritten. Scans, outlined text, nested objects, complex reflow, forms, signing, and certified redaction remain explicit limits. Rename previews use year-journal-title order.
 - Desktop file selection no longer forces Preview/Insight open; double-click/Enter opens content and Ctrl+Shift+I opens the contextual panel on demand.
 - Native build assets: PDFium and SQLite, including opt-in Android x64 validation, are version-pinned, SHA-256 verified, retried, and pre-seeded before CI invokes package hooks.
 - GitHub: the same repository and complete development history are Public at `z2321005395-hub/PickLogic`; commits, branches, PRs, Issues, workflow runs, and tags were preserved.

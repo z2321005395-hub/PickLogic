@@ -8,6 +8,8 @@
 - `TASK_STATE.md` — interruption-safe current state, evidence, blockers, and next action.
 - `apps/desktop/` — shared Windows app with Standard and Pro entrypoints.
 - `apps/desktop/lib/src/file_preview.dart` — bounded image, PDFium, text, folder, and fallback preview surfaces.
+- `apps/desktop/lib/src/pro_pdf_content_editor.dart` — Pro text/image object selection, direct manipulation, history, and Save As UI.
+- `apps/desktop/lib/src/pdf_content_object_service.dart` — bounded PDFium object inspection and in-memory text/image edit adapter.
 - `apps/mobile/` — Android mobile UI and target composition.
 - `apps/mobile/lib/src/mobile_file_browser.dart` — user-authorized hierarchical SAF browser with visible-only thumbnails and direct viewers.
 - `apps/mobile/lib/src/mobile_index_persistence.dart` — shared-SQLite Mobile metadata, checkpoint, and persistent-search adapter.
@@ -19,7 +21,7 @@
 - `packages/insight_engine/` — evidence-bearing structured Insight generation.
 - `packages/operation_planner/` — plan lifecycle, warnings, execution gate, and rollback metadata.
 - `packages/preview_core/` — bounded preview and thumbnail cache contracts.
-- `packages/literature_core/` — DOI/metadata, reading state, local annotations, citation export, bounded translation, and rename previews.
+- `packages/literature_core/` — DOI/metadata, reading state, local annotations, PDF content-edit plans, citation export, bounded translation, and rename previews.
 - `packages/research_core/` — virtual research workspace skeleton.
 - `packages/system_insight_core/` — read-only Windows storage/system explanations.
 - `packages/shared_ui/` — design tokens, localization, safe-mode banner, shared widgets.
