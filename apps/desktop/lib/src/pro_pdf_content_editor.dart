@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
@@ -18,6 +19,8 @@ typedef PdfContentPageInspector =
 typedef PdfContentImagePicker = Future<String?> Function();
 typedef PdfContentPagePreviewBuilder =
     Widget Function(BuildContext context, int pageNumber);
+typedef PdfContentSaveRequested =
+    Future<bool> Function(PdfContentEditPlan plan);
 
 Future<PdfContentEditPlan?> showPdfContentEditor({
   required BuildContext context,
@@ -26,6 +29,7 @@ Future<PdfContentEditPlan?> showPdfContentEditor({
   PdfContentPageInspector? inspector,
   PdfContentImagePicker? imagePicker,
   PdfContentPagePreviewBuilder? pagePreviewBuilder,
+  PdfContentSaveRequested? onSaveRequested,
 }) => showDialog<PdfContentEditPlan>(
   context: context,
   barrierDismissible: false,
@@ -35,6 +39,7 @@ Future<PdfContentEditPlan?> showPdfContentEditor({
     inspector: inspector ?? const PdfContentObjectService().inspectPage,
     imagePicker: imagePicker ?? _pickImage,
     pagePreviewBuilder: pagePreviewBuilder,
+    onSaveRequested: onSaveRequested,
   ),
 );
 
@@ -59,6 +64,7 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.inspector,
     required this.imagePicker,
     this.pagePreviewBuilder,
+    this.onSaveRequested,
   }) : pageSizesForTesting = null,
        objectsForTesting = null;
 
@@ -70,6 +76,7 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.pagePreviewBuilder,
     required this.pageSizesForTesting,
     required this.objectsForTesting,
+    this.onSaveRequested,
   }) : document = null,
        inspector = null;
 
@@ -80,6 +87,7 @@ final class PdfContentEditorDialog extends StatefulWidget {
   final PdfContentPagePreviewBuilder? pagePreviewBuilder;
   final List<Size>? pageSizesForTesting;
   final Map<int, List<PdfContentObjectDescriptor>>? objectsForTesting;
+  final PdfContentSaveRequested? onSaveRequested;
 
   @override
   State<PdfContentEditorDialog> createState() => _PdfContentEditorDialogState();
@@ -104,6 +112,10 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   int _loadGeneration = 0;
   int _newObjectId = 1;
   bool _gestureActive = false;
+  bool _allowPop = false;
+  bool _exitPromptVisible = false;
+  bool _saving = false;
+  Map<String, PdfContentObjectEdit> _savedEdits = {};
 
   @override
   void initState() {
@@ -142,6 +154,37 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   PdfContentEditPlan get _plan => PdfContentEditPlan(
     edits: _edits.values.where((edit) => edit.changed).toList(growable: false),
   );
+
+  bool get _hasUnsavedChanges {
+    final current = <String, PdfContentObjectEdit>{
+      for (final edit in _plan.edits) edit.id: edit,
+    };
+    if (current.length != _savedEdits.length) return true;
+    for (final entry in current.entries) {
+      final saved = _savedEdits[entry.key];
+      if (saved == null || !_sameEdit(entry.value, saved)) return true;
+    }
+    return false;
+  }
+
+  bool _sameEdit(PdfContentObjectEdit left, PdfContentObjectEdit right) =>
+      left.id == right.id &&
+      left.pageNumber == right.pageNumber &&
+      left.sourceObjectIndex == right.sourceObjectIndex &&
+      left.kind == right.kind &&
+      left.sourceBounds == right.sourceBounds &&
+      left.targetBounds == right.targetBounds &&
+      left.replacementText == right.replacementText &&
+      left.replacementImagePath == right.replacementImagePath &&
+      left.fontSize == right.fontSize &&
+      left.rotationDegrees == right.rotationDegrees &&
+      left.deleted == right.deleted;
+
+  void _rememberSavedPlan(PdfContentEditPlan plan) {
+    _savedEdits = <String, PdfContentObjectEdit>{
+      for (final edit in plan.edits) edit.id: edit,
+    };
+  }
 
   PdfContentObjectDescriptor? _descriptorFor(String id) {
     for (final descriptor in _pageObjects) {
@@ -318,57 +361,52 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
 
   Future<void> _addText() async {
     final strings = _ContentEditorStrings.of(context);
-    final controller = TextEditingController();
-    try {
-      final text = await showDialog<String>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          key: const Key('pdf-add-text-dialog'),
-          title: Text(strings.addText),
-          content: TextField(
-            key: const Key('pdf-add-text-field'),
-            controller: controller,
-            autofocus: true,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: strings.enterText,
-              helperText: strings.newTextFontNotice,
-            ),
+    var draft = '';
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('pdf-add-text-dialog'),
+        title: Text(strings.addText),
+        content: TextField(
+          key: const Key('pdf-add-text-field'),
+          autofocus: true,
+          maxLines: 4,
+          onChanged: (value) => draft = value,
+          decoration: InputDecoration(
+            hintText: strings.enterText,
+            helperText: strings.newTextFontNotice,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(strings.cancel),
-            ),
-            FilledButton(
-              key: const Key('pdf-confirm-add-text'),
-              onPressed: () {
-                final value = controller.text;
-                if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-              },
-              child: Text(strings.add),
-            ),
-          ],
         ),
-      );
-      if (text == null || !mounted) return;
-      final bounds = PdfContentBounds(
-        left: 72,
-        bottom: math.max(24, _pageSize.height - 120),
-        right: math.min(_pageSize.width - 24, 332),
-        top: math.max(52, _pageSize.height - 88),
-      ).clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
-      _commit(
-        PdfContentObjectEdit.addText(
-          id: 'new:${_pageNumber}:${_newObjectId++}',
-          pageNumber: _pageNumber,
-          bounds: bounds,
-          text: text,
-        ),
-      );
-    } finally {
-      controller.dispose();
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            key: const Key('pdf-confirm-add-text'),
+            onPressed: () {
+              if (draft.isNotEmpty) Navigator.pop(dialogContext, draft);
+            },
+            child: Text(strings.add),
+          ),
+        ],
+      ),
+    );
+    if (text == null || !mounted) return;
+    final bounds = PdfContentBounds(
+      left: 72,
+      bottom: math.max(24, _pageSize.height - 120),
+      right: math.min(_pageSize.width - 24, 332),
+      top: math.max(52, _pageSize.height - 88),
+    ).clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
+    _commit(
+      PdfContentObjectEdit.addText(
+        id: 'new:$_pageNumber:${_newObjectId++}',
+        pageNumber: _pageNumber,
+        bounds: bounds,
+        text: text,
+      ),
+    );
   }
 
   Future<void> _addImage() async {
@@ -391,7 +429,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     ).clampToPage(pageWidth: _pageSize.width, pageHeight: _pageSize.height);
     _commit(
       PdfContentObjectEdit.addImage(
-        id: 'new:${_pageNumber}:${_newObjectId++}',
+        id: 'new:$_pageNumber:${_newObjectId++}',
         pageNumber: _pageNumber,
         bounds: bounds,
         imagePath: path,
@@ -472,35 +510,141 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
 
   void _endGesture(DragEndDetails _) => _gestureActive = false;
 
+  void _closeEditor([PdfContentEditPlan? result]) {
+    if (!mounted) return;
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop(result);
+    });
+  }
+
+  Future<bool> _saveCurrent({required bool closeAfterSave}) async {
+    if (_saving || !_hasUnsavedChanges) return false;
+    final plan = _plan;
+    final save = widget.onSaveRequested;
+    if (save == null) {
+      _closeEditor(plan);
+      return true;
+    }
+    setState(() => _saving = true);
+    var saved = false;
+    try {
+      saved = await save(plan);
+      if (!mounted) return saved;
+      if (saved) {
+        setState(() => _rememberSavedPlan(plan));
+        if (closeAfterSave) _closeEditor(plan);
+      }
+      return saved;
+    } finally {
+      if (mounted && _saving) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _requestClose() async {
+    if (_saving || _exitPromptVisible) return;
+    if (!_hasUnsavedChanges) {
+      _closeEditor();
+      return;
+    }
+    _exitPromptVisible = true;
+    final strings = _ContentEditorStrings.of(context);
+    final decision = await showDialog<_UnsavedEditDecision>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('pdf-content-unsaved-dialog'),
+        title: Text(strings.unsavedTitle),
+        content: Text(strings.unsavedMessage),
+        actions: [
+          TextButton(
+            key: const Key('pdf-content-continue-editing-action'),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedEditDecision.cancel),
+            child: Text(strings.cancel),
+          ),
+          TextButton(
+            key: const Key('pdf-content-discard-action'),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedEditDecision.dontSave),
+            child: Text(strings.dontSave),
+          ),
+          FilledButton.icon(
+            key: const Key('pdf-content-confirm-save-copy-action'),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedEditDecision.saveCopy),
+            icon: const Icon(Icons.save_as_outlined),
+            label: Text(strings.saveCopy),
+          ),
+        ],
+      ),
+    );
+    _exitPromptVisible = false;
+    if (!mounted || decision == null) return;
+    switch (decision) {
+      case _UnsavedEditDecision.cancel:
+        return;
+      case _UnsavedEditDecision.dontSave:
+        _closeEditor();
+        return;
+      case _UnsavedEditDecision.saveCopy:
+        await _saveCurrent(closeAfterSave: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = _ContentEditorStrings.of(context);
     final mediaSize = MediaQuery.sizeOf(context);
-    return Dialog(
-      key: const Key('pdf-content-editor-dialog'),
-      insetPadding: const EdgeInsets.all(16),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        width: math.min(1500, mediaSize.width - 32),
-        height: math.min(920, mediaSize.height - 32),
-        child: Column(
-          children: [
-            _buildHeader(strings),
-            const Divider(height: 1),
-            _buildToolbar(strings),
-            const Divider(height: 1),
-            Expanded(
-              child: Row(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          if (_hasUnsavedChanges && !_saving) {
+            unawaited(_saveCurrent(closeAfterSave: false));
+          }
+        },
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () {
+          if (_undo.isNotEmpty && !_saving) _undoChange();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyY, control: true): () {
+          if (_redo.isNotEmpty && !_saving) _redoChange();
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: PopScope<PdfContentEditPlan>(
+          canPop: _allowPop || !_hasUnsavedChanges,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) unawaited(_requestClose());
+          },
+          child: Dialog(
+            key: const Key('pdf-content-editor-dialog'),
+            insetPadding: const EdgeInsets.all(16),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              width: math.min(1500, mediaSize.width - 32),
+              height: math.min(920, mediaSize.height - 32),
+              child: Column(
                 children: [
-                  Expanded(child: _buildCanvas(strings)),
-                  const VerticalDivider(width: 1),
-                  SizedBox(width: 320, child: _buildInspector(strings)),
+                  _buildHeader(strings),
+                  const Divider(height: 1),
+                  _buildToolbar(strings),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(child: _buildCanvas(strings)),
+                        const VerticalDivider(width: 1),
+                        SizedBox(width: 320, child: _buildInspector(strings)),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  _buildFooter(strings),
                 ],
               ),
             ),
-            const Divider(height: 1),
-            _buildFooter(strings),
-          ],
+          ),
         ),
       ),
     );
@@ -517,7 +661,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                strings.title,
+                _hasUnsavedChanges ? '${strings.title} *' : strings.title,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               Text(
@@ -527,21 +671,39 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
             ],
           ),
         ),
+        Tooltip(
+          message: strings.saveShortcut,
+          child: FilledButton.tonalIcon(
+            key: const Key('pdf-content-save-copy-action'),
+            onPressed: _hasUnsavedChanges && !_saving
+                ? () => unawaited(_saveCurrent(closeAfterSave: false))
+                : null,
+            icon: _saving
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined),
+            label: Text(_saving ? strings.saving : strings.saveCopy),
+          ),
+        ),
+        const SizedBox(width: 8),
         IconButton(
           key: const Key('pdf-content-undo-action'),
-          tooltip: strings.undo,
-          onPressed: _undo.isEmpty ? null : _undoChange,
+          tooltip: strings.undoShortcut,
+          onPressed: _undo.isEmpty || _saving ? null : _undoChange,
           icon: const Icon(Icons.undo),
         ),
         IconButton(
           key: const Key('pdf-content-redo-action'),
-          tooltip: strings.redo,
-          onPressed: _redo.isEmpty ? null : _redoChange,
+          tooltip: strings.redoShortcut,
+          onPressed: _redo.isEmpty || _saving ? null : _redoChange,
           icon: const Icon(Icons.redo),
         ),
         IconButton(
+          key: const Key('pdf-content-close-action'),
           tooltip: strings.close,
-          onPressed: () => Navigator.pop(context),
+          onPressed: _saving ? null : _requestClose,
           icon: const Icon(Icons.close),
         ),
       ],
@@ -981,15 +1143,8 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
           ),
         ),
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(strings.cancel),
-        ),
-        const SizedBox(width: 8),
-        FilledButton.icon(
-          key: const Key('pdf-content-save-copy-action'),
-          onPressed: _plan.changed ? () => Navigator.pop(context, _plan) : null,
-          icon: const Icon(Icons.save_as_outlined),
-          label: Text(strings.saveCopy),
+          onPressed: _saving ? null : _requestClose,
+          child: Text(strings.close),
         ),
       ],
     ),
@@ -1029,10 +1184,12 @@ final class _ContentEditorStrings {
 
   String get title => chinese ? '编辑文字和图片' : 'Edit text and images';
   String get sourcePreserved => chinese
-      ? '直接编辑页面对象；最终只另存新 PDF，原文件不会改写。'
-      : 'Edit page objects directly, then save a new PDF without rewriting the source.';
+      ? '修改先保存在当前编辑会话；关闭时再决定另存副本或放弃，原文件不会改写。'
+      : 'Changes stay in this editing session. Choose save copy or discard when closing; the source is never rewritten.';
   String get undo => chinese ? '撤销' : 'Undo';
   String get redo => chinese ? '重做' : 'Redo';
+  String get undoShortcut => chinese ? '撤销 (Ctrl+Z)' : 'Undo (Ctrl+Z)';
+  String get redoShortcut => chinese ? '重做 (Ctrl+Y)' : 'Redo (Ctrl+Y)';
   String get close => chinese ? '关闭' : 'Close';
   String get previousPage => chinese ? '上一页' : 'Previous page';
   String get nextPage => chinese ? '下一页' : 'Next page';
@@ -1081,4 +1238,15 @@ final class _ContentEditorStrings {
       ? '支持顶层文字与图片对象；扫描页、轮廓字、复杂表格和嵌套对象需要后续 OCR/高级编辑。'
       : 'Top-level text and image objects are supported. Scans, outlined text, complex tables, and nested objects need later OCR/advanced editing.';
   String get saveCopy => chinese ? '另存编辑副本' : 'Save edited copy';
+  String get saveShortcut =>
+      chinese ? '保存编辑副本 (Ctrl+S)' : 'Save edited copy (Ctrl+S)';
+  String get saving => chinese ? '正在保存…' : 'Saving…';
+  String get unsavedTitle =>
+      chinese ? '要保存对 PDF 的更改吗？' : 'Do you want to save changes to the PDF?';
+  String get unsavedMessage => chinese
+      ? '如果不保存，所做的更改将丢失。保存时会创建新 PDF，原文件不会被覆盖。'
+      : 'If you do not save, your changes will be lost. Saving creates a new PDF and never overwrites the source.';
+  String get dontSave => chinese ? '不保存' : "Don't save";
 }
+
+enum _UnsavedEditDecision { saveCopy, dontSave, cancel }

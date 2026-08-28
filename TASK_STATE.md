@@ -424,3 +424,14 @@ Merge the focused CI policy fix after its PR gate, confirm the resulting `develo
 ## Next action
 
 Push the focused CI-gate fix to PR #41, rerun its single quality/build gate, and merge only after all three jobs pass. Keep routine packages local and leave no PickLogic GUI process running.
+
+## Microsoft-style Pro PDF editing workflow
+
+- The primary `Edit PDF` command now enters text/image editing immediately. A compact split-menu arrow exposes page organization as the secondary action; opening the editor no longer asks for a managed-folder authorization or save destination.
+- Both content and page editors keep changes in memory, mark unsaved state with `*`, support `Ctrl+S`, `Ctrl+Z`, and `Ctrl+Y`, and use the Windows document-close choices `Save edited copy`, `Don't save`, and `Cancel`.
+- Save-path selection happens only when Save is chosen. Cancelling the picker or a failed export leaves the editor and unsaved changes open. Successful saves create a new PDF; the source and existing destinations are never overwritten.
+- Verification: targeted Dart analysis clean; PDF editing 6/6, Pro workspace 12/12, and complete Desktop 36/36 tests passed. No dependency, binary, shared data contract, or real user file changed.
+
+## Next action
+
+Build and smoke-test the Pro package from an ASCII-path worktree, update the installed shortcuts, leave exactly one Pro instance open for maintainer testing, then integrate this focused branch through one green PR without uploading routine artifacts.

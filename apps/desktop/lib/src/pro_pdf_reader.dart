@@ -480,29 +480,51 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   Future<void> _editPdfCopy() async {
     final document = _document;
-    final sourcePath = widget.filePath;
-    if (document == null || sourcePath == null || _pdfEditBusy) return;
-    final strings = _PdfReaderStrings.of(context);
-    final plan = await showPdfPageEditor(
+    if (document == null || widget.filePath == null || _pdfEditBusy) return;
+    await showPdfPageEditor(
       context: context,
       pageCount: document.pages.length,
       annotationCount: widget.annotations.length,
+      onSaveRequested: (plan) => _saveEditedPdfCopy(plan: plan),
     );
-    if (plan == null || !mounted) return;
+  }
+
+  Future<void> _editPdfContent() async {
+    final document = _document;
+    if (document == null || widget.filePath == null || _pdfEditBusy) return;
+    await showPdfContentEditor(
+      context: context,
+      document: document,
+      initialPageNumber: _pageNumber,
+      onSaveRequested: (contentPlan) => _saveEditedPdfCopy(
+        plan: PdfEditPlan.identity(document.pages.length),
+        contentEdits: contentPlan,
+      ),
+    );
+  }
+
+  Future<bool> _saveEditedPdfCopy({
+    required PdfEditPlan plan,
+    PdfContentEditPlan? contentEdits,
+  }) async {
+    final sourcePath = widget.filePath;
+    if (sourcePath == null || _pdfEditBusy || !mounted) return false;
+    final strings = _PdfReaderStrings.of(context);
     final destination = await const PicklogicWindowsBridge().pickPdfSavePath(
       title: strings.saveEditedCopy,
       suggestedName: _suggestedEditedFileName(widget.sourceName),
     );
-    if (destination == null || !mounted) return;
+    if (destination == null || !mounted) return false;
     setState(() => _pdfEditBusy = true);
     try {
       final result = await const PdfEditedCopyExporter().export(
         sourcePath: sourcePath,
         destinationPath: destination,
         plan: plan,
+        contentEdits: contentEdits,
         annotations: widget.annotations,
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -521,67 +543,14 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           ),
         ),
       );
+      return true;
     } on Object catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${strings.pdfEditFailed}: $error')),
         );
       }
-    } finally {
-      if (mounted) setState(() => _pdfEditBusy = false);
-    }
-  }
-
-  Future<void> _editPdfContent() async {
-    final document = _document;
-    final sourcePath = widget.filePath;
-    if (document == null || sourcePath == null || _pdfEditBusy) return;
-    final strings = _PdfReaderStrings.of(context);
-    final contentPlan = await showPdfContentEditor(
-      context: context,
-      document: document,
-      initialPageNumber: _pageNumber,
-    );
-    if (contentPlan == null || !contentPlan.changed || !mounted) return;
-    final destination = await const PicklogicWindowsBridge().pickPdfSavePath(
-      title: strings.saveEditedCopy,
-      suggestedName: _suggestedEditedFileName(widget.sourceName),
-    );
-    if (destination == null || !mounted) return;
-    setState(() => _pdfEditBusy = true);
-    try {
-      final result = await const PdfEditedCopyExporter().export(
-        sourcePath: sourcePath,
-        destinationPath: destination,
-        plan: PdfEditPlan.identity(document.pages.length),
-        contentEdits: contentPlan,
-        annotations: widget.annotations,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            strings.editedCopySaved(
-              result.pageCount,
-              result.embeddedAnnotationCount,
-              result.editedObjectCount,
-              result.sizeBytes,
-            ),
-          ),
-          action: SnackBarAction(
-            label: strings.showInFolder,
-            onPressed: () => unawaited(
-              const PicklogicWindowsBridge().revealItem(result.destinationPath),
-            ),
-          ),
-        ),
-      );
-    } on Object catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${strings.pdfEditFailed}: $error')),
-        );
-      }
+      return false;
     } finally {
       if (mounted) setState(() => _pdfEditBusy = false);
     }
@@ -1246,25 +1215,72 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                       child: Text(strings.organizePdfPages),
                     ),
                   ],
-                  builder: (context, controller, child) =>
-                      IconButton.filledTonal(
-                        key: const Key('pdf-edit-copy-action'),
-                        onPressed:
-                            widget.filePath != null &&
-                                document != null &&
-                                !_pdfEditBusy
-                            ? controller.open
-                            : null,
-                        tooltip: strings.editPdf,
-                        icon: _pdfEditBusy
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                  builder: (context, controller, child) {
+                    final canEdit =
+                        widget.filePath != null &&
+                        document != null &&
+                        !_pdfEditBusy;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Tooltip(
+                          message: strings.editPdfContent,
+                          child: FilledButton.tonalIcon(
+                            key: const Key('pdf-edit-copy-action'),
+                            onPressed: canEdit ? _editPdfContent : null,
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.horizontal(
+                                  left: Radius.circular(12),
                                 ),
-                              )
-                            : const Icon(Icons.edit_document),
-                      ),
+                              ),
+                            ),
+                            icon: _pdfEditBusy
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.edit_document),
+                            label: Text(strings.editPdf),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 34,
+                          child: Tooltip(
+                            message: strings.morePdfEditActions,
+                            child: FilledButton.tonal(
+                              key: const Key('pdf-edit-menu-action'),
+                              onPressed: canEdit
+                                  ? () => controller.isOpen
+                                        ? controller.close()
+                                        : controller.open()
+                                  : null,
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                minimumSize: const Size(34, 40),
+                                padding: EdgeInsets.zero,
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.horizontal(
+                                    right: Radius.circular(12),
+                                  ),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.arrow_drop_down,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(width: 6),
                 IconButton(
@@ -1920,6 +1936,8 @@ final class _PdfReaderStrings {
   String get localPdf => isChinese ? '本地 PDF' : 'LOCAL PDF';
   String get editPdf => isChinese ? '编辑 PDF' : 'Edit PDF';
   String get editPdfContent => isChinese ? '编辑文字和图片' : 'Edit text and images';
+  String get morePdfEditActions =>
+      isChinese ? '更多 PDF 编辑选项' : 'More PDF editing options';
   String get organizePdfPages =>
       isChinese ? '整理、旋转和删除页面' : 'Organize, rotate, and remove pages';
   String get saveEditedCopy =>
