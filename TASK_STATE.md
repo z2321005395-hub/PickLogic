@@ -493,3 +493,16 @@ Push this focused branch, run one artifact-free PR gate, merge green work into `
 ## Next action
 
 Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, verify Actions artifacts/caches remain empty, and keep the installed Pro window available for maintainer feedback.
+
+## In-reader translation continuity
+
+- Pro selection translation now normalizes cross-line PDF text, supports up to 2,000 selected characters, and limits MyMemory fan-out to four concurrent 500-byte requests.
+- The right sidebar supports inline source correction with one 320 ms debounce, labeled comparison cards, choosing an alternative, and locking up to six useful results while continuing to select new text.
+- Compact-height visual QA moved privacy details into a tooltip, merged the engine selector into the header, and kept the source to one line until edited so the first translated sentence is visible without scrolling.
+- Verification: Desktop analysis clean; focused provider tests 7/7; Pro workspace 17/17; final ASCII-path Desktop suite 48/48; packaged PDF reader/content-edit smokes both exited 0.
+- Pro Release is 43,410,678 installed bytes. Local ZIP `PickLogic-Pro-v0.1.0-alpha-translation-flow-1f1a0e1.zip` is 19,116,798 bytes with SHA-256 `8E81C776ACB5D357BEC5479DBFB4604B493DA4904E5B1F9D7991C827FC2D05A5`.
+- Installed `0.1.0-alpha-1f1a0e1` beside prior builds and repointed Desktop/Start-menu shortcuts without changing library data. Visual QA used only the synthetic demo PDF; all PickLogic processes were closed afterward.
+
+## Next action
+
+Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, and confirm Actions artifacts/caches remain empty.
