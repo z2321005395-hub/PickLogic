@@ -480,3 +480,16 @@ Push the focused branch, run one artifact-free PR gate, merge green work into `d
 ## Next action
 
 Push this focused branch, run one artifact-free PR gate, merge green work into `develop`, verify Actions artifacts/caches stay at zero, then leave the installed Pro window ready for maintainer testing.
+
+## Fast aggregate selection translation
+
+- Added a recommended `Fast aggregate` engine that starts local terminology, MyMemory, and any already-configured AI source concurrently. The first successful result renders immediately; later distinct results and translation-memory candidates append as labeled comparison cards.
+- Reduced stable-selection debounce from 220 ms to 90 ms. MyMemory now reuses one keep-alive client, deduplicates identical in-flight requests, keeps a 96-entry in-memory LRU cache, and sends multibyte selections in concurrent requests bounded to 500 UTF-8 bytes each.
+- Kept the fresh-install default off and the PDF/local-library boundary unchanged. Only selected text may leave the device; no PDF, image, path, filename, or library metadata is sent. No dependency, runtime, copied source, or binary was added.
+- Verification: Desktop and Literature Core analyzers clean; focused translation/workspace tests 27/27; full Desktop 45/45; Literature Core 27/27; dependency audit 114 external + 5 Flutter SDK packages with zero findings; privacy findings 0; diff check clean.
+- ASCII-path Pro Release built successfully at 43,393,913 installed bytes. Local ZIP `PickLogic-Pro-v0.1.0-alpha-fast-aggregate-dee450b.zip` is 19,109,244 bytes with SHA-256 `71CFF4622CA2DA90CFA7E12F5FD08480BEB00B291BFE7E536415429BACDAF29F`.
+- Installed `0.1.0-alpha-dee450b`, repointed Desktop/Start-menu shortcuts, preserved app data, selected the app-owned `aggregate` preference for this maintainer profile, and left exactly one Pro process open for hands-on testing.
+
+## Next action
+
+Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, verify Actions artifacts/caches remain empty, and keep the installed Pro window available for maintainer feedback.

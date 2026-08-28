@@ -68,6 +68,8 @@ Explicit page translation stores `literatureId`, `pageNumber`, `targetLanguage`,
 
 `TranslationProviderKind.publicAnonymous` is additive. It identifies the no-key short-text service used after the user explicitly chooses that engine and selects PDF text; online translation remains off by default, and only the bounded selected text leaves the device. Existing disabled and OpenAI-compatible providers retain their behavior.
 
+`ProgressiveTranslationProvider` is an additive optional capability. It emits independent `SelectedTextTranslation` values in completion order so the first available result can render immediately while slower sources append comparison cards. Existing `TranslationProvider` implementations remain valid and unchanged.
+
 ## ScreenshotGroup
 
 `groupId`, `sourceHint`, `timeRange`, `memberIds`, `duplicateConfidence`, `contentHint`, `ocrState`, `reviewState`, and `protectedCount`.
@@ -88,6 +90,7 @@ Explicit page translation stores `literatureId`, `pageNumber`, `targetLanguage`,
 - `StorageAnalyzer`: reports accessible, estimated, and restricted storage separately.
 - `LiteratureMetadataProvider`: resolves identifiers without uploading a document.
 - `TranslationProvider`: translates only text from an explicitly requested selection, current page, or document scope; PDF bytes are never passed to it.
+- `ProgressiveTranslationProvider`: optionally streams selection-only results as each independent source completes; it does not alter persisted translation state.
 - `OcrProvider`: performs on-demand or bounded queued OCR.
 - `IntelligenceProvider`: optional; absence is a supported state.
 

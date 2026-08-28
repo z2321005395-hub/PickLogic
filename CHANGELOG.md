@@ -38,6 +38,8 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- PDF selection translation now has a no-key fast aggregate mode: exact local terminology and repeat selections can appear immediately, MyMemory and an already-configured AI provider run concurrently, and later results append as comparison cards without blocking the first result.
+- Selection translation starts after a 90 ms stability debounce, reuses one keep-alive connection, deduplicates in-flight requests, keeps a bounded 96-entry memory cache, and sends multibyte text in parallel requests that each respect MyMemory's 500-byte limit.
 - Pro Literature now offers independent collection/library/page-thumbnail pane controls plus one-click Focus reading, so the PDF can use the full workspace width without losing restore controls.
 - PDF selection translation now offers a one-click, no-key 500-character instant engine, exposes the engine selector directly in the right sidebar, and can display bounded alternative translation-memory matches as separate cards; the OpenAI-compatible engine remains optional and advanced.
 - Pro PDF text selection now translates automatically into a persistent right sidebar after a short debounce, auto-selects Chinese/English direction, replaces stale results on the next selection, and no longer opens a translation result dialog or requires a per-selection action.

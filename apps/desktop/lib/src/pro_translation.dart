@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,23 +7,32 @@ import 'package:picklogic_literature_core/picklogic_literature_core.dart';
 import 'package:picklogic_shared_ui/picklogic_shared_ui.dart';
 import 'package:picklogic_windows_bridge/picklogic_windows_bridge.dart';
 
-enum TranslationEngineChoice { off, instant, openAiCompatible }
+enum TranslationEngineChoice { off, aggregate, instant, openAiCompatible }
 
 typedef PublicTranslationRequest =
     Future<Map<String, Object?>> Function(Uri uri);
 
 /// No-key short-text translation available from the selection workflow.
 ///
-/// MyMemory accepts anonymous public requests with a 500-character query
-/// limit. PickLogic sends only the text the user selected and keeps the PDF
-/// bytes, images, paths, and library metadata local.
+/// PickLogic accepts selections of up to 500 characters and splits them into
+/// anonymous MyMemory requests of at most 500 UTF-8 bytes. It sends only the
+/// selected text; PDF bytes, images, paths, and library metadata stay local.
 final class PickLogicInstantTranslationProvider implements TranslationProvider {
   PickLogicInstantTranslationProvider({PublicTranslationRequest? request})
-    : _request = request ?? _requestJson;
+    : _requestOverride = request,
+      _client = request == null ? _createClient() : null;
 
-  static const _maxCharacters = 500;
+  static const _maxSelectionCharacters = 500;
+  static const _maxQueryBytes = 500;
   static const _maxResponseBytes = 512 * 1024;
-  final PublicTranslationRequest _request;
+  static const _requestTimeout = Duration(seconds: 8);
+  static const _cacheCapacity = 96;
+  final PublicTranslationRequest? _requestOverride;
+  final HttpClient? _client;
+  final LinkedHashMap<String, SelectedTextTranslation> _cache =
+      LinkedHashMap<String, SelectedTextTranslation>();
+  final Map<String, Future<SelectedTextTranslation>> _inFlight =
+      <String, Future<SelectedTextTranslation>>{};
 
   @override
   TranslationProviderKind get kind => TranslationProviderKind.publicAnonymous;
@@ -41,20 +51,75 @@ final class PickLogicInstantTranslationProvider implements TranslationProvider {
   }) async {
     final source = selectedText.trim();
     if (source.isEmpty) throw const FormatException('Select text first.');
-    if (source.length > _maxCharacters) {
+    if (source.length > _maxSelectionCharacters) {
       throw const FormatException(
         'Instant translation accepts up to 500 characters per request.',
       );
     }
+    final cacheKey = '${targetLanguage.trim().toLowerCase()}\u0000$source';
+    final cached = _cache.remove(cacheKey);
+    if (cached != null) {
+      _cache[cacheKey] = cached;
+      return cached;
+    }
+    final existing = _inFlight[cacheKey];
+    if (existing != null) return existing;
+    final pending = _translateUncached(source, targetLanguage);
+    _inFlight[cacheKey] = pending;
+    try {
+      final result = await pending;
+      _cache[cacheKey] = result;
+      while (_cache.length > _cacheCapacity) {
+        _cache.remove(_cache.keys.first);
+      }
+      return result;
+    } finally {
+      _inFlight.remove(cacheKey);
+    }
+  }
+
+  Future<SelectedTextTranslation> _translateUncached(
+    String source,
+    String targetLanguage,
+  ) async {
     final targetCode = targetLanguage.toLowerCase().startsWith('english')
         ? 'en'
         : 'zh-CN';
     final sourceCode = targetCode == 'en' ? 'zh-CN' : 'en';
+    final chunks = _boundedUtf8Chunks(source);
+    final translatedChunks = await Future.wait(
+      chunks.map(
+        (chunk) => _translateChunk(
+          chunk,
+          sourceCode: sourceCode,
+          targetCode: targetCode,
+          targetLanguage: targetLanguage,
+        ),
+      ),
+    );
+    if (translatedChunks.length == 1) return translatedChunks.single;
+    return SelectedTextTranslation(
+      sourceText: source,
+      translatedText: translatedChunks
+          .map((result) => result.translatedText.trim())
+          .join('\n'),
+      targetLanguage: targetLanguage,
+      providerLabel: label,
+    );
+  }
+
+  Future<SelectedTextTranslation> _translateChunk(
+    String source, {
+    required String sourceCode,
+    required String targetCode,
+    required String targetLanguage,
+  }) async {
     final uri = Uri.https('api.mymemory.translated.net', '/get', {
       'q': source,
       'langpair': '$sourceCode|$targetCode',
     });
-    final decoded = await _request(uri);
+    final decoded = await (_requestOverride?.call(uri) ?? _requestJson(uri))
+        .timeout(_requestTimeout);
     final responseStatus = decoded['responseStatus'];
     if (responseStatus != null && responseStatus.toString() != '200') {
       throw HttpException(
@@ -102,40 +167,57 @@ final class PickLogicInstantTranslationProvider implements TranslationProvider {
     );
   }
 
-  static Future<Map<String, Object?>> _requestJson(Uri uri) async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12)
-      ..idleTimeout = const Duration(seconds: 15)
-      ..maxConnectionsPerHost = 1;
-    try {
-      final request = await client.getUrl(uri);
-      request.headers.set(HttpHeaders.userAgentHeader, 'PickLogic/0.1');
-      final response = await request.close();
-      final bytes = <int>[];
-      await for (final chunk in response) {
-        bytes.addAll(chunk);
-        if (bytes.length > _maxResponseBytes) {
-          throw const FormatException(
-            'Instant translation response is too large.',
-          );
-        }
+  static List<String> _boundedUtf8Chunks(String source) {
+    if (utf8.encode(source).length <= _maxQueryBytes) return <String>[source];
+    final chunks = <String>[];
+    var buffer = StringBuffer();
+    var byteLength = 0;
+    for (final rune in source.runes) {
+      final character = String.fromCharCode(rune);
+      final characterBytes = utf8.encode(character).length;
+      if (byteLength + characterBytes > _maxQueryBytes && buffer.isNotEmpty) {
+        chunks.add(buffer.toString().trim());
+        buffer = StringBuffer();
+        byteLength = 0;
       }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException(
-          'Instant translation returned HTTP ${response.statusCode}.',
-          uri: uri,
-        );
-      }
-      final value = jsonDecode(utf8.decode(bytes));
-      if (value is! Map) {
-        throw const FormatException(
-          'Instant translation returned invalid JSON.',
-        );
-      }
-      return Map<String, Object?>.from(value);
-    } finally {
-      client.close(force: true);
+      buffer.write(character);
+      byteLength += characterBytes;
     }
+    final tail = buffer.toString().trim();
+    if (tail.isNotEmpty) chunks.add(tail);
+    return chunks;
+  }
+
+  static HttpClient _createClient() => HttpClient()
+    ..connectionTimeout = const Duration(seconds: 5)
+    ..idleTimeout = const Duration(seconds: 60)
+    ..maxConnectionsPerHost = 4;
+
+  Future<Map<String, Object?>> _requestJson(Uri uri) async {
+    final request = await _client!.getUrl(uri);
+    request.headers.set(HttpHeaders.userAgentHeader, 'PickLogic/0.1');
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final response = await request.close().timeout(_requestTimeout);
+    final bytes = <int>[];
+    await for (final chunk in response.timeout(_requestTimeout)) {
+      bytes.addAll(chunk);
+      if (bytes.length > _maxResponseBytes) {
+        throw const FormatException(
+          'Instant translation response is too large.',
+        );
+      }
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException(
+        'Instant translation returned HTTP ${response.statusCode}.',
+        uri: uri,
+      );
+    }
+    final value = jsonDecode(utf8.decode(bytes));
+    if (value is! Map) {
+      throw const FormatException('Instant translation returned invalid JSON.');
+    }
+    return Map<String, Object?>.from(value);
   }
 
   static String _decodeEntities(String value) => value
@@ -197,7 +279,9 @@ final class WindowsOpenAiCompatibleTranslationProvider
         // Invalid app-owned preferences disable online translation safely.
       }
     }
-    final key = await _bridge.readProtectedSecret(_secretName);
+    final key = endpoint.isNotEmpty && model.isNotEmpty
+        ? await _bridge.readProtectedSecret(_secretName)
+        : null;
     return TranslationConfiguration(
       endpoint: endpoint,
       model: model,
@@ -369,7 +453,8 @@ final class WindowsOpenAiCompatibleTranslationProvider
 
 /// Switches between a zero-configuration public engine and the optional
 /// user-configured OpenAI-compatible engine without changing reader code.
-final class WindowsTranslationProviderHub implements TranslationProvider {
+final class WindowsTranslationProviderHub
+    implements TranslationProvider, ProgressiveTranslationProvider {
   WindowsTranslationProviderHub({
     PickLogicInstantTranslationProvider? instantProvider,
     WindowsOpenAiCompatibleTranslationProvider? advancedProvider,
@@ -382,6 +467,8 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
   final PickLogicInstantTranslationProvider instantProvider;
   WindowsOpenAiCompatibleTranslationProvider? _openAiProvider;
   final String? _choicePath;
+  final LinkedHashMap<String, List<SelectedTextTranslation>> _aggregateCache =
+      LinkedHashMap<String, List<SelectedTextTranslation>>();
   TranslationEngineChoice _selectedEngine = TranslationEngineChoice.off;
   bool _initialized = false;
 
@@ -412,6 +499,7 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
   Future<void> selectEngine(TranslationEngineChoice choice) async {
     await initialize();
     _selectedEngine = choice;
+    _aggregateCache.clear();
     final choicePath = _choicePath;
     if (choicePath == null) return;
     final file = File(choicePath);
@@ -424,6 +512,7 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
 
   TranslationProvider get _activeProvider => switch (_selectedEngine) {
     TranslationEngineChoice.off => const DisabledTranslationProvider(),
+    TranslationEngineChoice.aggregate => instantProvider,
     TranslationEngineChoice.instant => instantProvider,
     TranslationEngineChoice.openAiCompatible => openAiProvider,
   };
@@ -437,6 +526,7 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
   @override
   Future<bool> isConfigured() async {
     await initialize();
+    if (_selectedEngine == TranslationEngineChoice.aggregate) return true;
     return _activeProvider.isConfigured();
   }
 
@@ -447,6 +537,14 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
     Map<String, String> terminology = const <String, String>{},
   }) async {
     await initialize();
+    if (_selectedEngine == TranslationEngineChoice.aggregate) {
+      final local = _exactTerminologyTranslation(
+        selectedText,
+        targetLanguage,
+        terminology,
+      );
+      if (local != null) return local;
+    }
     return _activeProvider.translateSelectedText(
       selectedText,
       targetLanguage: targetLanguage,
@@ -454,11 +552,160 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
     );
   }
 
+  @override
+  Stream<SelectedTextTranslation> translateSelectedTextProgressively(
+    String selectedText, {
+    required String targetLanguage,
+    Map<String, String> terminology = const <String, String>{},
+  }) async* {
+    await initialize();
+    if (_selectedEngine != TranslationEngineChoice.aggregate) {
+      yield await translateSelectedText(
+        selectedText,
+        targetLanguage: targetLanguage,
+        terminology: terminology,
+      );
+      return;
+    }
+
+    final source = selectedText.trim();
+    if (source.isEmpty) throw const FormatException('Select text first.');
+    final cacheKey = _aggregateCacheKey(source, targetLanguage, terminology);
+    final cached = _aggregateCache.remove(cacheKey);
+    if (cached != null) {
+      _aggregateCache[cacheKey] = cached;
+      yield* Stream<SelectedTextTranslation>.fromIterable(cached);
+      return;
+    }
+
+    final pending = <int, Future<_TranslationCompletion>>{};
+    var taskIndex = 0;
+    Future<void> addTask(Future<SelectedTextTranslation?> task) async {
+      final index = taskIndex++;
+      pending[index] = task
+          .then((result) => _TranslationCompletion(index, result: result))
+          .catchError(
+            (Object error, StackTrace stackTrace) =>
+                _TranslationCompletion(index, error: error),
+          );
+    }
+
+    await addTask(
+      instantProvider
+          .translateSelectedText(
+            source,
+            targetLanguage: targetLanguage,
+            terminology: terminology,
+          )
+          .then<SelectedTextTranslation?>((value) => value),
+    );
+    await addTask(
+      _translateWithAdvancedIfConfigured(
+        source,
+        targetLanguage: targetLanguage,
+        terminology: terminology,
+      ),
+    );
+
+    final results = <SelectedTextTranslation>[];
+    final local = _exactTerminologyTranslation(
+      source,
+      targetLanguage,
+      terminology,
+    );
+    if (local != null) {
+      results.add(local);
+      yield local;
+    }
+
+    Object? firstError;
+    while (pending.isNotEmpty) {
+      final completion = await Future.any(pending.values);
+      pending.remove(completion.index);
+      final result = completion.result;
+      if (result != null) {
+        results.add(result);
+        yield result;
+      } else if (completion.error != null) {
+        firstError ??= completion.error;
+      }
+    }
+    if (results.isEmpty && firstError != null) throw firstError;
+    if (results.isNotEmpty) {
+      _aggregateCache[cacheKey] = List<SelectedTextTranslation>.unmodifiable(
+        results,
+      );
+      while (_aggregateCache.length > 64) {
+        _aggregateCache.remove(_aggregateCache.keys.first);
+      }
+    }
+  }
+
+  Future<SelectedTextTranslation?> _translateWithAdvancedIfConfigured(
+    String source, {
+    required String targetLanguage,
+    required Map<String, String> terminology,
+  }) async {
+    if (!await openAiProvider.isConfigured()) return null;
+    return openAiProvider
+        .translateSelectedText(
+          source,
+          targetLanguage: targetLanguage,
+          terminology: terminology,
+        )
+        .timeout(const Duration(seconds: 12));
+  }
+
+  static SelectedTextTranslation? _exactTerminologyTranslation(
+    String source,
+    String targetLanguage,
+    Map<String, String> terminology,
+  ) {
+    final normalized = source.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+    final toEnglish = targetLanguage.toLowerCase().startsWith('english');
+    for (final entry in terminology.entries) {
+      final from = (toEnglish ? entry.value : entry.key).trim();
+      final to = (toEnglish ? entry.key : entry.value).trim();
+      if (from.toLowerCase() == normalized && to.isNotEmpty) {
+        return SelectedTextTranslation(
+          sourceText: source.trim(),
+          translatedText: to,
+          targetLanguage: targetLanguage,
+          providerLabel: 'PickLogic Local',
+        );
+      }
+    }
+    return null;
+  }
+
+  static String _aggregateCacheKey(
+    String source,
+    String targetLanguage,
+    Map<String, String> terminology,
+  ) {
+    final entries = terminology.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    final terms = entries
+        .take(100)
+        .map((entry) => '${entry.key}\u0001${entry.value}')
+        .join('\u0002');
+    return '${targetLanguage.trim().toLowerCase()}\u0000$source\u0000$terms';
+  }
+
   static String? _defaultChoicePath() {
     final base = Platform.environment['LOCALAPPDATA'];
     if (base == null || base.trim().isEmpty) return null;
     return '$base${Platform.pathSeparator}PickLogic${Platform.pathSeparator}translation_engine.json';
   }
+}
+
+final class _TranslationCompletion {
+  const _TranslationCompletion(this.index, {this.result, this.error});
+
+  final int index;
+  final SelectedTextTranslation? result;
+  final Object? error;
 }
 
 Future<void> showTranslationConfigurationDialog(

@@ -794,12 +794,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       _selectionTranslationBusy = !disabled;
     });
     if (disabled) return;
-    _selectionTranslationDebounce = Timer(
-      const Duration(milliseconds: 220),
-      () {
-        unawaited(_translateSelectionAutomatically(normalized, generation));
-      },
-    );
+    _selectionTranslationDebounce = Timer(const Duration(milliseconds: 90), () {
+      unawaited(_translateSelectionAutomatically(normalized, generation));
+    });
   }
 
   Future<void> _translateSelectionAutomatically(
@@ -817,6 +814,29 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         });
         return;
       }
+      final provider = widget.translationProvider;
+      if (provider is ProgressiveTranslationProvider) {
+        final progressiveProvider = provider as ProgressiveTranslationProvider;
+        var receivedResult = false;
+        await for (final result
+            in progressiveProvider.translateSelectedTextProgressively(
+              source,
+              targetLanguage: _selectionTargetLanguage(source),
+              terminology: _terminologyMap,
+            )) {
+          if (!mounted || generation != _selectionTranslationGeneration) {
+            return;
+          }
+          receivedResult = true;
+          setState(() => _appendSelectionTranslationResult(result));
+        }
+        if (!mounted || generation != _selectionTranslationGeneration) return;
+        if (!receivedResult) {
+          throw StateError('No translation source returned a result.');
+        }
+        setState(() => _selectionTranslationBusy = false);
+        return;
+      }
       final result = await widget.translationProvider.translateSelectedText(
         source,
         targetLanguage: _selectionTargetLanguage(source),
@@ -824,18 +844,59 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       );
       if (!mounted || generation != _selectionTranslationGeneration) return;
       setState(() {
+        _appendSelectionTranslationResult(result);
         _selectionTranslationBusy = false;
-        _selectionTranslationText = result.translatedText;
-        _selectionTranslationProviderLabel = result.providerLabel;
-        _selectionTranslationAlternatives = result.alternatives;
       });
     } on Object catch (error) {
       if (!mounted || generation != _selectionTranslationGeneration) return;
       setState(() {
         _selectionTranslationBusy = false;
-        _selectionTranslationError = error.toString();
+        if (_selectionTranslationText?.trim().isNotEmpty != true) {
+          _selectionTranslationError = error.toString();
+        }
       });
     }
+  }
+
+  void _appendSelectionTranslationResult(SelectedTextTranslation result) {
+    final translated = result.translatedText.trim();
+    if (translated.isEmpty) return;
+    _selectionTranslationError = null;
+    final current = _selectionTranslationText?.trim();
+    final alternatives = <TranslationAlternative>[
+      ..._selectionTranslationAlternatives,
+    ];
+    final seen = <String>{
+      if (current?.isNotEmpty == true) current!.toLowerCase(),
+      for (final alternative in alternatives)
+        alternative.translatedText.trim().toLowerCase(),
+    };
+    if (current?.isNotEmpty != true) {
+      _selectionTranslationText = translated;
+      _selectionTranslationProviderLabel = result.providerLabel;
+      seen.add(translated.toLowerCase());
+    } else if (seen.add(translated.toLowerCase())) {
+      alternatives.add(
+        TranslationAlternative(
+          label: result.providerLabel,
+          translatedText: translated,
+        ),
+      );
+    }
+    for (final alternative in result.alternatives) {
+      final value = alternative.translatedText.trim();
+      if (value.isNotEmpty && seen.add(value.toLowerCase())) {
+        alternatives.add(alternative);
+      }
+    }
+    _selectionTranslationAlternatives =
+        List<TranslationAlternative>.unmodifiable(alternatives);
+    final labels = (_selectionTranslationProviderLabel ?? '')
+        .split(' + ')
+        .where((label) => label.trim().isNotEmpty)
+        .toSet();
+    labels.add(result.providerLabel);
+    _selectionTranslationProviderLabel = labels.join(' + ');
   }
 
   void _retrySelectionTranslation() {
@@ -2096,10 +2157,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                           ),
                         )
                         .toList(growable: false),
-                    onChanged:
-                        _selectionTranslationBusy ||
-                            _translationBusy ||
-                            _documentTranslationBusy
+                    onChanged: _translationBusy || _documentTranslationBusy
                         ? null
                         : (choice) {
                             if (choice != null) {
@@ -2296,13 +2354,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           style: Theme.of(context).textTheme.labelLarge,
         ),
         const SizedBox(height: 8),
-        if (_selectionTranslationBusy) ...[
-          const LinearProgressIndicator(
-            key: Key('pdf-selection-translation-loading'),
-          ),
-          const SizedBox(height: 10),
-          Text(strings.translatingSelection),
-        ] else if (_selectionTranslationDisabled) ...[
+        if (_selectionTranslationDisabled) ...[
           DecoratedBox(
             key: const Key('pdf-selection-translation-disabled'),
             decoration: BoxDecoration(
@@ -2359,7 +2411,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
               ),
             ),
           ),
-        ] else if (_selectionTranslationError != null) ...[
+        ] else if (_selectionTranslationError != null &&
+            translated?.isNotEmpty != true) ...[
           Text(
             '${strings.translationFailed}: $_selectionTranslationError',
             key: const Key('pdf-selection-translation-error'),
@@ -2375,14 +2428,33 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
               label: Text(strings.retryTranslation),
             ),
           ),
-        ] else
+        ] else if (translated?.isNotEmpty == true) ...[
           Text(
-            translated ?? '',
+            translated!,
             key: const Key('pdf-selection-translation-text'),
             style: Theme.of(
               context,
             ).textTheme.bodyLarge?.copyWith(height: 1.65),
           ),
+          if (_selectionTranslationBusy) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(
+              key: Key('pdf-selection-translation-loading'),
+              minHeight: 2,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              strings.comparingTranslationSources,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ] else if (_selectionTranslationBusy) ...[
+          const LinearProgressIndicator(
+            key: Key('pdf-selection-translation-loading'),
+          ),
+          const SizedBox(height: 10),
+          Text(strings.translatingSelection),
+        ],
         if (translated?.isNotEmpty == true &&
             _selectionTranslationAlternatives.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -2407,7 +2479,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      _selectionTranslationAlternatives[index].label,
+                      strings.translationSourceLabel(
+                        _selectionTranslationAlternatives[index].label,
+                      ),
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
                     const SizedBox(height: 4),
@@ -2601,14 +2675,16 @@ final class _PdfReaderStrings {
       switch (choice) {
         TranslationEngineChoice.off =>
           isChinese ? '选择翻译引擎…' : 'Choose an engine…',
+        TranslationEngineChoice.aggregate =>
+          isChinese ? '聚合快译 · 推荐' : 'Fast aggregate · Recommended',
         TranslationEngineChoice.instant =>
-          isChinese ? '即时翻译 · 无需密钥' : 'Instant · No key',
+          isChinese ? 'MyMemory · 单引擎' : 'MyMemory · Single engine',
         TranslationEngineChoice.openAiCompatible =>
           isChinese ? 'AI 模型 · 高级' : 'AI model · Advanced',
       };
   String get translationDisabled => isChinese
-      ? '选择上方“即时翻译”即可立刻翻译，不需要 API、端点或模型设置。选择会被记住。'
-      : 'Choose Instant above to translate immediately without an API key, endpoint, or model setup. Your choice is remembered.';
+      ? '选择上方“聚合快译”即可使用本地术语、缓存和公共翻译记忆，不需要 API、端点或模型设置。选择会被记住。'
+      : 'Choose Fast aggregate above for local terminology, cache, and public translation memory without an API key, endpoint, or model setup. Your choice is remembered.';
   String get selectedOriginal => isChinese ? '所选原文' : 'Selected text';
   String get showPageTranslation =>
       isChinese ? '切换到整页译文' : 'Show page translation';
@@ -2616,10 +2692,29 @@ final class _PdfReaderStrings {
       isChinese ? '配置一次翻译服务' : 'Configure translation once';
   String get configureTranslationShort => isChinese ? '设置' : 'Set up';
   String get retryTranslation => isChinese ? '重试翻译' : 'Retry translation';
-  String translationProvider(String provider) =>
-      isChinese ? '翻译来源：$provider' : 'Provider: $provider';
+  String translationProvider(String provider) {
+    final localized = provider
+        .split(' + ')
+        .map(translationSourceLabel)
+        .join(' + ');
+    return isChinese ? '翻译来源：$localized' : 'Providers: $localized';
+  }
+
+  String translationSourceLabel(String provider) => switch (provider) {
+    'PickLogic Local' =>
+      isChinese ? 'PickLogic 本地术语' : 'PickLogic local terminology',
+    'PickLogic Instant · MyMemory' =>
+      isChinese ? 'MyMemory 公共翻译' : 'MyMemory public translation',
+    'OpenAI-compatible' => isChinese ? '已配置 AI 模型' : 'Configured AI model',
+    'MyMemory · Alternative' =>
+      isChinese ? 'MyMemory · 候选' : 'MyMemory · Alternative',
+    _ => provider,
+  };
   String get alternativeTranslations =>
       isChinese ? '其他候选译法' : 'Alternative translations';
+  String get comparingTranslationSources => isChinese
+      ? '首条译文已显示，正在并行比对其他可用来源…'
+      : 'First result is ready; comparing other available sources in parallel…';
   String get bilingualReading => isChinese ? '双语阅读' : 'Bilingual view';
   String get translationTools => isChinese ? '翻译工具' : 'Translation tools';
   String get terminology => isChinese ? '术语表' : 'Terminology';
@@ -2653,10 +2748,11 @@ final class _PdfReaderStrings {
       ? '仅在你主动请求时发送提取文字；不发送 PDF。'
       : 'Only explicitly requested extracted text is sent; the PDF is never sent.';
   String translationPrivacyForEngine(TranslationEngineChoice? choice) =>
-      choice == TranslationEngineChoice.instant
+      choice == TranslationEngineChoice.instant ||
+          choice == TranslationEngineChoice.aggregate
       ? (isChinese
-            ? '选择文字即仅将该段文字发送至 MyMemory 公共翻译服务；不发送 PDF、图片、路径或文献记录。'
-            : 'Selecting text sends only that selection to the MyMemory public translation service; PDFs, images, paths, and library records stay local.')
+            ? '选择文字后，仅将该段文字发送至 MyMemory；聚合模式还会并行使用本地术语、缓存及已由你配置的 AI。不会发送 PDF、图片、路径或文献记录。'
+            : 'Selection sends only that text to MyMemory; aggregate mode also uses local terminology, cache, and any AI provider you already configured. PDFs, images, paths, and library records stay local.')
       : translationPrivacy;
   String get translationMemory => isChinese
       ? '已完成页与术语表保存在本地书库。'
