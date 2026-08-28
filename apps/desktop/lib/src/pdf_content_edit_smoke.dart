@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -20,19 +19,14 @@ Future<int> runSyntheticPdfContentEditSmoke() async {
     '${directory.path}${Platform.pathSeparator}edited.pdf',
   );
   final image = File(
-    '${directory.path}${Platform.pathSeparator}replacement.png',
+    '${directory.path}${Platform.pathSeparator}replacement.bmp',
   );
   PdfDocument? sourceDocument;
   PdfDocument? editedDocument;
   try {
     final sourceBytes = buildSyntheticLiteraturePdf();
     await source.writeAsBytes(sourceBytes, flush: true);
-    await image.writeAsBytes(
-      base64Decode(
-        'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHgQCAZg6pXQAAAAASUVORK5CYII=',
-      ),
-      flush: true,
-    );
+    await image.writeAsBytes(_twoByTwoBmp(), flush: true);
 
     const service = PdfContentObjectService();
     sourceDocument = await PdfDocument.openFile(source.path);
@@ -102,6 +96,79 @@ Future<int> runSyntheticPdfContentEditSmoke() async {
     }
   }
 }
+
+List<int> _twoByTwoBmp() => const <int>[
+  0x42,
+  0x4D,
+  0x46,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0x36,
+  0,
+  0,
+  0,
+  0x28,
+  0,
+  0,
+  0,
+  2,
+  0,
+  0,
+  0,
+  2,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0x18,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0x10,
+  0,
+  0,
+  0,
+  0x13,
+  0x0B,
+  0,
+  0,
+  0x13,
+  0x0B,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0xFF,
+  0,
+  0xFF,
+  0,
+  0,
+  0,
+  0xFF,
+  0,
+  0,
+  0xFF,
+  0xFF,
+  0xFF,
+  0,
+  0,
+];
 
 final class ListEquality<T> {
   const ListEquality();
