@@ -372,26 +372,29 @@ final class WindowsOpenAiCompatibleTranslationProvider
 final class WindowsTranslationProviderHub implements TranslationProvider {
   WindowsTranslationProviderHub({
     PickLogicInstantTranslationProvider? instantProvider,
-    WindowsOpenAiCompatibleTranslationProvider? openAiProvider,
+    WindowsOpenAiCompatibleTranslationProvider? advancedProvider,
     String? choicePath,
   }) : instantProvider =
            instantProvider ?? PickLogicInstantTranslationProvider(),
-       openAiProvider =
-           openAiProvider ?? WindowsOpenAiCompatibleTranslationProvider(),
+       _openAiProvider = advancedProvider,
        _choicePath = choicePath ?? _defaultChoicePath();
 
   final PickLogicInstantTranslationProvider instantProvider;
-  final WindowsOpenAiCompatibleTranslationProvider openAiProvider;
-  final String _choicePath;
+  WindowsOpenAiCompatibleTranslationProvider? _openAiProvider;
+  final String? _choicePath;
   TranslationEngineChoice _selectedEngine = TranslationEngineChoice.off;
   bool _initialized = false;
 
   TranslationEngineChoice get selectedEngine => _selectedEngine;
+  WindowsOpenAiCompatibleTranslationProvider get openAiProvider =>
+      _openAiProvider ??= WindowsOpenAiCompatibleTranslationProvider();
 
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
-    final file = File(_choicePath);
+    final choicePath = _choicePath;
+    if (choicePath == null) return;
+    final file = File(choicePath);
     if (!await file.exists()) return;
     try {
       final decoded = jsonDecode(await file.readAsString());
@@ -409,7 +412,9 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
   Future<void> selectEngine(TranslationEngineChoice choice) async {
     await initialize();
     _selectedEngine = choice;
-    final file = File(_choicePath);
+    final choicePath = _choicePath;
+    if (choicePath == null) return;
+    final file = File(choicePath);
     await file.parent.create(recursive: true);
     await file.writeAsString(
       const JsonEncoder.withIndent(' ').convert({'engine': choice.name}),
@@ -449,11 +454,9 @@ final class WindowsTranslationProviderHub implements TranslationProvider {
     );
   }
 
-  static String _defaultChoicePath() {
+  static String? _defaultChoicePath() {
     final base = Platform.environment['LOCALAPPDATA'];
-    if (base == null || base.trim().isEmpty) {
-      throw StateError('LOCALAPPDATA is unavailable.');
-    }
+    if (base == null || base.trim().isEmpty) return null;
     return '$base${Platform.pathSeparator}PickLogic${Platform.pathSeparator}translation_engine.json';
   }
 }
