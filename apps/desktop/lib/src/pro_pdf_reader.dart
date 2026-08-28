@@ -2370,6 +2370,14 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                             : _retranslateCurrentPage,
                         icon: const Icon(Icons.refresh, size: 18),
                       ),
+                    Tooltip(
+                      message:
+                          '${strings.translationPrivacyForEngine(widget.translationEngine)} ${strings.translationMemory}',
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 7),
+                        child: Icon(Icons.privacy_tip_outlined, size: 18),
+                      ),
+                    ),
                     IconButton(
                       tooltip: strings.close,
                       onPressed: () =>
@@ -2453,13 +2461,6 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                     ),
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-            child: Text(
-              '${strings.translationPrivacyForEngine(widget.translationEngine)} ${strings.translationMemory}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
         ],
       ),
     );
@@ -2501,6 +2502,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 _selectionSourceEditing ? Icons.check : Icons.edit_outlined,
                 size: 18,
               ),
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 34, height: 34),
             ),
           ],
         ),
@@ -2510,12 +2513,16 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
           controller: _selectionSourceController,
           readOnly: !_selectionSourceEditing,
           minLines: 1,
-          maxLines: 6,
+          maxLines: _selectionSourceEditing ? 6 : 2,
           onChanged: _onSelectionSourceEdited,
           decoration: InputDecoration(
             isDense: true,
             filled: _selectionSourceEditing,
             hintText: strings.editSelectedTextHint,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
+            ),
           ),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
         ),
@@ -2527,7 +2534,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
-        const Divider(height: 28),
+        const Divider(height: 18),
         Row(
           children: [
             Expanded(
@@ -2546,6 +2553,11 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 icon: Icon(
                   currentIsLocked ? Icons.lock : Icons.lock_outline,
                   size: 18,
+                ),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(
+                  width: 34,
+                  height: 34,
                 ),
               ),
           ],
