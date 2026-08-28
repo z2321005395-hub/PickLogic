@@ -450,4 +450,4 @@ Push the focused branch, run one PR gate without routine artifact uploads, merge
 
 ## Next action
 
-Push the focused branch, run one artifact-free PR gate, merge it into `develop`, and keep the installed Pro window available for hands-on testing. Stop additional PDF feature work after integration.
+Integration complete: PR #43 passed all three CI jobs and merged normally into `develop` as `17ed3e4`. Actions artifacts and caches remain at zero; the redundant post-merge push run was skipped by policy. Keep the single installed Pro window available for maintainer hands-on testing and stop additional PDF feature work until feedback.
