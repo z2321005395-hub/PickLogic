@@ -22,6 +22,24 @@ typedef PdfContentPagePreviewBuilder =
 typedef PdfContentSaveRequested =
     Future<bool> Function(PdfContentEditPlan plan);
 
+/// Lets the surrounding PDF reader request the same guarded close flow that
+/// the embedded editor's close button uses.
+final class PdfContentEditorController {
+  _PdfContentEditorDialogState? _state;
+
+  bool get isAttached => _state != null;
+
+  Future<void> requestClose() async {
+    await _state?._requestClose();
+  }
+
+  void _attach(_PdfContentEditorDialogState state) => _state = state;
+
+  void _detach(_PdfContentEditorDialogState state) {
+    if (identical(_state, state)) _state = null;
+  }
+}
+
 Future<PdfContentEditPlan?> showPdfContentEditor({
   required BuildContext context,
   required PdfDocument document,
@@ -65,8 +83,37 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.imagePicker,
     this.pagePreviewBuilder,
     this.onSaveRequested,
+    this.controller,
+    this.onClosed,
+    this.onPageChanged,
+    this.embedded = false,
   }) : pageSizesForTesting = null,
        objectsForTesting = null;
+
+  factory PdfContentEditorDialog.embedded({
+    Key? key,
+    required PdfDocument document,
+    required int initialPageNumber,
+    PdfContentPageInspector? inspector,
+    PdfContentImagePicker? imagePicker,
+    PdfContentPagePreviewBuilder? pagePreviewBuilder,
+    PdfContentSaveRequested? onSaveRequested,
+    PdfContentEditorController? controller,
+    ValueChanged<PdfContentEditPlan?>? onClosed,
+    ValueChanged<int>? onPageChanged,
+  }) => PdfContentEditorDialog(
+    key: key,
+    document: document,
+    initialPageNumber: initialPageNumber,
+    inspector: inspector ?? const PdfContentObjectService().inspectPage,
+    imagePicker: imagePicker ?? _pickImage,
+    pagePreviewBuilder: pagePreviewBuilder,
+    onSaveRequested: onSaveRequested,
+    controller: controller,
+    onClosed: onClosed,
+    onPageChanged: onPageChanged,
+    embedded: true,
+  );
 
   @visibleForTesting
   const PdfContentEditorDialog.testing({
@@ -77,6 +124,10 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.pageSizesForTesting,
     required this.objectsForTesting,
     this.onSaveRequested,
+    this.controller,
+    this.onClosed,
+    this.onPageChanged,
+    this.embedded = false,
   }) : document = null,
        inspector = null;
 
@@ -88,6 +139,10 @@ final class PdfContentEditorDialog extends StatefulWidget {
   final List<Size>? pageSizesForTesting;
   final Map<int, List<PdfContentObjectDescriptor>>? objectsForTesting;
   final PdfContentSaveRequested? onSaveRequested;
+  final PdfContentEditorController? controller;
+  final ValueChanged<PdfContentEditPlan?>? onClosed;
+  final ValueChanged<int>? onPageChanged;
+  final bool embedded;
 
   @override
   State<PdfContentEditorDialog> createState() => _PdfContentEditorDialogState();
@@ -121,11 +176,22 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   void initState() {
     super.initState();
     _pageNumber = widget.initialPageNumber.clamp(1, _pageCount);
+    widget.controller?._attach(this);
     unawaited(_loadPage());
   }
 
   @override
+  void didUpdateWidget(covariant PdfContentEditorDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.controller?._detach(this);
     _textController.dispose();
     _leftController.dispose();
     _bottomController.dispose();
@@ -244,6 +310,7 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       _pageNumber = bounded;
       _selectedId = null;
     });
+    widget.onPageChanged?.call(bounded);
     unawaited(_loadPage());
   }
 
@@ -512,6 +579,10 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
 
   void _closeEditor([PdfContentEditPlan? result]) {
     if (!mounted) return;
+    if (widget.embedded) {
+      widget.onClosed?.call(result);
+      return;
+    }
     setState(() => _allowPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) Navigator.of(context).pop(result);
@@ -596,6 +667,25 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   Widget build(BuildContext context) {
     final strings = _ContentEditorStrings.of(context);
     final mediaSize = MediaQuery.sizeOf(context);
+    final editor = Column(
+      children: [
+        _buildHeader(strings),
+        const Divider(height: 1),
+        _buildToolbar(strings),
+        const Divider(height: 1),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: _buildCanvas(strings)),
+              const VerticalDivider(width: 1),
+              SizedBox(width: 320, child: _buildInspector(strings)),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        _buildFooter(strings),
+      ],
+    );
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
@@ -613,38 +703,28 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       child: Focus(
         autofocus: true,
         child: PopScope<PdfContentEditPlan>(
-          canPop: _allowPop || !_hasUnsavedChanges,
+          canPop: !widget.embedded && (_allowPop || !_hasUnsavedChanges),
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop) unawaited(_requestClose());
           },
-          child: Dialog(
-            key: const Key('pdf-content-editor-dialog'),
-            insetPadding: const EdgeInsets.all(16),
-            clipBehavior: Clip.antiAlias,
-            child: SizedBox(
-              width: math.min(1500, mediaSize.width - 32),
-              height: math.min(920, mediaSize.height - 32),
-              child: Column(
-                children: [
-                  _buildHeader(strings),
-                  const Divider(height: 1),
-                  _buildToolbar(strings),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(child: _buildCanvas(strings)),
-                        const VerticalDivider(width: 1),
-                        SizedBox(width: 320, child: _buildInspector(strings)),
-                      ],
-                    ),
+          child: widget.embedded
+              ? Material(
+                  key: const Key('pdf-content-editor-inline'),
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  child: editor,
+                )
+              : Dialog(
+                  key: const Key('pdf-content-editor-dialog'),
+                  insetPadding: const EdgeInsets.all(16),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    width: math.min(1500, mediaSize.width - 32),
+                    height: math.min(920, mediaSize.height - 32),
+                    child: editor,
                   ),
-                  const Divider(height: 1),
-                  _buildFooter(strings),
-                ],
-              ),
-            ),
-          ),
+                ),
         ),
       ),
     );

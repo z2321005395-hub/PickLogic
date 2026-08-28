@@ -128,6 +128,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   static const _cacheLimitBytes = 24 * 1024 * 1024;
 
   final PdfViewerController _viewerController = PdfViewerController();
+  final PdfContentEditorController _contentEditorController =
+      PdfContentEditorController();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _pageController = TextEditingController();
   PdfTextSearcher? _searcher;
@@ -143,6 +145,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   bool _translationBusy = false;
   bool _annotationBusy = false;
   bool _pdfEditBusy = false;
+  bool _contentEditing = false;
   bool _annotationsVisible = false;
   final Map<int, String> _pageTranslations = <int, String>{};
   final Map<int, String> _pageTranslationSources = <int, String>{};
@@ -480,7 +483,12 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   Future<void> _editPdfCopy() async {
     final document = _document;
-    if (document == null || widget.filePath == null || _pdfEditBusy) return;
+    if (document == null ||
+        widget.filePath == null ||
+        _pdfEditBusy ||
+        _contentEditing) {
+      return;
+    }
     await showPdfPageEditor(
       context: context,
       pageCount: document.pages.length,
@@ -492,15 +500,40 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   Future<void> _editPdfContent() async {
     final document = _document;
     if (document == null || widget.filePath == null || _pdfEditBusy) return;
-    await showPdfContentEditor(
-      context: context,
-      document: document,
-      initialPageNumber: _pageNumber,
-      onSaveRequested: (contentPlan) => _saveEditedPdfCopy(
-        plan: PdfEditPlan.identity(document.pages.length),
-        contentEdits: contentPlan,
-      ),
-    );
+    if (_contentEditing) {
+      await _contentEditorController.requestClose();
+      return;
+    }
+    setState(() {
+      _contentEditing = true;
+      _pageJumpInvalid = false;
+      _selectedText = '';
+      _selectedRanges = const <PdfPageTextRange>[];
+    });
+  }
+
+  void _onContentEditorClosed(PdfContentEditPlan? _) {
+    if (!mounted) return;
+    setState(() => _contentEditing = false);
+  }
+
+  void _onContentEditorPageChanged(int pageNumber) {
+    final document = _document;
+    if (!mounted || document == null) return;
+    setState(() {
+      _pageNumber = pageNumber;
+      _pageController.text = '$pageNumber';
+    });
+    if (_viewerController.isReady) {
+      unawaited(
+        _viewerController.goToPage(
+          pageNumber: pageNumber,
+          duration: Duration.zero,
+        ),
+      );
+    } else {
+      widget.onPositionChanged(pageNumber, document.pages.length);
+    }
   }
 
   Future<bool> _saveEditedPdfCopy({
@@ -1205,8 +1238,16 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                     MenuItemButton(
                       key: const Key('pdf-edit-content-action'),
                       onPressed: _editPdfContent,
-                      leadingIcon: const Icon(Icons.edit_note_outlined),
-                      child: Text(strings.editPdfContent),
+                      leadingIcon: Icon(
+                        _contentEditing
+                            ? Icons.check_circle_outline
+                            : Icons.edit_note_outlined,
+                      ),
+                      child: Text(
+                        _contentEditing
+                            ? strings.finishEditing
+                            : strings.editPdfContent,
+                      ),
                     ),
                     MenuItemButton(
                       key: const Key('pdf-edit-pages-action'),
@@ -1224,7 +1265,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Tooltip(
-                          message: strings.editPdfContent,
+                          message: _contentEditing
+                              ? strings.finishEditing
+                              : strings.editPdfContent,
                           child: FilledButton.tonalIcon(
                             key: const Key('pdf-edit-copy-action'),
                             onPressed: canEdit ? _editPdfContent : null,
@@ -1246,8 +1289,16 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.edit_document),
-                            label: Text(strings.editPdf),
+                                : Icon(
+                                    _contentEditing
+                                        ? Icons.check_circle_outline
+                                        : Icons.edit_document,
+                                  ),
+                            label: Text(
+                              _contentEditing
+                                  ? strings.finishEditing
+                                  : strings.editPdf,
+                            ),
                           ),
                         ),
                         SizedBox(
@@ -1256,7 +1307,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                             message: strings.morePdfEditActions,
                             child: FilledButton.tonal(
                               key: const Key('pdf-edit-menu-action'),
-                              onPressed: canEdit
+                              onPressed: canEdit && !_contentEditing
                                   ? () => controller.isOpen
                                         ? controller.close()
                                         : controller.open()
@@ -1526,104 +1577,131 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
         ],
         const SizedBox(height: 6),
         Expanded(
-          child: Row(
+          child: IndexedStack(
+            key: const Key('pdf-reader-mode-stack'),
+            index: _contentEditing ? 1 : 0,
+            sizing: StackFit.expand,
             children: [
-              SizedBox(
-                width: 76,
-                child: document == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        key: const Key('pdf-thumbnail-list'),
-                        itemCount: document.pages.length,
-                        itemBuilder: (context, index) {
-                          final page = index + 1;
-                          final selected = page == _pageNumber;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: InkWell(
-                              key: Key('pdf-thumbnail-$page'),
-                              onTap: () =>
-                                  _viewerController.goToPage(pageNumber: page),
-                              child: Container(
-                                height: 96,
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: selected
-                                        ? Theme.of(context).colorScheme.primary
-                                        : Theme.of(context).dividerColor,
-                                    width: selected ? 2 : 1,
+              Row(
+                children: [
+                  SizedBox(
+                    width: 76,
+                    child: document == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : ListView.builder(
+                            key: const Key('pdf-thumbnail-list'),
+                            itemCount: document.pages.length,
+                            itemBuilder: (context, index) {
+                              final page = index + 1;
+                              final selected = page == _pageNumber;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: InkWell(
+                                  key: Key('pdf-thumbnail-$page'),
+                                  onTap: () => _viewerController.goToPage(
+                                    pageNumber: page,
                                   ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Stack(
-                                  children: [
-                                    Positioned.fill(
-                                      child: PdfPageView(
-                                        document: document,
-                                        pageNumber: page,
-                                        maximumDpi: 96,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.white,
-                                        ),
+                                  child: Container(
+                                    height: 96,
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: selected
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Theme.of(context).dividerColor,
+                                        width: selected ? 2 : 1,
                                       ),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                    Positioned(
-                                      right: 2,
-                                      bottom: 2,
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.65,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: PdfPageView(
+                                            document: document,
+                                            pageNumber: page,
+                                            maximumDpi: 96,
+                                            decoration: const BoxDecoration(
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 5,
-                                            vertical: 2,
-                                          ),
-                                          child: Text(
-                                            '$page',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .labelSmall
-                                                ?.copyWith(color: Colors.white),
+                                        Positioned(
+                                          right: 2,
+                                          bottom: 2,
+                                          child: DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.65,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 5,
+                                                    vertical: 2,
+                                                  ),
+                                              child: Text(
+                                                '$page',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .labelSmall
+                                                    ?.copyWith(
+                                                      color: Colors.white,
+                                                    ),
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              const VerticalDivider(width: 10),
-              if (_annotationsVisible) ...[
-                SizedBox(width: 240, child: _buildAnnotationPanel(strings)),
-                const VerticalDivider(width: 10),
-              ],
-              Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: _buildViewer(),
-                      ),
-                    ),
-                    if (_bilingualVisible) ...[
-                      const VerticalDivider(width: 10),
-                      Expanded(child: _buildTranslationPanel(strings)),
-                    ],
+                              );
+                            },
+                          ),
+                  ),
+                  const VerticalDivider(width: 10),
+                  if (_annotationsVisible) ...[
+                    SizedBox(width: 240, child: _buildAnnotationPanel(strings)),
+                    const VerticalDivider(width: 10),
                   ],
-                ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: _buildViewer(),
+                          ),
+                        ),
+                        if (_bilingualVisible) ...[
+                          const VerticalDivider(width: 10),
+                          Expanded(child: _buildTranslationPanel(strings)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
+              if (_contentEditing && document != null)
+                PdfContentEditorDialog.embedded(
+                  key: ValueKey('pdf-inline-editor-${widget.sourceName}'),
+                  document: document,
+                  initialPageNumber: _pageNumber,
+                  controller: _contentEditorController,
+                  onClosed: _onContentEditorClosed,
+                  onPageChanged: _onContentEditorPageChanged,
+                  onSaveRequested: (contentPlan) => _saveEditedPdfCopy(
+                    plan: PdfEditPlan.identity(document.pages.length),
+                    contentEdits: contentPlan,
+                  ),
+                )
+              else
+                const SizedBox.shrink(),
             ],
           ),
         ),
@@ -1936,6 +2014,7 @@ final class _PdfReaderStrings {
   String get localPdf => isChinese ? '本地 PDF' : 'LOCAL PDF';
   String get editPdf => isChinese ? '编辑 PDF' : 'Edit PDF';
   String get editPdfContent => isChinese ? '编辑文字和图片' : 'Edit text and images';
+  String get finishEditing => isChinese ? '完成编辑' : 'Done editing';
   String get morePdfEditActions =>
       isChinese ? '更多 PDF 编辑选项' : 'More PDF editing options';
   String get organizePdfPages =>

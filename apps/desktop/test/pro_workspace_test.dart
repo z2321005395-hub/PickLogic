@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:picklogic_core_models/picklogic_core_models.dart';
+import 'package:picklogic_desktop/src/pro_pdf_content_editor.dart';
 import 'package:picklogic_desktop/src/pro_pdf_reader.dart';
 import 'package:picklogic_desktop/src/pro_workspace.dart';
 import 'package:picklogic_literature_core/picklogic_literature_core.dart';
@@ -569,6 +570,77 @@ void main() {
     expect(find.text('本地渲染'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'PDF content editing stays embedded in the current Pro reader workspace',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final controller = PdfContentEditorController();
+      var editorVisible = true;
+      var currentPage = 2;
+
+      await tester.pumpWidget(
+        _localizedApp(
+          locale: const Locale('en'),
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => Column(
+                children: [
+                  const Text(
+                    'Literature reader',
+                    key: Key('reader-shell-test-double'),
+                  ),
+                  Expanded(
+                    child: editorVisible
+                        ? PdfContentEditorDialog.testing(
+                            controller: controller,
+                            embedded: true,
+                            initialPageNumber: currentPage,
+                            imagePicker: () async => null,
+                            pagePreviewBuilder: (_, _) =>
+                                const ColoredBox(color: Colors.white),
+                            pageSizesForTesting: const [
+                              Size(612, 792),
+                              Size(612, 792),
+                            ],
+                            objectsForTesting: const {1: [], 2: []},
+                            onPageChanged: (page) => currentPage = page,
+                            onClosed: (_) =>
+                                setState(() => editorVisible = false),
+                          )
+                        : const SizedBox.expand(
+                            key: Key('reader-page-test-double'),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('reader-shell-test-double')), findsOneWidget);
+      expect(
+        find.byKey(const Key('pdf-content-editor-inline')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('pdf-content-editor-dialog')), findsNothing);
+      expect(find.text('Page 2 of 2'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('pdf-content-previous-page')));
+      await tester.pumpAndSettle();
+      expect(currentPage, 1);
+      expect(find.text('Page 1 of 2'), findsOneWidget);
+
+      await controller.requestClose();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pdf-content-editor-inline')), findsNothing);
+      expect(find.byKey(const Key('reader-page-test-double')), findsOneWidget);
+      expect(find.byKey(const Key('reader-shell-test-double')), findsOneWidget);
+    },
+  );
 }
 
 Widget _localizedApp({required Locale locale, required Widget home}) =>
