@@ -22,6 +22,24 @@ typedef PdfContentPagePreviewBuilder =
 typedef PdfContentSaveRequested =
     Future<bool> Function(PdfContentEditPlan plan);
 
+/// Lets the surrounding PDF reader request the same guarded close flow that
+/// the embedded editor's close button uses.
+final class PdfContentEditorController {
+  _PdfContentEditorDialogState? _state;
+
+  bool get isAttached => _state != null;
+
+  Future<void> requestClose() async {
+    await _state?._requestClose();
+  }
+
+  void _attach(_PdfContentEditorDialogState state) => _state = state;
+
+  void _detach(_PdfContentEditorDialogState state) {
+    if (identical(_state, state)) _state = null;
+  }
+}
+
 Future<PdfContentEditPlan?> showPdfContentEditor({
   required BuildContext context,
   required PdfDocument document,
@@ -65,8 +83,43 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.imagePicker,
     this.pagePreviewBuilder,
     this.onSaveRequested,
+    this.controller,
+    this.onClosed,
+    this.onPageChanged,
+    this.initialZoom,
+    this.initialViewportFraction,
+    this.embedded = false,
   }) : pageSizesForTesting = null,
        objectsForTesting = null;
+
+  factory PdfContentEditorDialog.embedded({
+    Key? key,
+    required PdfDocument document,
+    required int initialPageNumber,
+    PdfContentPageInspector? inspector,
+    PdfContentImagePicker? imagePicker,
+    PdfContentPagePreviewBuilder? pagePreviewBuilder,
+    PdfContentSaveRequested? onSaveRequested,
+    PdfContentEditorController? controller,
+    ValueChanged<PdfContentEditPlan?>? onClosed,
+    ValueChanged<int>? onPageChanged,
+    double? initialZoom,
+    Offset? initialViewportFraction,
+  }) => PdfContentEditorDialog(
+    key: key,
+    document: document,
+    initialPageNumber: initialPageNumber,
+    inspector: inspector ?? const PdfContentObjectService().inspectPage,
+    imagePicker: imagePicker ?? _pickImage,
+    pagePreviewBuilder: pagePreviewBuilder,
+    onSaveRequested: onSaveRequested,
+    controller: controller,
+    onClosed: onClosed,
+    onPageChanged: onPageChanged,
+    initialZoom: initialZoom,
+    initialViewportFraction: initialViewportFraction,
+    embedded: true,
+  );
 
   @visibleForTesting
   const PdfContentEditorDialog.testing({
@@ -77,6 +130,12 @@ final class PdfContentEditorDialog extends StatefulWidget {
     required this.pageSizesForTesting,
     required this.objectsForTesting,
     this.onSaveRequested,
+    this.controller,
+    this.onClosed,
+    this.onPageChanged,
+    this.initialZoom,
+    this.initialViewportFraction,
+    this.embedded = false,
   }) : document = null,
        inspector = null;
 
@@ -88,6 +147,12 @@ final class PdfContentEditorDialog extends StatefulWidget {
   final List<Size>? pageSizesForTesting;
   final Map<int, List<PdfContentObjectDescriptor>>? objectsForTesting;
   final PdfContentSaveRequested? onSaveRequested;
+  final PdfContentEditorController? controller;
+  final ValueChanged<PdfContentEditPlan?>? onClosed;
+  final ValueChanged<int>? onPageChanged;
+  final double? initialZoom;
+  final Offset? initialViewportFraction;
+  final bool embedded;
 
   @override
   State<PdfContentEditorDialog> createState() => _PdfContentEditorDialogState();
@@ -105,7 +170,10 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _rotationController = TextEditingController();
   final TextEditingController _fontSizeController = TextEditingController();
+  final ScrollController _horizontalCanvasController = ScrollController();
+  final ScrollController _verticalCanvasController = ScrollController();
   late int _pageNumber;
+  late double _canvasZoom;
   String? _selectedId;
   bool _loading = false;
   Object? _loadError;
@@ -115,17 +183,30 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   bool _allowPop = false;
   bool _exitPromptVisible = false;
   bool _saving = false;
+  bool _initialScrollApplied = false;
   Map<String, PdfContentObjectEdit> _savedEdits = {};
 
   @override
   void initState() {
     super.initState();
     _pageNumber = widget.initialPageNumber.clamp(1, _pageCount);
+    _canvasZoom = (widget.initialZoom ?? 1).clamp(0.25, 4).toDouble();
+    widget.controller?._attach(this);
     unawaited(_loadPage());
   }
 
   @override
+  void didUpdateWidget(covariant PdfContentEditorDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.controller?._detach(this);
     _textController.dispose();
     _leftController.dispose();
     _bottomController.dispose();
@@ -133,6 +214,8 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     _heightController.dispose();
     _rotationController.dispose();
     _fontSizeController.dispose();
+    _horizontalCanvasController.dispose();
+    _verticalCanvasController.dispose();
     super.dispose();
   }
 
@@ -243,8 +326,76 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
     setState(() {
       _pageNumber = bounded;
       _selectedId = null;
+      _initialScrollApplied = false;
     });
+    widget.onPageChanged?.call(bounded);
     unawaited(_loadPage());
+  }
+
+  void _changeCanvasZoom(double factor) {
+    final next = (_canvasZoom * factor).clamp(0.25, 4).toDouble();
+    if (next == _canvasZoom) return;
+    final horizontalRatio = _scrollRatio(_horizontalCanvasController);
+    final verticalRatio = _scrollRatio(_verticalCanvasController);
+    setState(() => _canvasZoom = next);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _restoreScrollRatio(_horizontalCanvasController, horizontalRatio);
+      _restoreScrollRatio(_verticalCanvasController, verticalRatio);
+    });
+  }
+
+  double _scrollRatio(ScrollController controller) {
+    if (!controller.hasClients || controller.position.maxScrollExtent <= 0) {
+      return 0.5;
+    }
+    return (controller.offset / controller.position.maxScrollExtent).clamp(
+      0,
+      1,
+    );
+  }
+
+  void _restoreScrollRatio(ScrollController controller, double ratio) {
+    if (!controller.hasClients) return;
+    controller.jumpTo(controller.position.maxScrollExtent * ratio);
+  }
+
+  void _scheduleInitialCanvasScroll({
+    required BoxConstraints constraints,
+    required double contentWidth,
+    required double contentHeight,
+    required double pageWidth,
+    required double pageHeight,
+  }) {
+    if (_initialScrollApplied) return;
+    _initialScrollApplied = true;
+    final fraction = widget.initialViewportFraction ?? const Offset(0.5, 0.1);
+    final pageLeft = (contentWidth - pageWidth) / 2;
+    final pageTop = (contentHeight - pageHeight) / 2;
+    final horizontalOffset =
+        pageLeft + pageWidth * fraction.dx - constraints.maxWidth / 2;
+    final verticalOffset =
+        pageTop + pageHeight * fraction.dy - constraints.maxHeight / 2;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !_horizontalCanvasController.hasClients ||
+          !_verticalCanvasController.hasClients) {
+        _initialScrollApplied = false;
+        return;
+      }
+      _horizontalCanvasController.jumpTo(
+        horizontalOffset.clamp(
+          0,
+          _horizontalCanvasController.position.maxScrollExtent,
+        ),
+      );
+      _verticalCanvasController.jumpTo(
+        verticalOffset.clamp(
+          0,
+          _verticalCanvasController.position.maxScrollExtent,
+        ),
+      );
+    });
   }
 
   Map<String, PdfContentObjectEdit> _snapshot() => Map.of(_edits);
@@ -512,6 +663,10 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
 
   void _closeEditor([PdfContentEditPlan? result]) {
     if (!mounted) return;
+    if (widget.embedded) {
+      widget.onClosed?.call(result);
+      return;
+    }
     setState(() => _allowPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) Navigator.of(context).pop(result);
@@ -596,6 +751,27 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
   Widget build(BuildContext context) {
     final strings = _ContentEditorStrings.of(context);
     final mediaSize = MediaQuery.sizeOf(context);
+    final editor = Column(
+      children: [
+        _buildHeader(strings, compact: widget.embedded),
+        const Divider(height: 1),
+        _buildToolbar(strings),
+        const Divider(height: 1),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: _buildCanvas(strings)),
+              const VerticalDivider(width: 1),
+              SizedBox(width: 320, child: _buildInspector(strings)),
+            ],
+          ),
+        ),
+        if (!widget.embedded) ...[
+          const Divider(height: 1),
+          _buildFooter(strings),
+        ],
+      ],
+    );
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
@@ -613,102 +789,100 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       child: Focus(
         autofocus: true,
         child: PopScope<PdfContentEditPlan>(
-          canPop: _allowPop || !_hasUnsavedChanges,
+          canPop: !widget.embedded && (_allowPop || !_hasUnsavedChanges),
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop) unawaited(_requestClose());
           },
-          child: Dialog(
-            key: const Key('pdf-content-editor-dialog'),
-            insetPadding: const EdgeInsets.all(16),
-            clipBehavior: Clip.antiAlias,
-            child: SizedBox(
-              width: math.min(1500, mediaSize.width - 32),
-              height: math.min(920, mediaSize.height - 32),
-              child: Column(
-                children: [
-                  _buildHeader(strings),
-                  const Divider(height: 1),
-                  _buildToolbar(strings),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(child: _buildCanvas(strings)),
-                        const VerticalDivider(width: 1),
-                        SizedBox(width: 320, child: _buildInspector(strings)),
-                      ],
-                    ),
+          child: widget.embedded
+              ? Material(
+                  key: const Key('pdf-content-editor-inline'),
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  child: editor,
+                )
+              : Dialog(
+                  key: const Key('pdf-content-editor-dialog'),
+                  insetPadding: const EdgeInsets.all(16),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    width: math.min(1500, mediaSize.width - 32),
+                    height: math.min(920, mediaSize.height - 32),
+                    child: editor,
                   ),
-                  const Divider(height: 1),
-                  _buildFooter(strings),
-                ],
-              ),
-            ),
-          ),
+                ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader(_ContentEditorStrings strings) => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-    child: Row(
-      children: [
-        const Icon(Icons.edit_note_outlined),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _hasUnsavedChanges ? '${strings.title} *' : strings.title,
-                style: Theme.of(context).textTheme.titleLarge,
+  Widget _buildHeader(_ContentEditorStrings strings, {required bool compact}) =>
+      Padding(
+        padding: EdgeInsets.fromLTRB(
+          14,
+          compact ? 6 : 10,
+          14,
+          compact ? 6 : 10,
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.edit_note_outlined),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _hasUnsavedChanges ? '${strings.title} *' : strings.title,
+                    style: compact
+                        ? Theme.of(context).textTheme.titleMedium
+                        : Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Text(
+                    strings.sourcePreserved,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
-              Text(
-                strings.sourcePreserved,
-                style: Theme.of(context).textTheme.bodySmall,
+            ),
+            Tooltip(
+              message: strings.saveShortcut,
+              child: FilledButton.tonalIcon(
+                key: const Key('pdf-content-save-copy-action'),
+                onPressed: _hasUnsavedChanges && !_saving
+                    ? () => unawaited(_saveCurrent(closeAfterSave: false))
+                    : null,
+                icon: _saving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_saving ? strings.saving : strings.saveCopy),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              key: const Key('pdf-content-undo-action'),
+              tooltip: strings.undoShortcut,
+              onPressed: _undo.isEmpty || _saving ? null : _undoChange,
+              icon: const Icon(Icons.undo),
+            ),
+            IconButton(
+              key: const Key('pdf-content-redo-action'),
+              tooltip: strings.redoShortcut,
+              onPressed: _redo.isEmpty || _saving ? null : _redoChange,
+              icon: const Icon(Icons.redo),
+            ),
+            IconButton(
+              key: const Key('pdf-content-close-action'),
+              tooltip: strings.close,
+              onPressed: _saving ? null : _requestClose,
+              icon: const Icon(Icons.close),
+            ),
+          ],
         ),
-        Tooltip(
-          message: strings.saveShortcut,
-          child: FilledButton.tonalIcon(
-            key: const Key('pdf-content-save-copy-action'),
-            onPressed: _hasUnsavedChanges && !_saving
-                ? () => unawaited(_saveCurrent(closeAfterSave: false))
-                : null,
-            icon: _saving
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_outlined),
-            label: Text(_saving ? strings.saving : strings.saveCopy),
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton(
-          key: const Key('pdf-content-undo-action'),
-          tooltip: strings.undoShortcut,
-          onPressed: _undo.isEmpty || _saving ? null : _undoChange,
-          icon: const Icon(Icons.undo),
-        ),
-        IconButton(
-          key: const Key('pdf-content-redo-action'),
-          tooltip: strings.redoShortcut,
-          onPressed: _redo.isEmpty || _saving ? null : _redoChange,
-          icon: const Icon(Icons.redo),
-        ),
-        IconButton(
-          key: const Key('pdf-content-close-action'),
-          tooltip: strings.close,
-          onPressed: _saving ? null : _requestClose,
-          icon: const Icon(Icons.close),
-        ),
-      ],
-    ),
-  );
+      );
 
   Widget _buildToolbar(_ContentEditorStrings strings) => SingleChildScrollView(
     scrollDirection: Axis.horizontal,
@@ -730,6 +904,29 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
               ? () => _goToPage(_pageNumber + 1)
               : null,
           icon: const Icon(Icons.chevron_right),
+        ),
+        const SizedBox(width: 6),
+        IconButton(
+          key: const Key('pdf-content-zoom-out'),
+          tooltip: strings.zoomOut,
+          onPressed: _canvasZoom > 0.25
+              ? () => _changeCanvasZoom(1 / 1.25)
+              : null,
+          icon: const Icon(Icons.remove),
+        ),
+        SizedBox(
+          width: 52,
+          child: Text(
+            '${(_canvasZoom * 100).round()}%',
+            key: const Key('pdf-content-zoom-status'),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        IconButton(
+          key: const Key('pdf-content-zoom-in'),
+          tooltip: strings.zoomIn,
+          onPressed: _canvasZoom < 4 ? () => _changeCanvasZoom(1.25) : null,
+          icon: const Icon(Icons.add),
         ),
         const SizedBox(width: 12),
         FilledButton.tonalIcon(
@@ -774,32 +971,69 @@ final class _PdfContentEditorDialogState extends State<PdfContentEditorDialog> {
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final scale = math.min(
-            (constraints.maxWidth - 48) / _pageSize.width,
-            (constraints.maxHeight - 48) / _pageSize.height,
+          final pageWidth = _pageSize.width * _canvasZoom;
+          final pageHeight = _pageSize.height * _canvasZoom;
+          final contentWidth = math.max(constraints.maxWidth, pageWidth + 48);
+          final contentHeight = math.max(
+            constraints.maxHeight,
+            pageHeight + 48,
           );
-          final safeScale = math.max(0.05, scale);
-          return Center(
-            child: SizedBox(
-              key: const Key('pdf-content-page-canvas'),
-              width: _pageSize.width * safeScale,
-              height: _pageSize.height * safeScale,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child:
-                        widget.pagePreviewBuilder?.call(context, _pageNumber) ??
-                        PdfPageView(
-                          document: widget.document!,
-                          pageNumber: _pageNumber,
-                          maximumDpi: 144,
-                          decoration: const BoxDecoration(color: Colors.white),
+          _scheduleInitialCanvasScroll(
+            constraints: constraints,
+            contentWidth: contentWidth,
+            contentHeight: contentHeight,
+            pageWidth: pageWidth,
+            pageHeight: pageHeight,
+          );
+          return Scrollbar(
+            controller: _verticalCanvasController,
+            thumbVisibility: true,
+            notificationPredicate: (notification) =>
+                notification.metrics.axis == Axis.vertical,
+            child: SingleChildScrollView(
+              controller: _verticalCanvasController,
+              child: Scrollbar(
+                controller: _horizontalCanvasController,
+                thumbVisibility: true,
+                notificationPredicate: (notification) =>
+                    notification.metrics.axis == Axis.horizontal,
+                child: SingleChildScrollView(
+                  controller: _horizontalCanvasController,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: contentWidth,
+                    height: contentHeight,
+                    child: Center(
+                      child: SizedBox(
+                        key: const Key('pdf-content-page-canvas'),
+                        width: pageWidth,
+                        height: pageHeight,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned.fill(
+                              child:
+                                  widget.pagePreviewBuilder?.call(
+                                    context,
+                                    _pageNumber,
+                                  ) ??
+                                  PdfPageView(
+                                    document: widget.document!,
+                                    pageNumber: _pageNumber,
+                                    maximumDpi: 144,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                            ),
+                            for (final edit in _canvasObjects)
+                              _buildObjectOverlay(edit, _canvasZoom, strings),
+                          ],
                         ),
+                      ),
+                    ),
                   ),
-                  for (final edit in _canvasObjects)
-                    _buildObjectOverlay(edit, safeScale, strings),
-                ],
+                ),
               ),
             ),
           );
@@ -1193,6 +1427,8 @@ final class _ContentEditorStrings {
   String get close => chinese ? '关闭' : 'Close';
   String get previousPage => chinese ? '上一页' : 'Previous page';
   String get nextPage => chinese ? '下一页' : 'Next page';
+  String get zoomOut => chinese ? '缩小编辑页面' : 'Zoom out editing page';
+  String get zoomIn => chinese ? '放大编辑页面' : 'Zoom in editing page';
   String pagePosition(int current, int total) =>
       chinese ? '第 $current / $total 页' : 'Page $current of $total';
   String get addText => chinese ? '添加文字' : 'Add text';

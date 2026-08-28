@@ -437,3 +437,17 @@ Push the focused CI-gate fix to PR #41, rerun its single quality/build gate, and
 ## Next action
 
 Push the focused branch, run one PR gate without routine artifact uploads, merge green work into `develop`, and verify Actions artifacts/caches remain empty. Stop new PDF work until maintainer hands-on feedback.
+
+## In-reader Pro PDF editing
+
+- Replaced the primary PDF content-edit dialog with an editor embedded directly in the existing Literature reader. The library, document header, reader toolbar, and current page remain visible; the primary command changes to `完成编辑` / `Done editing` instead of navigating elsewhere.
+- The hidden reading surface remains mounted while editing, so returning to reading preserves its page and zoom state. The editor starts on the same page, inherits the reader zoom and approximate visible-page position, and provides bounded horizontal/vertical scrolling plus local zoom controls.
+- Existing text/image selection, replacement/addition, movement, resizing, rotation, deletion, undo/redo, Ctrl+S, and source-preserving Save As behavior were reused rather than duplicated. Closing with unsaved changes still offers Save edited copy / Don't save / Cancel.
+- Verification: targeted analyzers clean; PDF editing + Pro focused tests 19/19; complete Desktop suite 37/37; `git diff --check` clean; packaged PDF reader and content-edit smoke checks both exited 0.
+- The final ASCII-path Pro Release is 43,328,377 bytes installed. Version `0.1.0-alpha-54b12cc` was installed beside prior builds, Desktop/Start-menu shortcuts were updated, and app data was preserved.
+- Computer Use verified one-click transition on the synthetic page 6/6 at 125%: no modal, no dimmed background, the editor stayed in the Literature workspace, and its zoom control changed the editing canvas in place. Exactly one final Pro instance is left open for maintainer testing.
+- Commits: `41cc003` embedded the editor; `54b12cc` added viewport-preserving scroll/zoom behavior. No dependency, shared data contract, real PDF, or GitHub Actions artifact changed.
+
+## Next action
+
+Push the focused branch, run one artifact-free PR gate, merge it into `develop`, and keep the installed Pro window available for hands-on testing. Stop additional PDF feature work after integration.

@@ -38,6 +38,7 @@ All notable changes will be recorded here. Dates and versions reflect real repos
 
 ### Changed
 
+- Pro PDF text/image editing now stays inside the current reader surface, preserves the active page, zoom, and approximate viewport, and uses a scrollable editing canvas instead of opening a separate editor page or dialog.
 - Pro PDF editing now follows the Windows document-editing pattern: the primary Edit PDF command opens text/image editing immediately, secondary page tools use a split menu, unsaved titles are marked, Ctrl+S saves a source-preserving copy, and closing offers Save / Don't save / Cancel without any edit-authorization step.
 - Made Storage Insight immediately actionable on Mobile and added the same folder explanation workflow to Desktop Standard/Pro; both report facts, rule inference, confidence, limits, and unresolved folders without treating them as junk.
 - Replaced repeated Android SAF pagination during folder analysis with one native direct-child summary per directory, while preserving cancellable read-only traversal and live results.
