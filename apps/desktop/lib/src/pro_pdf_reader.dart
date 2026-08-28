@@ -21,6 +21,17 @@ typedef LiteratureAnnotationSaved =
     Future<void> Function(LiteratureAnnotation annotation);
 typedef LiteratureAnnotationDeleted = Future<void> Function(String id);
 
+@visibleForTesting
+String normalizePdfSelectionText(String value) {
+  var normalized = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  normalized = normalized.replaceAllMapped(
+    RegExp(r'([A-Za-z])-\s*\n\s*([a-z])'),
+    (match) => '${match.group(1)}${match.group(2)}',
+  );
+  normalized = normalized.replaceAll(RegExp(r'[ \t]*\n[ \t]*'), ' ');
+  return normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
 /// Reads and exports edited copies of one explicitly selected local PDF.
 final class ProLocalPdfReader extends StatelessWidget {
   const ProLocalPdfReader({
@@ -161,6 +172,8 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       PdfContentEditorController();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _pageController = TextEditingController();
+  final TextEditingController _selectionSourceController =
+      TextEditingController();
   PdfTextSearcher? _searcher;
   PdfDocument? _document;
   int _pageNumber = 1;
@@ -181,8 +194,12 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   String? _selectionTranslationError;
   List<TranslationAlternative> _selectionTranslationAlternatives =
       const <TranslationAlternative>[];
+  final List<_LockedSelectionTranslation> _lockedSelectionTranslations =
+      <_LockedSelectionTranslation>[];
   Timer? _selectionTranslationDebounce;
+  Timer? _selectionSourceEditDebounce;
   int _selectionTranslationGeneration = 0;
+  bool _selectionSourceEditing = false;
   bool _annotationBusy = false;
   bool _pdfEditBusy = false;
   bool _contentEditing = false;
@@ -245,11 +262,13 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   @override
   void dispose() {
     _selectionTranslationDebounce?.cancel();
+    _selectionSourceEditDebounce?.cancel();
     widget.selectionTextForTesting?.removeListener(_onTestingSelectionChanged);
     _viewerController.removeListener(_onViewerTransformChanged);
     _searcher?.dispose();
     _searchController.dispose();
     _pageController.dispose();
+    _selectionSourceController.dispose();
     super.dispose();
   }
 
@@ -751,7 +770,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
 
   void _acceptSelectedText(String text, List<PdfPageTextRange> ranges) {
     if (!mounted) return;
-    final source = text.trim();
+    final source = normalizePdfSelectionText(text);
     if (source.isEmpty) {
       setState(() {
         _selectedText = '';
@@ -760,15 +779,21 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       });
       return;
     }
+    _selectionSourceEditDebounce?.cancel();
     setState(() {
       _selectedText = source;
       _selectedRanges = ranges;
       _selectionLoading = false;
+      _selectionSourceEditing = false;
     });
     _queueSelectionTranslation(source);
   }
 
-  void _queueSelectionTranslation(String source, {bool force = false}) {
+  void _queueSelectionTranslation(
+    String source, {
+    bool force = false,
+    Duration debounce = const Duration(milliseconds: 90),
+  }) {
     final normalized = source.trim();
     if (normalized.isEmpty) return;
     if (!force &&
@@ -782,6 +807,13 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     final disabled =
         widget.translationEngine == TranslationEngineChoice.off &&
         widget.translationProvider.kind == TranslationProviderKind.disabled;
+    if (!_selectionSourceEditing &&
+        _selectionSourceController.text != normalized) {
+      _selectionSourceController.value = TextEditingValue(
+        text: normalized,
+        selection: TextSelection.collapsed(offset: normalized.length),
+      );
+    }
     setState(() {
       _bilingualVisible = true;
       _selectionTranslationSource = normalized;
@@ -794,7 +826,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
       _selectionTranslationBusy = !disabled;
     });
     if (disabled) return;
-    _selectionTranslationDebounce = Timer(const Duration(milliseconds: 90), () {
+    _selectionTranslationDebounce = Timer(debounce, () {
       unawaited(_translateSelectionAutomatically(normalized, generation));
     });
   }
@@ -891,16 +923,120 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     }
     _selectionTranslationAlternatives =
         List<TranslationAlternative>.unmodifiable(alternatives);
-    final labels = (_selectionTranslationProviderLabel ?? '')
-        .split(' + ')
-        .where((label) => label.trim().isNotEmpty)
-        .toSet();
-    labels.add(result.providerLabel);
-    _selectionTranslationProviderLabel = labels.join(' + ');
   }
 
   void _retrySelectionTranslation() {
     _queueSelectionTranslation(_selectionTranslationSource, force: true);
+  }
+
+  void _startEditingSelectionSource() {
+    final source = _selectionTranslationSource.trim();
+    if (source.isEmpty) return;
+    _selectionSourceController.value = TextEditingValue(
+      text: source,
+      selection: TextSelection.collapsed(offset: source.length),
+    );
+    setState(() => _selectionSourceEditing = true);
+  }
+
+  void _onSelectionSourceEdited(String value) {
+    _selectionSourceEditDebounce?.cancel();
+    final normalized = normalizePdfSelectionText(value);
+    if (normalized.isEmpty) return;
+    _selectionSourceEditDebounce = Timer(const Duration(milliseconds: 320), () {
+      if (!mounted || !_selectionSourceEditing) return;
+      _queueSelectionTranslation(
+        normalized,
+        force: true,
+        debounce: Duration.zero,
+      );
+    });
+  }
+
+  void _finishEditingSelectionSource() {
+    _selectionSourceEditDebounce?.cancel();
+    final normalized = normalizePdfSelectionText(
+      _selectionSourceController.text,
+    );
+    setState(() => _selectionSourceEditing = false);
+    if (normalized.isNotEmpty &&
+        (normalized != _selectionTranslationSource ||
+            _selectionTranslationText?.trim().isEmpty == true)) {
+      _queueSelectionTranslation(
+        normalized,
+        force: true,
+        debounce: Duration.zero,
+      );
+    }
+  }
+
+  bool get _currentSelectionTranslationLocked {
+    final source = _selectionTranslationSource.trim();
+    final translated = _selectionTranslationText?.trim() ?? '';
+    return source.isNotEmpty &&
+        translated.isNotEmpty &&
+        _lockedSelectionTranslations.any(
+          (item) =>
+              item.sourceText == source && item.translatedText == translated,
+        );
+  }
+
+  void _toggleCurrentSelectionTranslationLock() {
+    final source = _selectionTranslationSource.trim();
+    final translated = _selectionTranslationText?.trim() ?? '';
+    if (source.isEmpty || translated.isEmpty) return;
+    final existing = _lockedSelectionTranslations.indexWhere(
+      (item) => item.sourceText == source && item.translatedText == translated,
+    );
+    setState(() {
+      if (existing >= 0) {
+        _lockedSelectionTranslations.removeAt(existing);
+        return;
+      }
+      _lockedSelectionTranslations.insert(
+        0,
+        _LockedSelectionTranslation(
+          sourceText: source,
+          translatedText: translated,
+          providerLabel: _selectionTranslationProviderLabel ?? '',
+        ),
+      );
+      if (_lockedSelectionTranslations.length > 6) {
+        _lockedSelectionTranslations.removeRange(
+          6,
+          _lockedSelectionTranslations.length,
+        );
+      }
+    });
+  }
+
+  void _removeLockedSelectionTranslation(int index) {
+    if (index < 0 || index >= _lockedSelectionTranslations.length) return;
+    setState(() => _lockedSelectionTranslations.removeAt(index));
+  }
+
+  void _useAlternativeTranslation(int index) {
+    if (index < 0 || index >= _selectionTranslationAlternatives.length) return;
+    final selected = _selectionTranslationAlternatives[index];
+    final previousText = _selectionTranslationText?.trim() ?? '';
+    final previousLabel = _selectionTranslationProviderLabel?.trim() ?? '';
+    final alternatives = <TranslationAlternative>[
+      ..._selectionTranslationAlternatives,
+    ]..removeAt(index);
+    if (previousText.isNotEmpty) {
+      alternatives.add(
+        TranslationAlternative(
+          label: previousLabel.isEmpty ? 'Previous result' : previousLabel,
+          translatedText: previousText,
+        ),
+      );
+    }
+    setState(() {
+      _selectionTranslationText = selected.translatedText;
+      _selectionTranslationProviderLabel = selected.label;
+      _selectionTranslationAlternatives =
+          List<TranslationAlternative>.unmodifiable(alternatives);
+    });
   }
 
   void _toggleThumbnails() {
@@ -2333,25 +2469,86 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     _PdfReaderStrings strings, {
     required String source,
     required String? translated,
-  }) => SelectionArea(
-    key: const Key('pdf-selection-translation-panel'),
-    child: ListView(
+  }) {
+    final currentIsLocked = _currentSelectionTranslationLocked;
+    final lockedToShow = _lockedSelectionTranslations
+        .where(
+          (item) =>
+              item.sourceText != source || item.translatedText != translated,
+        )
+        .toList(growable: false);
+    return ListView(
+      key: const Key('pdf-selection-translation-panel'),
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          strings.selectedOriginal,
-          style: Theme.of(context).textTheme.labelLarge,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                strings.selectedOriginal,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            IconButton(
+              key: const Key('pdf-edit-selection-source-action'),
+              tooltip: _selectionSourceEditing
+                  ? strings.finishEditingSource
+                  : strings.editSelectedText,
+              onPressed: _selectionSourceEditing
+                  ? _finishEditingSelectionSource
+                  : _startEditingSelectionSource,
+              icon: Icon(
+                _selectionSourceEditing ? Icons.check : Icons.edit_outlined,
+                size: 18,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          source,
+        const SizedBox(height: 4),
+        TextField(
           key: const Key('pdf-selection-translation-source'),
+          controller: _selectionSourceController,
+          readOnly: !_selectionSourceEditing,
+          minLines: 1,
+          maxLines: 6,
+          onChanged: _onSelectionSourceEdited,
+          decoration: InputDecoration(
+            isDense: true,
+            filled: _selectionSourceEditing,
+            hintText: strings.editSelectedTextHint,
+          ),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
         ),
+        if (_selectionSourceEditing) ...[
+          const SizedBox(height: 6),
+          Text(
+            strings.sourceEditsAutoTranslate,
+            key: const Key('pdf-selection-source-edit-hint'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
         const Divider(height: 28),
-        Text(
-          strings.translatedText,
-          style: Theme.of(context).textTheme.labelLarge,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                strings.translatedText,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            if (translated?.isNotEmpty == true)
+              IconButton(
+                key: const Key('pdf-lock-selection-translation-action'),
+                tooltip: currentIsLocked
+                    ? strings.unlockTranslation
+                    : strings.lockTranslation,
+                onPressed: _toggleCurrentSelectionTranslationLock,
+                icon: Icon(
+                  currentIsLocked ? Icons.lock : Icons.lock_outline,
+                  size: 18,
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         if (_selectionTranslationDisabled) ...[
@@ -2429,12 +2626,36 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             ),
           ),
         ] else if (translated?.isNotEmpty == true) ...[
-          Text(
-            translated!,
-            key: const Key('pdf-selection-translation-text'),
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(height: 1.65),
+          Card(
+            key: const Key('pdf-selection-primary-translation-card'),
+            margin: EdgeInsets.zero,
+            elevation: 0,
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SelectionArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_selectionTranslationProviderLabel?.isNotEmpty == true)
+                      Text(
+                        strings.translationSourceLabel(
+                          _selectionTranslationProviderLabel!,
+                        ),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    const SizedBox(height: 5),
+                    Text(
+                      translated!,
+                      key: const Key('pdf-selection-translation-text'),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(height: 1.65),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
           if (_selectionTranslationBusy) ...[
             const SizedBox(height: 12),
@@ -2478,34 +2699,115 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      strings.translationSourceLabel(
-                        _selectionTranslationAlternatives[index].label,
-                      ),
-                      style: Theme.of(context).textTheme.labelSmall,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            strings.translationSourceLabel(
+                              _selectionTranslationAlternatives[index].label,
+                            ),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ),
+                        TextButton(
+                          key: Key(
+                            'pdf-use-selection-translation-alternative-$index',
+                          ),
+                          onPressed: () => _useAlternativeTranslation(index),
+                          child: Text(strings.useTranslation),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _selectionTranslationAlternatives[index].translatedText,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(height: 1.5),
+                    SelectionArea(
+                      child: Text(
+                        _selectionTranslationAlternatives[index].translatedText,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(height: 1.5),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
         ],
-        if (_selectionTranslationProviderLabel?.isNotEmpty == true) ...[
-          const SizedBox(height: 16),
+        if (lockedToShow.isNotEmpty) ...[
+          const Divider(height: 30),
           Text(
-            strings.translationProvider(_selectionTranslationProviderLabel!),
-            style: Theme.of(context).textTheme.bodySmall,
+            strings.lockedTranslations(lockedToShow.length),
+            style: Theme.of(context).textTheme.labelLarge,
           ),
+          const SizedBox(height: 8),
+          for (var index = 0; index < lockedToShow.length; index++)
+            Card(
+              key: Key('pdf-locked-selection-translation-$index'),
+              margin: const EdgeInsets.only(bottom: 8),
+              elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.lock_outline, size: 17),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SelectionArea(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              lockedToShow[index].sourceText,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              lockedToShow[index].translatedText,
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.copyWith(height: 1.45),
+                            ),
+                            if (lockedToShow[index]
+                                .providerLabel
+                                .isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                strings.translationSourceLabel(
+                                  lockedToShow[index].providerLabel,
+                                ),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: strings.copyTranslation,
+                      onPressed: () => Clipboard.setData(
+                        ClipboardData(text: lockedToShow[index].translatedText),
+                      ),
+                      icon: const Icon(Icons.copy_outlined, size: 17),
+                    ),
+                    IconButton(
+                      key: Key('pdf-remove-locked-translation-$index'),
+                      tooltip: strings.removeLockedTranslation,
+                      onPressed: () {
+                        final originalIndex = _lockedSelectionTranslations
+                            .indexOf(lockedToShow[index]);
+                        _removeLockedSelectionTranslation(originalIndex);
+                      },
+                      icon: const Icon(Icons.close, size: 17),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ],
-    ),
-  );
+    );
+  }
 
   Widget _buildViewer() {
     final viewerBuilder = widget.viewerBuilder;
@@ -2582,6 +2884,18 @@ String _suggestedEditedFileName(String sourceName) {
       ? fileName.substring(0, fileName.length - 4)
       : fileName;
   return '$stem - edited.pdf';
+}
+
+final class _LockedSelectionTranslation {
+  const _LockedSelectionTranslation({
+    required this.sourceText,
+    required this.translatedText,
+    required this.providerLabel,
+  });
+
+  final String sourceText;
+  final String translatedText;
+  final String providerLabel;
 }
 
 final class _PdfReaderStrings {
@@ -2686,6 +3000,15 @@ final class _PdfReaderStrings {
       ? '选择上方“聚合快译”即可使用本地术语、缓存和公共翻译记忆，不需要 API、端点或模型设置。选择会被记住。'
       : 'Choose Fast aggregate above for local terminology, cache, and public translation memory without an API key, endpoint, or model setup. Your choice is remembered.';
   String get selectedOriginal => isChinese ? '所选原文' : 'Selected text';
+  String get editSelectedText =>
+      isChinese ? '修正识别原文' : 'Correct extracted text';
+  String get finishEditingSource => isChinese ? '完成修正' : 'Finish correction';
+  String get editSelectedTextHint => isChinese
+      ? '可直接修正断行、连字符或识别错误'
+      : 'Correct line breaks, hyphenation, or extraction errors';
+  String get sourceEditsAutoTranslate => isChinese
+      ? '停止输入后会自动重新翻译，无需再次确认。'
+      : 'Translation refreshes automatically when you pause typing.';
   String get showPageTranslation =>
       isChinese ? '切换到整页译文' : 'Show page translation';
   String get configureTranslation =>
@@ -2712,6 +3035,14 @@ final class _PdfReaderStrings {
   };
   String get alternativeTranslations =>
       isChinese ? '其他候选译法' : 'Alternative translations';
+  String get useTranslation => isChinese ? '采用' : 'Use';
+  String get lockTranslation =>
+      isChinese ? '锁定本条，继续查询其他内容' : 'Lock this result and keep looking up text';
+  String get unlockTranslation => isChinese ? '取消锁定' : 'Unlock this result';
+  String lockedTranslations(int count) =>
+      isChinese ? '已锁定译文 · $count' : 'Locked translations · $count';
+  String get removeLockedTranslation =>
+      isChinese ? '移除锁定译文' : 'Remove locked translation';
   String get comparingTranslationSources => isChinese
       ? '首条译文已显示，正在并行比对其他可用来源…'
       : 'First result is ready; comparing other available sources in parallel…';

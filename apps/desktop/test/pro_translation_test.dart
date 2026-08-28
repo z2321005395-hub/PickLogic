@@ -42,19 +42,50 @@ void main() {
     },
   );
 
-  test('instant translation enforces the public short-query limit', () async {
+  test('instant translation enforces the bounded selection limit', () async {
     final provider = PickLogicInstantTranslationProvider(
       request: (_) async => <String, Object?>{},
     );
 
     expect(
       () => provider.translateSelectedText(
-        List<String>.filled(501, 'x').join(),
+        List<String>.filled(2001, 'x').join(),
         targetLanguage: 'Simplified Chinese',
       ),
       throwsA(isA<FormatException>()),
     );
   });
+
+  test(
+    'cross-page selections use at most four requests concurrently',
+    () async {
+      var active = 0;
+      var peakActive = 0;
+      var requestCount = 0;
+      final provider = PickLogicInstantTranslationProvider(
+        request: (_) async {
+          requestCount++;
+          active++;
+          if (active > peakActive) peakActive = active;
+          await Future<void>.delayed(const Duration(milliseconds: 2));
+          active--;
+          return <String, Object?>{
+            'responseStatus': 200,
+            'responseData': <String, Object?>{'translatedText': '译文'},
+          };
+        },
+      );
+
+      final result = await provider.translateSelectedText(
+        List<String>.filled(2000, '界').join(),
+        targetLanguage: 'English',
+      );
+
+      expect(requestCount, greaterThan(4));
+      expect(peakActive, 4);
+      expect(result.translatedText, isNotEmpty);
+    },
+  );
 
   test('instant translation reuses the bounded in-memory cache', () async {
     var requestCount = 0;
