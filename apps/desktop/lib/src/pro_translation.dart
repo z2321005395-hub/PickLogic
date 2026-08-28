@@ -14,16 +14,19 @@ typedef PublicTranslationRequest =
 
 /// No-key short-text translation available from the selection workflow.
 ///
-/// PickLogic accepts selections of up to 500 characters and splits them into
-/// anonymous MyMemory requests of at most 500 UTF-8 bytes. It sends only the
-/// selected text; PDF bytes, images, paths, and library metadata stay local.
+/// PickLogic accepts selections of up to 2,000 characters and splits them into
+/// anonymous MyMemory requests of at most 500 UTF-8 bytes. At most four chunks
+/// run concurrently so a cross-page paragraph stays responsive without
+/// flooding the public service. It sends only the selected text; PDF bytes,
+/// images, paths, and library metadata stay local.
 final class PickLogicInstantTranslationProvider implements TranslationProvider {
   PickLogicInstantTranslationProvider({PublicTranslationRequest? request})
     : _requestOverride = request,
       _client = request == null ? _createClient() : null;
 
-  static const _maxSelectionCharacters = 500;
+  static const _maxSelectionCharacters = 2000;
   static const _maxQueryBytes = 500;
+  static const _maxConcurrentRequests = 4;
   static const _maxResponseBytes = 512 * 1024;
   static const _requestTimeout = Duration(seconds: 8);
   static const _cacheCapacity = 96;
@@ -53,7 +56,7 @@ final class PickLogicInstantTranslationProvider implements TranslationProvider {
     if (source.isEmpty) throw const FormatException('Select text first.');
     if (source.length > _maxSelectionCharacters) {
       throw const FormatException(
-        'Instant translation accepts up to 500 characters per request.',
+        'Instant translation accepts up to 2,000 selected characters.',
       );
     }
     final cacheKey = '${targetLanguage.trim().toLowerCase()}\u0000$source';
@@ -87,20 +90,35 @@ final class PickLogicInstantTranslationProvider implements TranslationProvider {
         : 'zh-CN';
     final sourceCode = targetCode == 'en' ? 'zh-CN' : 'en';
     final chunks = _boundedUtf8Chunks(source);
-    final translatedChunks = await Future.wait(
-      chunks.map(
-        (chunk) => _translateChunk(
-          chunk,
+    final translatedChunks = List<SelectedTextTranslation?>.filled(
+      chunks.length,
+      null,
+    );
+    var nextChunk = 0;
+    Future<void> translateNextChunk() async {
+      while (nextChunk < chunks.length) {
+        final index = nextChunk++;
+        translatedChunks[index] = await _translateChunk(
+          chunks[index],
           sourceCode: sourceCode,
           targetCode: targetCode,
           targetLanguage: targetLanguage,
-        ),
-      ),
+        );
+      }
+    }
+
+    final workerCount = chunks.length < _maxConcurrentRequests
+        ? chunks.length
+        : _maxConcurrentRequests;
+    await Future.wait(
+      List<Future<void>>.generate(workerCount, (_) => translateNextChunk()),
     );
-    if (translatedChunks.length == 1) return translatedChunks.single;
+    final completedChunks = translatedChunks
+        .whereType<SelectedTextTranslation>();
+    if (translatedChunks.length == 1) return translatedChunks.single!;
     return SelectedTextTranslation(
       sourceText: source,
-      translatedText: translatedChunks
+      translatedText: completedChunks
           .map((result) => result.translatedText.trim())
           .join('\n'),
       targetLanguage: targetLanguage,

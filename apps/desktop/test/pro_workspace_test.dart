@@ -19,6 +19,13 @@ void main() {
     expect(documentRef.useProgressiveLoading, isFalse);
   });
 
+  test('PDF selection normalization repairs cross-line extracted text', () {
+    expect(
+      normalizePdfSelectionText('micro-\nstructure  evolves\r\nrapidly'),
+      'microstructure evolves rapidly',
+    );
+  });
+
   testWidgets(
     'Literature uses a bounded list-reader layout with opt-in details',
     (tester) async {
@@ -532,6 +539,75 @@ void main() {
         find.byKey(const Key('pdf-selection-translation-loading')),
         findsNothing,
       );
+    },
+  );
+
+  testWidgets(
+    'selection source correction retranslates and locked results survive lookup',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final selection = ValueNotifier<String>('');
+      addTearDown(selection.dispose);
+      final provider = _ImmediateTranslationProvider();
+
+      await tester.pumpWidget(
+        _localizedApp(
+          locale: const Locale('zh'),
+          home: Scaffold(
+            body: ProLocalPdfReader(
+              path: r'X:\synthetic\reader.pdf',
+              fileName: 'reader.pdf',
+              initialPageNumber: 1,
+              onPositionChanged: (_, _) {},
+              viewerBuilder: (_) => const SizedBox.expand(),
+              translationProvider: provider,
+              translationEngine: TranslationEngineChoice.instant,
+              selectionTextForTesting: selection,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      selection.value = 'micro-\nstructure';
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump();
+      expect(provider.sources.last, 'microstructure');
+
+      await tester.tap(
+        find.byKey(const Key('pdf-edit-selection-source-action')),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('pdf-selection-translation-source')),
+        'grain\nboundary',
+      );
+      await tester.pump(const Duration(milliseconds: 430));
+      await tester.pump();
+      expect(provider.sources.last, 'grain boundary');
+      expect(find.text('译文：grain boundary'), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.byKey(const Key('pdf-lock-selection-translation-action')),
+      );
+      await tester.tap(
+        find.byKey(const Key('pdf-lock-selection-translation-action')),
+      );
+      await tester.pump();
+
+      selection.value = 'second lookup';
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump();
+
+      expect(find.text('译文：second lookup'), findsOneWidget);
+      expect(
+        find.byKey(const Key('pdf-locked-selection-translation-0')),
+        findsOneWidget,
+      );
+      expect(find.text('译文：grain boundary'), findsOneWidget);
     },
   );
 
