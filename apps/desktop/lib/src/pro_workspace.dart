@@ -54,7 +54,7 @@ enum _LiteratureStatus {
 
 enum _LiteratureScope { all, starred, unread, duplicates, trash }
 
-final class ProWorkspaceRoute extends StatelessWidget {
+final class ProWorkspaceRoute extends StatefulWidget {
   const ProWorkspaceRoute({
     super.key,
     required this.section,
@@ -85,58 +85,89 @@ final class ProWorkspaceRoute extends StatelessWidget {
   final LiteratureTranslationStore? translationStore;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      toolbarHeight: 64,
-      titleSpacing: 8,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(_routeTitle(context, section)),
-          Text(
-            'PickLogic Pro',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        Tooltip(
-          message: Localizations.localeOf(context).languageCode == 'zh'
-              ? '未授权位置只读；测试工作区和已管理目录可按操作预览整理'
-              : 'Unauthorized locations are read-only; Test Workspace and managed folders use operation previews',
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Chip(
-              avatar: const Icon(Icons.lock_outline, size: 16),
-              label: Text(
-                Localizations.localeOf(context).languageCode == 'zh'
-                    ? '本地只读'
-                    : 'Local read-only',
-              ),
-              visualDensity: VisualDensity.compact,
-            ),
+  State<ProWorkspaceRoute> createState() => _ProWorkspaceRouteState();
+}
+
+final class _ProWorkspaceRouteState extends State<ProWorkspaceRoute> {
+  bool _readingFocus = false;
+
+  void _setReadingFocus(bool value) {
+    if (widget.section != 'literature' || _readingFocus == value) return;
+    setState(() => _readingFocus = value);
+  }
+
+  void _toggleReadingFocus() => _setReadingFocus(!_readingFocus);
+
+  @override
+  Widget build(BuildContext context) {
+    final readingFocus = widget.section == 'literature' && _readingFocus;
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.f11): _toggleReadingFocus,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          appBar: readingFocus
+              ? null
+              : AppBar(
+                  key: const Key('pro-workspace-app-bar'),
+                  toolbarHeight: 64,
+                  titleSpacing: 8,
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_routeTitle(context, widget.section)),
+                      Text(
+                        'PickLogic Pro',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    Tooltip(
+                      message:
+                          Localizations.localeOf(context).languageCode == 'zh'
+                          ? '未授权位置只读；测试工作区和已管理目录可按操作预览整理'
+                          : 'Unauthorized locations are read-only; Test Workspace and managed folders use operation previews',
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Chip(
+                          avatar: const Icon(Icons.lock_outline, size: 16),
+                          label: Text(
+                            Localizations.localeOf(context).languageCode == 'zh'
+                                ? '本地只读'
+                                : 'Local read-only',
+                          ),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+          body: ProWorkspaceView(
+            section: widget.section,
+            pdfReaderBuilder: widget.pdfReaderBuilder,
+            libraryStore: widget.libraryStore,
+            pdfPicker: widget.pdfPicker,
+            pdfMultiPicker: widget.pdfMultiPicker,
+            pdfSourceBuilder: widget.pdfSourceBuilder,
+            literaturePdfReaderBuilder: widget.literaturePdfReaderBuilder,
+            annotationStore: widget.annotationStore,
+            collectionStore: widget.collectionStore,
+            referencePicker: widget.referencePicker,
+            referenceLoader: widget.referenceLoader,
+            translationStore: widget.translationStore,
+            readingFocus: readingFocus,
+            onReadingFocusChanged: _setReadingFocus,
           ),
         ),
-      ],
-    ),
-    body: ProWorkspaceView(
-      section: section,
-      pdfReaderBuilder: pdfReaderBuilder,
-      libraryStore: libraryStore,
-      pdfPicker: pdfPicker,
-      pdfMultiPicker: pdfMultiPicker,
-      pdfSourceBuilder: pdfSourceBuilder,
-      literaturePdfReaderBuilder: literaturePdfReaderBuilder,
-      annotationStore: annotationStore,
-      collectionStore: collectionStore,
-      referencePicker: referencePicker,
-      referenceLoader: referenceLoader,
-      translationStore: translationStore,
-    ),
-  );
+      ),
+    );
+  }
 }
 
 final class ProWorkspaceView extends StatelessWidget {
@@ -154,6 +185,8 @@ final class ProWorkspaceView extends StatelessWidget {
     this.referencePicker,
     this.referenceLoader,
     this.translationStore,
+    this.readingFocus = false,
+    this.onReadingFocusChanged,
   });
 
   final String section;
@@ -168,6 +201,8 @@ final class ProWorkspaceView extends StatelessWidget {
   final LiteratureReferencePicker? referencePicker;
   final LiteratureReferenceLoader? referenceLoader;
   final LiteratureTranslationStore? translationStore;
+  final bool readingFocus;
+  final ValueChanged<bool>? onReadingFocusChanged;
 
   @override
   Widget build(BuildContext context) => switch (section) {
@@ -183,6 +218,8 @@ final class ProWorkspaceView extends StatelessWidget {
       referencePicker: referencePicker,
       referenceLoader: referenceLoader,
       translationStore: translationStore,
+      readingFocus: readingFocus,
+      onReadingFocusChanged: onReadingFocusChanged,
     ),
     'research' => const ResearchBucketsView(),
     'system' => const SystemInsightReadOnlyView(),
@@ -204,6 +241,8 @@ final class LiteratureManagerLiteView extends StatefulWidget {
     this.referencePicker,
     this.referenceLoader,
     this.translationStore,
+    this.readingFocus = false,
+    this.onReadingFocusChanged,
   });
 
   final WidgetBuilder? pdfReaderBuilder;
@@ -217,6 +256,8 @@ final class LiteratureManagerLiteView extends StatefulWidget {
   final LiteratureReferencePicker? referencePicker;
   final LiteratureReferenceLoader? referenceLoader;
   final LiteratureTranslationStore? translationStore;
+  final bool readingFocus;
+  final ValueChanged<bool>? onReadingFocusChanged;
 
   @override
   State<LiteratureManagerLiteView> createState() =>
@@ -255,12 +296,18 @@ final class _LiteratureManagerLiteViewState
   bool _collectionPaneVisible = true;
   bool _libraryPaneVisible = true;
   bool _pageThumbnailsVisible = true;
+  bool _standaloneReadingFocus = false;
+  bool _preFocusCollectionPaneVisible = true;
+  bool _preFocusLibraryPaneVisible = true;
+  bool _preFocusPageThumbnailsVisible = true;
   TranslationEngineChoice _translationEngine = TranslationEngineChoice.off;
   int _statusCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _standaloneReadingFocus = widget.readingFocus;
+    if (_focusReading) _enterReadingFocus();
     _storeFuture = widget.libraryStore == null
         ? _createDefaultStore()
         : Future<LiteratureLibraryStore>.value(widget.libraryStore);
@@ -286,6 +333,19 @@ final class _LiteratureManagerLiteViewState
     unawaited(_loadLibrary());
   }
 
+  @override
+  void didUpdateWidget(covariant LiteratureManagerLiteView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.onReadingFocusChanged != null &&
+        oldWidget.readingFocus != widget.readingFocus) {
+      if (widget.readingFocus) {
+        _enterReadingFocus();
+      } else {
+        _exitReadingFocus();
+      }
+    }
+  }
+
   Future<void> _initializeTranslationProvider() async {
     await _translationProvider.initialize();
     if (!mounted) return;
@@ -298,17 +358,39 @@ final class _LiteratureManagerLiteViewState
     setState(() => _translationEngine = choice);
   }
 
-  bool get _focusReading =>
-      !_collectionPaneVisible &&
-      !_libraryPaneVisible &&
-      !_pageThumbnailsVisible;
+  bool get _focusReading => widget.onReadingFocusChanged == null
+      ? _standaloneReadingFocus
+      : widget.readingFocus;
+
+  void _enterReadingFocus() {
+    _preFocusCollectionPaneVisible = _collectionPaneVisible;
+    _preFocusLibraryPaneVisible = _libraryPaneVisible;
+    _preFocusPageThumbnailsVisible = _pageThumbnailsVisible;
+    _collectionPaneVisible = false;
+    _libraryPaneVisible = false;
+    _pageThumbnailsVisible = false;
+  }
+
+  void _exitReadingFocus() {
+    _collectionPaneVisible = _preFocusCollectionPaneVisible;
+    _libraryPaneVisible = _preFocusLibraryPaneVisible;
+    _pageThumbnailsVisible = _preFocusPageThumbnailsVisible;
+  }
 
   void _toggleFocusReading() {
-    final focused = _focusReading;
+    final next = !_focusReading;
+    final onChanged = widget.onReadingFocusChanged;
+    if (onChanged != null) {
+      onChanged(next);
+      return;
+    }
     setState(() {
-      _collectionPaneVisible = focused;
-      _libraryPaneVisible = focused;
-      _pageThumbnailsVisible = focused;
+      _standaloneReadingFocus = next;
+      if (next) {
+        _enterReadingFocus();
+      } else {
+        _exitReadingFocus();
+      }
     });
   }
 
@@ -1874,210 +1956,220 @@ final class _LiteratureManagerLiteViewState
       ),
       child: Stack(
         children: [
-          Padding(
-            key: const Key('literature-manager-lite-view'),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _ProHeader(
-                  icon: Icons.menu_book_outlined,
-                  title: strings.managerTitle,
-                  subtitle: strings.managerSubtitle,
-                  badge: strings.localReadOnly,
-                  trailing: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      if (selected != null)
-                        OutlinedButton.icon(
-                          key: const Key('literature-focus-reading-action'),
-                          onPressed: _toggleFocusReading,
-                          icon: Icon(
-                            _focusReading
-                                ? Icons.fullscreen_exit
-                                : Icons.fullscreen,
+          if (_focusReading && selected != null)
+            Positioned.fill(
+              child: ColoredBox(
+                key: const Key('literature-focus-surface'),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: _buildReaderPane(selected, strings, focusMode: true),
+              ),
+            )
+          else
+            Padding(
+              key: const Key('literature-manager-lite-view'),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _ProHeader(
+                    key: const Key('literature-workspace-header'),
+                    icon: Icons.menu_book_outlined,
+                    title: strings.managerTitle,
+                    subtitle: strings.managerSubtitle,
+                    badge: strings.localReadOnly,
+                    trailing: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (selected?.hasLocalPdf == true)
+                          OutlinedButton.icon(
+                            key: const Key('literature-focus-reading-action'),
+                            onPressed: _toggleFocusReading,
+                            icon: Icon(
+                              _focusReading
+                                  ? Icons.fullscreen_exit
+                                  : Icons.fullscreen,
+                            ),
+                            label: Text(
+                              _focusReading
+                                  ? strings.exitFocusReading
+                                  : strings.focusReading,
+                            ),
                           ),
-                          label: Text(
-                            _focusReading
-                                ? strings.exitFocusReading
-                                : strings.focusReading,
-                          ),
-                        ),
-                      if (selected != null)
-                        MenuAnchor(
-                          key: const Key('literature-pane-menu'),
-                          menuChildren: [
-                            MenuItemButton(
-                              key: const Key(
-                                'literature-toggle-collections-action',
-                              ),
-                              onPressed: () => setState(
-                                () => _collectionPaneVisible =
-                                    !_collectionPaneVisible,
-                              ),
-                              leadingIcon: Icon(
-                                _collectionPaneVisible
-                                    ? Icons.check_box_outlined
-                                    : Icons.check_box_outline_blank,
-                              ),
-                              child: Text(strings.collectionPane),
-                            ),
-                            MenuItemButton(
-                              key: const Key(
-                                'literature-toggle-library-action',
-                              ),
-                              onPressed: () => setState(
-                                () =>
-                                    _libraryPaneVisible = !_libraryPaneVisible,
-                              ),
-                              leadingIcon: Icon(
-                                _libraryPaneVisible
-                                    ? Icons.check_box_outlined
-                                    : Icons.check_box_outline_blank,
-                              ),
-                              child: Text(strings.libraryPane),
-                            ),
-                            MenuItemButton(
-                              key: const Key(
-                                'literature-toggle-thumbnails-action',
-                              ),
-                              onPressed: () => setState(
-                                () => _pageThumbnailsVisible =
-                                    !_pageThumbnailsVisible,
-                              ),
-                              leadingIcon: Icon(
-                                _pageThumbnailsVisible
-                                    ? Icons.check_box_outlined
-                                    : Icons.check_box_outline_blank,
-                              ),
-                              child: Text(strings.pageThumbnailsPane),
-                            ),
-                          ],
-                          builder: (context, controller, child) =>
-                              IconButton.filledTonal(
-                                key: const Key('literature-pane-menu-action'),
-                                tooltip: strings.readerLayout,
-                                onPressed: () => controller.isOpen
-                                    ? controller.close()
-                                    : controller.open(),
-                                icon: const Icon(Icons.view_sidebar_outlined),
-                              ),
-                        ),
-                      OutlinedButton.icon(
-                        key: const Key('literature-import-reference-action'),
-                        onPressed: _loading || _adding || !_catalogAvailable
-                            ? null
-                            : _importReferences,
-                        icon: const Icon(Icons.file_upload_outlined),
-                        label: Text(strings.importReferences),
-                      ),
-                      FilledButton.icon(
-                        key: const Key('literature-add-action'),
-                        onPressed: _loading || _adding || !_catalogAvailable
-                            ? null
-                            : _addLiterature,
-                        icon: _adding
-                            ? const SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                        if (selected != null)
+                          MenuAnchor(
+                            key: const Key('literature-pane-menu'),
+                            menuChildren: [
+                              MenuItemButton(
+                                key: const Key(
+                                  'literature-toggle-collections-action',
                                 ),
-                              )
-                            : const Icon(Icons.add),
-                        label: Text(strings.addLiterature),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_status != null) ...[
-                  const SizedBox(height: 8),
-                  Material(
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Text(
-                        strings.status(_status!, count: _statusCount),
-                        key: const Key('literature-status'),
-                      ),
+                                onPressed: () => setState(
+                                  () => _collectionPaneVisible =
+                                      !_collectionPaneVisible,
+                                ),
+                                leadingIcon: Icon(
+                                  _collectionPaneVisible
+                                      ? Icons.check_box_outlined
+                                      : Icons.check_box_outline_blank,
+                                ),
+                                child: Text(strings.collectionPane),
+                              ),
+                              MenuItemButton(
+                                key: const Key(
+                                  'literature-toggle-library-action',
+                                ),
+                                onPressed: () => setState(
+                                  () => _libraryPaneVisible =
+                                      !_libraryPaneVisible,
+                                ),
+                                leadingIcon: Icon(
+                                  _libraryPaneVisible
+                                      ? Icons.check_box_outlined
+                                      : Icons.check_box_outline_blank,
+                                ),
+                                child: Text(strings.libraryPane),
+                              ),
+                              MenuItemButton(
+                                key: const Key(
+                                  'literature-toggle-thumbnails-action',
+                                ),
+                                onPressed: () => setState(
+                                  () => _pageThumbnailsVisible =
+                                      !_pageThumbnailsVisible,
+                                ),
+                                leadingIcon: Icon(
+                                  _pageThumbnailsVisible
+                                      ? Icons.check_box_outlined
+                                      : Icons.check_box_outline_blank,
+                                ),
+                                child: Text(strings.pageThumbnailsPane),
+                              ),
+                            ],
+                            builder: (context, controller, child) =>
+                                IconButton.filledTonal(
+                                  key: const Key('literature-pane-menu-action'),
+                                  tooltip: strings.readerLayout,
+                                  onPressed: () => controller.isOpen
+                                      ? controller.close()
+                                      : controller.open(),
+                                  icon: const Icon(Icons.view_sidebar_outlined),
+                                ),
+                          ),
+                        OutlinedButton.icon(
+                          key: const Key('literature-import-reference-action'),
+                          onPressed: _loading || _adding || !_catalogAvailable
+                              ? null
+                              : _importReferences,
+                          icon: const Icon(Icons.file_upload_outlined),
+                          label: Text(strings.importReferences),
+                        ),
+                        FilledButton.icon(
+                          key: const Key('literature-add-action'),
+                          onPressed: _loading || _adding || !_catalogAvailable
+                              ? null
+                              : _addLiterature,
+                          icon: _adding
+                              ? const SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.add),
+                          label: Text(strings.addLiterature),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-                const SizedBox(height: 10),
-                if (_loading)
-                  const Expanded(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (_entries.isEmpty)
-                  Expanded(
-                    child: _EmptyWorkspace(
-                      icon: Icons.picture_as_pdf_outlined,
-                      title: strings.library,
-                      message: strings.emptyLibrary,
+                  if (_status != null) ...[
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          strings.status(_status!, count: _statusCount),
+                          key: const Key('literature-status'),
+                        ),
+                      ),
                     ),
-                  )
-                else
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final showCollectionSidebar =
-                            constraints.maxWidth >= 1320 &&
-                            _collectionPaneVisible;
-                        final showLibrary = _libraryPaneVisible;
-                        final library = _buildLibraryList(
-                          strings,
-                          showScopeFilter: !showCollectionSidebar,
-                        );
-                        final reader = selected == null
-                            ? _EmptyWorkspace(
-                                icon: Icons.menu_book_outlined,
-                                title: strings.selectLiterature,
-                                message: strings.selectLiteratureHint,
-                              )
-                            : _buildReaderPane(selected, strings);
-                        if (constraints.maxWidth < 980) {
-                          if (!showLibrary) return reader;
-                          final libraryHeight = constraints.maxHeight < 520
-                              ? 170.0
-                              : 210.0;
-                          return Column(
+                  ],
+                  const SizedBox(height: 10),
+                  if (_loading)
+                    const Expanded(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_entries.isEmpty)
+                    Expanded(
+                      child: _EmptyWorkspace(
+                        icon: Icons.picture_as_pdf_outlined,
+                        title: strings.library,
+                        message: strings.emptyLibrary,
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final showCollectionSidebar =
+                              constraints.maxWidth >= 1320 &&
+                              _collectionPaneVisible;
+                          final showLibrary = _libraryPaneVisible;
+                          final library = _buildLibraryList(
+                            strings,
+                            showScopeFilter: !showCollectionSidebar,
+                          );
+                          final reader = selected == null
+                              ? _EmptyWorkspace(
+                                  icon: Icons.menu_book_outlined,
+                                  title: strings.selectLiterature,
+                                  message: strings.selectLiteratureHint,
+                                )
+                              : _buildReaderPane(selected, strings);
+                          if (constraints.maxWidth < 980) {
+                            if (!showLibrary) return reader;
+                            final libraryHeight = constraints.maxHeight < 520
+                                ? 170.0
+                                : 210.0;
+                            return Column(
+                              children: [
+                                SizedBox(height: libraryHeight, child: library),
+                                const SizedBox(height: 10),
+                                Expanded(child: reader),
+                              ],
+                            );
+                          }
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              SizedBox(height: libraryHeight, child: library),
-                              const SizedBox(height: 10),
+                              if (showCollectionSidebar) ...[
+                                SizedBox(
+                                  width: 216,
+                                  child: _buildCollectionSidebar(strings),
+                                ),
+                                const SizedBox(width: 10),
+                              ],
+                              if (showLibrary) ...[
+                                SizedBox(
+                                  width: showCollectionSidebar ? 350 : 340,
+                                  child: library,
+                                ),
+                                const SizedBox(width: 10),
+                              ],
                               Expanded(child: reader),
                             ],
                           );
-                        }
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (showCollectionSidebar) ...[
-                              SizedBox(
-                                width: 216,
-                                child: _buildCollectionSidebar(strings),
-                              ),
-                              const SizedBox(width: 10),
-                            ],
-                            if (showLibrary) ...[
-                              SizedBox(
-                                width: showCollectionSidebar ? 350 : 340,
-                                child: library,
-                              ),
-                              const SizedBox(width: 10),
-                            ],
-                            Expanded(child: reader),
-                          ],
-                        );
-                      },
+                        },
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
           if (_dragging)
             Positioned.fill(
               child: IgnorePointer(
@@ -2569,8 +2661,9 @@ final class _LiteratureManagerLiteViewState
 
   Widget _buildReaderPane(
     LiteratureLibraryEntry selected,
-    _LiteratureStrings strings,
-  ) {
+    _LiteratureStrings strings, {
+    bool focusMode = false,
+  }) {
     final progressPercent = (selected.record.readingProgress * 100).round();
     final reader = selected.hasLocalPdf
         ? widget.literaturePdfReaderBuilder?.call(
@@ -2599,6 +2692,8 @@ final class _LiteratureManagerLiteViewState
                 thumbnailsVisible: _pageThumbnailsVisible,
                 onThumbnailsVisibilityChanged: (visible) =>
                     setState(() => _pageThumbnailsVisible = visible),
+                focusMode: focusMode,
+                onExitFocus: focusMode ? _toggleFocusReading : null,
                 literatureId: selected.id,
                 annotations:
                     _annotations[selected.id] ?? const <LiteratureAnnotation>[],
@@ -2616,6 +2711,13 @@ final class _LiteratureManagerLiteViewState
               label: Text(strings.attachPdf),
             ),
           );
+    if (focusMode) {
+      return ColoredBox(
+        key: const Key('literature-focus-reader'),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: reader,
+      );
+    }
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -2625,6 +2727,7 @@ final class _LiteratureManagerLiteViewState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              key: const Key('literature-reader-header'),
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
@@ -2884,6 +2987,7 @@ final class SystemInsightReadOnlyView extends StatelessWidget {
 
 final class _ProHeader extends StatelessWidget {
   const _ProHeader({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

@@ -56,6 +56,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('reader-area-test-double')), findsOneWidget);
+      expect(find.byKey(const Key('pro-workspace-app-bar')), findsOneWidget);
+      expect(
+        find.byKey(const Key('literature-workspace-header')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('literature-reader-header')), findsOneWidget);
       expect(find.byKey(const Key('literature-metadata-dialog')), findsNothing);
       expect(
         find.byKey(const Key('literature-rename-preview-dialog')),
@@ -73,17 +79,22 @@ void main() {
         findsNothing,
       );
       expect(find.byKey(const Key('reader-area-test-double')), findsOneWidget);
-      expect(find.text('退出专注'), findsOneWidget);
-
-      await tester.tap(
-        find.byKey(const Key('literature-focus-reading-action')),
+      expect(find.byKey(const Key('literature-focus-surface')), findsOneWidget);
+      expect(find.byKey(const Key('pro-workspace-app-bar')), findsNothing);
+      expect(
+        find.byKey(const Key('literature-workspace-header')),
+        findsNothing,
       );
+      expect(find.byKey(const Key('literature-reader-header')), findsNothing);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f11);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('literature-library-list')), findsOneWidget);
       expect(
         find.byKey(const Key('literature-collection-sidebar')),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('pro-workspace-app-bar')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('literature-metadata-action')));
       await tester.pumpAndSettle();
@@ -104,6 +115,55 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('仅预览'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Focused PDF reader keeps a single compact toolbar and dominant viewport',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var exitRequests = 0;
+
+      await tester.pumpWidget(
+        _localizedApp(
+          locale: const Locale('zh'),
+          home: Scaffold(
+            body: ProLocalPdfReader(
+              path: r'X:\synthetic\reader.pdf',
+              fileName: 'reader.pdf',
+              initialPageNumber: 1,
+              onPositionChanged: (_, _) {},
+              focusMode: true,
+              onExitFocus: () => exitRequests += 1,
+              viewerBuilder: (_) =>
+                  const SizedBox.expand(key: Key('focused-reader-viewport')),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('pdf-focus-toolbar')), findsOneWidget);
+      expect(find.byKey(const Key('pdf-search-field')), findsNothing);
+      expect(
+        tester.getSize(find.byKey(const Key('pdf-reader-toolbar'))).height,
+        lessThanOrEqualTo(48),
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('focused-reader-viewport'))).height,
+        greaterThan(640),
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('pdf-focus-search-toggle-action')));
+      await tester.pump();
+      expect(find.byKey(const Key('pdf-search-field')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('pdf-exit-focus-action')));
+      await tester.pump();
+      expect(exitRequests, 1);
     },
   );
 
