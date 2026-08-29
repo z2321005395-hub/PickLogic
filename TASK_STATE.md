@@ -506,3 +506,16 @@ Push the focused branch, run one artifact-free PR gate, merge green work into `d
 ## Next action
 
 Push the focused branch, run one artifact-free PR gate, merge green work into `develop`, and confirm Actions artifacts/caches remain empty.
+
+## Full-window Pro literature focus
+
+- Goal: replace the former pane-only Literature focus toggle with a real window-level reading state that prioritizes the PDF instead of preserving management chrome.
+- Entering focus now removes the Pro app bar, Literature header, library/collection panes, document metadata card, progress row, outer card padding, and page thumbnails. A single 48 px toolbar keeps exit/F11, inline search, page navigation, zoom, thumbnails, annotations, bilingual view, translation, in-place editing, and overflow tools reachable.
+- Exiting through F11 or the visible toolbar action restores the exact pre-focus pane visibility. Search expands inside the same toolbar without adding a second row.
+- Verification: targeted analysis clean; focus tests 2/2; Pro workspace 18/18; complete Desktop 49/49; privacy findings 0; diff check clean. No dependency, binary, data contract, or real PDF changed.
+- Commit `87be05b` built from the isolated ASCII worktree. The installed Pro runtime is 43,420,262 bytes; packaged PDF reader and content-edit smokes both exited 0. The ignored local ZIP is 19,118,504 bytes with SHA-256 `CA32267860A83EDF4063597433D43163DF4DDABD3AC2FE342F0B50F58EA775F0`.
+- Computer Use verified the synthetic demo PDF at 1269×715: focus left only one compact toolbar and a full remaining PDF viewport; F11 round-trip and inline search worked without wrapping. Version `0.1.0-alpha-87be05b` is installed and both shortcuts point to it. Every PickLogic process was closed after validation.
+
+## Next action
+
+Push this focused branch, run one artifact-free PR gate, merge green work into `develop`, verify Actions artifacts/caches remain empty, and let the maintainer reopen Pro from the updated shortcut for hands-on reading feedback.

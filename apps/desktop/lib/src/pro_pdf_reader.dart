@@ -48,6 +48,8 @@ final class ProLocalPdfReader extends StatelessWidget {
     this.onConfigureTranslation,
     this.thumbnailsVisible = true,
     this.onThumbnailsVisibilityChanged,
+    this.focusMode = false,
+    this.onExitFocus,
     this.literatureId = '',
     this.annotations = const <LiteratureAnnotation>[],
     this.onSaveAnnotation,
@@ -68,6 +70,8 @@ final class ProLocalPdfReader extends StatelessWidget {
   final AsyncCallback? onConfigureTranslation;
   final bool thumbnailsVisible;
   final ValueChanged<bool>? onThumbnailsVisibilityChanged;
+  final bool focusMode;
+  final VoidCallback? onExitFocus;
   final String literatureId;
   final List<LiteratureAnnotation> annotations;
   final LiteratureAnnotationSaved? onSaveAnnotation;
@@ -88,6 +92,8 @@ final class ProLocalPdfReader extends StatelessWidget {
     onConfigureTranslation: onConfigureTranslation,
     thumbnailsVisible: thumbnailsVisible,
     onThumbnailsVisibilityChanged: onThumbnailsVisibilityChanged,
+    focusMode: focusMode,
+    onExitFocus: onExitFocus,
     literatureId: literatureId,
     annotations: annotations,
     onSaveAnnotation: onSaveAnnotation,
@@ -131,6 +137,8 @@ final class _ProPdfReader extends StatefulWidget {
     this.onConfigureTranslation,
     this.thumbnailsVisible = true,
     this.onThumbnailsVisibilityChanged,
+    this.focusMode = false,
+    this.onExitFocus,
     this.literatureId = '',
     this.annotations = const <LiteratureAnnotation>[],
     this.onSaveAnnotation,
@@ -152,6 +160,8 @@ final class _ProPdfReader extends StatefulWidget {
   final AsyncCallback? onConfigureTranslation;
   final bool thumbnailsVisible;
   final ValueChanged<bool>? onThumbnailsVisibilityChanged;
+  final bool focusMode;
+  final VoidCallback? onExitFocus;
   final String literatureId;
   final List<LiteratureAnnotation> annotations;
   final LiteratureAnnotationSaved? onSaveAnnotation;
@@ -174,6 +184,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   final TextEditingController _pageController = TextEditingController();
   final TextEditingController _selectionSourceController =
       TextEditingController();
+  final FocusNode _focusSearchFocusNode = FocusNode();
   PdfTextSearcher? _searcher;
   PdfDocument? _document;
   int _pageNumber = 1;
@@ -206,6 +217,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
   double? _contentEditZoom;
   Offset? _contentEditViewportFraction;
   bool _annotationsVisible = false;
+  bool _focusSearchVisible = false;
   late bool _thumbnailsVisible;
   final Map<int, String> _pageTranslations = <int, String>{};
   final Map<int, String> _pageTranslationSources = <int, String>{};
@@ -239,6 +251,9 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     if (oldWidget.thumbnailsVisible != widget.thumbnailsVisible) {
       _thumbnailsVisible = widget.thumbnailsVisible;
     }
+    if (oldWidget.focusMode && !widget.focusMode) {
+      _focusSearchVisible = false;
+    }
     if (!identical(
       oldWidget.selectionTextForTesting,
       widget.selectionTextForTesting,
@@ -269,6 +284,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     _searchController.dispose();
     _pageController.dispose();
     _selectionSourceController.dispose();
+    _focusSearchFocusNode.dispose();
     super.dispose();
   }
 
@@ -1464,11 +1480,380 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
     }
   }
 
+  Future<void> _goToRelativePage(int delta) async {
+    final document = _document;
+    if (document == null) return;
+    final proposed = _pageNumber + delta;
+    final target = proposed < 1
+        ? 1
+        : proposed > document.pages.length
+        ? document.pages.length
+        : proposed;
+    if (target == _pageNumber) return;
+    _pageController.text = '$target';
+    await _jumpToPage();
+  }
+
+  void _toggleFocusSearch() {
+    final visible = !_focusSearchVisible;
+    setState(() => _focusSearchVisible = visible);
+    if (visible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusSearchFocusNode.requestFocus();
+      });
+    }
+  }
+
+  Widget _compactToolbarButton({
+    Key? key,
+    required String tooltip,
+    required IconData icon,
+    VoidCallback? onPressed,
+    bool selected = false,
+  }) => IconButton(
+    key: key,
+    tooltip: tooltip,
+    onPressed: onPressed,
+    isSelected: selected,
+    visualDensity: VisualDensity.compact,
+    constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+    padding: EdgeInsets.zero,
+    iconSize: 20,
+    icon: Icon(icon),
+  );
+
+  Widget _buildFocusReaderToolbar(
+    _PdfReaderStrings strings, {
+    required String matchLabel,
+    required String zoomLabel,
+  }) {
+    final document = _document;
+    final searcher = _searcher;
+    final canEdit =
+        widget.filePath != null && document != null && !_pdfEditBusy;
+    return Material(
+      key: const Key('pdf-reader-toolbar'),
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 1,
+      child: SizedBox(
+        height: 48,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 820;
+              final pageCount = document?.pages.length;
+              final titleOrSearch = _focusSearchVisible
+                  ? Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 34,
+                            child: TextField(
+                              key: const Key('pdf-search-field'),
+                              controller: _searchController,
+                              focusNode: _focusSearchFocusNode,
+                              enabled: searcher != null,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: strings.searchPdfText,
+                                prefixIcon: const Icon(Icons.search, size: 18),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                                border: const OutlineInputBorder(),
+                              ),
+                              textInputAction: TextInputAction.search,
+                              onSubmitted: (_) => _startSearch(),
+                            ),
+                          ),
+                        ),
+                        _compactToolbarButton(
+                          key: const Key('pdf-search-action'),
+                          tooltip: strings.search,
+                          icon: Icons.arrow_forward,
+                          onPressed: searcher == null ? null : _startSearch,
+                        ),
+                        if (!narrow) ...[
+                          SizedBox(
+                            width: 58,
+                            child: Text(
+                              matchLabel,
+                              key: const Key('pdf-search-status'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ),
+                          _compactToolbarButton(
+                            tooltip: strings.previousMatch,
+                            icon: Icons.keyboard_arrow_up,
+                            onPressed: searcher?.hasMatches == true
+                                ? () => searcher!.goToPrevMatch()
+                                : null,
+                          ),
+                          _compactToolbarButton(
+                            tooltip: strings.nextMatch,
+                            icon: Icons.keyboard_arrow_down,
+                            onPressed: searcher?.hasMatches == true
+                                ? () => searcher!.goToNextMatch()
+                                : null,
+                          ),
+                        ] else
+                          Offstage(
+                            child: Text(
+                              matchLabel,
+                              key: const Key('pdf-search-status'),
+                            ),
+                          ),
+                      ],
+                    )
+                  : Tooltip(
+                      key: const Key('pdf-local-status'),
+                      message: widget.isSynthetic
+                          ? strings.syntheticDescription
+                          : strings.localDescription,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_outline, size: 17),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              widget.sourceName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+              return Row(
+                key: const Key('pdf-focus-toolbar'),
+                children: [
+                  _compactToolbarButton(
+                    key: const Key('pdf-exit-focus-action'),
+                    tooltip: strings.exitFocusReading,
+                    icon: Icons.fullscreen_exit,
+                    onPressed: widget.onExitFocus,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(child: titleOrSearch),
+                  _compactToolbarButton(
+                    key: const Key('pdf-focus-search-toggle-action'),
+                    tooltip: _focusSearchVisible
+                        ? strings.closeSearch
+                        : strings.search,
+                    icon: _focusSearchVisible ? Icons.close : Icons.search,
+                    onPressed: _toggleFocusSearch,
+                  ),
+                  const SizedBox(height: 24, child: VerticalDivider(width: 10)),
+                  _compactToolbarButton(
+                    key: const Key('pdf-previous-page-action'),
+                    tooltip: strings.previousPage,
+                    icon: Icons.chevron_left,
+                    onPressed: document != null && _pageNumber > 1
+                        ? () => unawaited(_goToRelativePage(-1))
+                        : null,
+                  ),
+                  SizedBox(
+                    width: 42,
+                    height: 32,
+                    child: TextField(
+                      key: const Key('pdf-page-jump-field'),
+                      controller: _pageController,
+                      enabled: document != null,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 7),
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) => _jumpToPage(),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      pageCount == null ? '/—' : '/$pageCount',
+                      key: const Key('pdf-page-status'),
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                  _compactToolbarButton(
+                    key: const Key('pdf-next-page-action'),
+                    tooltip: strings.nextPage,
+                    icon: Icons.chevron_right,
+                    onPressed:
+                        document != null && _pageNumber < document.pages.length
+                        ? () => unawaited(_goToRelativePage(1))
+                        : null,
+                  ),
+                  const SizedBox(height: 24, child: VerticalDivider(width: 10)),
+                  _compactToolbarButton(
+                    key: const Key('pdf-zoom-out'),
+                    tooltip: strings.zoomOut,
+                    icon: Icons.remove,
+                    onPressed: _contentEditing || _viewerController.isReady
+                        ? _zoomOut
+                        : null,
+                  ),
+                  SizedBox(
+                    width: 42,
+                    child: Text(
+                      zoomLabel,
+                      key: const Key('pdf-zoom-status'),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                  _compactToolbarButton(
+                    key: const Key('pdf-zoom-in'),
+                    tooltip: strings.zoomIn,
+                    icon: Icons.add,
+                    onPressed: _contentEditing || _viewerController.isReady
+                        ? _zoomIn
+                        : null,
+                  ),
+                  _compactToolbarButton(
+                    key: const Key('pdf-toggle-thumbnails-action'),
+                    tooltip: _thumbnailsVisible
+                        ? strings.hidePageThumbnails
+                        : strings.showPageThumbnails,
+                    icon: _thumbnailsVisible
+                        ? Icons.view_sidebar
+                        : Icons.view_sidebar_outlined,
+                    selected: _thumbnailsVisible,
+                    onPressed: _toggleThumbnails,
+                  ),
+                  _compactToolbarButton(
+                    key: const Key('pdf-toggle-annotations-action'),
+                    tooltip: strings.annotations(widget.annotations.length),
+                    icon: _annotationsVisible
+                        ? Icons.notes
+                        : Icons.notes_outlined,
+                    selected: _annotationsVisible,
+                    onPressed:
+                        widget.annotations.isNotEmpty ||
+                            widget.onSaveAnnotation != null
+                        ? () => setState(
+                            () => _annotationsVisible = !_annotationsVisible,
+                          )
+                        : null,
+                  ),
+                  _compactToolbarButton(
+                    key: const Key('pdf-bilingual-toggle-action'),
+                    tooltip: strings.bilingualReading,
+                    icon: Icons.chrome_reader_mode_outlined,
+                    selected: _bilingualVisible,
+                    onPressed: () =>
+                        setState(() => _bilingualVisible = !_bilingualVisible),
+                  ),
+                  MenuAnchor(
+                    key: const Key('pdf-translation-menu'),
+                    menuChildren: [
+                      MenuItemButton(
+                        key: const Key('pdf-translate-page-action'),
+                        onPressed:
+                            document == null ||
+                                _translationBusy ||
+                                _documentTranslationBusy
+                            ? null
+                            : _translateCurrentPage,
+                        leadingIcon: const Icon(Icons.translate_outlined),
+                        child: Text(strings.translateCurrentPage),
+                      ),
+                      if (_documentTranslationBusy)
+                        MenuItemButton(
+                          key: const Key(
+                            'pdf-stop-document-translation-action',
+                          ),
+                          onPressed: () =>
+                              setState(() => _cancelDocumentTranslation = true),
+                          leadingIcon: const Icon(Icons.stop_circle_outlined),
+                          child: Text(strings.stopTranslation),
+                        )
+                      else
+                        MenuItemButton(
+                          key: const Key('pdf-translate-document-action'),
+                          onPressed: document == null
+                              ? null
+                              : _translateDocument,
+                          leadingIcon: const Icon(Icons.auto_stories_outlined),
+                          child: Text(strings.translateDocument),
+                        ),
+                    ],
+                    builder: (context, controller, child) =>
+                        _compactToolbarButton(
+                          tooltip: strings.translationTools,
+                          icon: Icons.translate,
+                          onPressed: () => controller.isOpen
+                              ? controller.close()
+                              : controller.open(),
+                        ),
+                  ),
+                  _compactToolbarButton(
+                    key: const Key('pdf-edit-copy-action'),
+                    tooltip: _contentEditing
+                        ? strings.finishEditing
+                        : strings.editPdfContent,
+                    icon: _contentEditing
+                        ? Icons.check_circle_outline
+                        : Icons.edit_document,
+                    onPressed: canEdit ? _editPdfContent : null,
+                  ),
+                  MenuAnchor(
+                    menuChildren: [
+                      MenuItemButton(
+                        key: const Key('pdf-edit-pages-action'),
+                        onPressed: canEdit && !_contentEditing
+                            ? _editPdfCopy
+                            : null,
+                        leadingIcon: const Icon(Icons.view_carousel_outlined),
+                        child: Text(strings.organizePdfPages),
+                      ),
+                      if (widget.translationStore != null)
+                        MenuItemButton(
+                          key: const Key('pdf-terminology-action'),
+                          onPressed: _showTerminologyEditor,
+                          leadingIcon: const Icon(Icons.spellcheck_outlined),
+                          child: Text(strings.terminology),
+                        ),
+                    ],
+                    builder: (context, controller, child) =>
+                        _compactToolbarButton(
+                          key: const Key('pdf-focus-more-menu-action'),
+                          tooltip: strings.moreReaderActions,
+                          icon: Icons.more_horiz,
+                          onPressed: () => controller.isOpen
+                              ? controller.close()
+                              : controller.open(),
+                        ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildReaderToolbar(
     _PdfReaderStrings strings, {
     required String matchLabel,
     required String zoomLabel,
   }) {
+    if (widget.focusMode) {
+      return _buildFocusReaderToolbar(
+        strings,
+        matchLabel: matchLabel,
+        zoomLabel: zoomLabel,
+      );
+    }
     final document = _document;
     final searcher = _searcher;
     return Material(
@@ -2002,7 +2387,7 @@ final class _ProPdfReaderState extends State<_ProPdfReader> {
             ),
           ),
         ],
-        const SizedBox(height: 6),
+        SizedBox(height: widget.focusMode ? 2 : 6),
         Expanded(
           child: Row(
             children: [
@@ -2982,8 +3367,14 @@ final class _PdfReaderStrings {
   String get searchPdfText => isChinese ? '搜索 PDF 文本' : 'Search PDF text';
   String get searchHint => isChinese ? '输入关键词' : 'Enter keywords';
   String get search => isChinese ? '搜索' : 'Search';
+  String get closeSearch => isChinese ? '关闭搜索' : 'Close search';
   String get previousMatch => isChinese ? '上一个匹配' : 'Previous match';
   String get nextMatch => isChinese ? '下一个匹配' : 'Next match';
+  String get previousPage => isChinese ? '上一页' : 'Previous page';
+  String get nextPage => isChinese ? '下一页' : 'Next page';
+  String get exitFocusReading =>
+      isChinese ? '退出专注阅读（F11）' : 'Exit focus reading (F11)';
+  String get moreReaderActions => isChinese ? '更多阅读工具' : 'More reader tools';
   String get zoomOut => isChinese ? '缩小' : 'Zoom out';
   String get zoomIn => isChinese ? '放大' : 'Zoom in';
   String get hidePageThumbnails =>
